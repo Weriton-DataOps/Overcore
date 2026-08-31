@@ -1,0 +1,101 @@
+{
+  "contractVersion": "1.0",
+  "requestId": "req-20260830-change-001",
+  "idempotencyKey": "document-contract-field-20260830",
+  "createdAt": "2026-08-30T09:30:00-03:00",
+  "preflight": {
+    "draftId": "draft-contract-change-example",
+    "draftRevision": 1,
+    "draftFingerprint": {
+      "algorithm": "sha256-jcs-v1",
+      "value": "sha256:819a063a9ac26c34149e4eadfb50357e48ee7ba24783fcdda1aa3f70e76114c0"
+    },
+    "readinessReportId": "readiness-contract-change-example"
+  },
+  "client": {
+    "id": "client-primary-assistant",
+    "kind": "assistant"
+  },
+  "objective": "Adicionar ao README do projeto uma referência navegável para a documentação do TaskRequest v1 e comprovar a alteração.",
+  "priority": "normal",
+  "context": {
+    "references": [
+      {
+        "refId": "ref-overcore-readme",
+        "uri": "file:///C:/Users/wp.santos/Documents/Overcore/README.md",
+        "kind": "file",
+        "sensitivity": "internal"
+      },
+      {
+        "refId": "ref-task-request-doc",
+        "uri": "file:///C:/Users/wp.santos/Documents/Overcore/docs/contratos/task-request-v1.md",
+        "kind": "document",
+        "sensitivity": "internal"
+      }
+    ],
+    "assumptions": [
+      {
+        "id": "assumption-markdown-links",
+        "statement": "O README usa links Markdown relativos para documentos internos.",
+        "impactIfFalse": "A estratégia de edição precisa ser adaptada antes da gravação."
+      }
+    ]
+  },
+  "constraints": [
+    {
+      "id": "constraint-preserve-content",
+      "kind": "quality",
+      "description": "O conteúdo existente do README permanece preservado e a mudança fica limitada à referência contratada.",
+      "sourceRef": "ref-overcore-readme"
+    }
+  ],
+  "authority": {
+    "mode": "proceed-within-scope",
+    "grants": [
+      {
+        "resourceRef": "ref-overcore-readme",
+        "operations": ["filesystem.read", "filesystem.modify"]
+      },
+      {
+        "resourceRef": "ref-task-request-doc",
+        "operations": ["filesystem.read"]
+      }
+    ],
+    "expansionBoundaries": [
+      "destructive",
+      "irreversible",
+      "financial",
+      "privilege-expansion",
+      "external-publication",
+      "secret-access"
+    ]
+  },
+  "acceptanceCriteria": [
+    {
+      "id": "criterion-link-present",
+      "description": "O README contém um link relativo válido para a documentação do TaskRequest v1.",
+      "verification": {
+        "method": "inspection",
+        "expected": "O link resolve para docs/contratos/task-request-v1.md."
+      }
+    },
+    {
+      "id": "criterion-scope-preserved",
+      "description": "A alteração ficou limitada ao README autorizado.",
+      "verification": {
+        "method": "command",
+        "expected": "A inspeção de mudanças não mostra outros arquivos modificados pela tarefa."
+      }
+    }
+  ],
+  "budget": {
+    "maxDurationMs": 300000,
+    "maxAttempts": 2,
+    "maxParallelism": 1
+  },
+  "expectedOutput": {
+    "kind": "repository-change",
+    "mediaType": "text/markdown",
+    "destinationRef": "ref-overcore-readme"
+  }
+}

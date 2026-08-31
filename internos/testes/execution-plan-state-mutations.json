@@ -1,0 +1,434 @@
+{
+  "fixtureVersion": "1.0",
+  "cases": [
+    {
+      "caseId": "state-attempt-requires-plan-provenance",
+      "baseState": "task-state-running.json",
+      "patch": [{ "op": "remove", "path": "/activePlanBinding" }],
+      "expectedSchemaValid": false
+    },
+    {
+      "caseId": "state-plan-ref-is-unique",
+      "baseState": "task-state-retry-running.json",
+      "patch": [{
+        "op": "add",
+        "path": "/ledger/planRefs/-",
+        "value": {
+          "planId": "plan-inspection-001",
+          "planRevision": 2,
+          "planFingerprint": { "algorithm": "sha256-jcs-v1", "value": "sha256:d5faa4eca3d64700b85a602b75c5128e929e7ea8d33333c67aaf581ca6bedb6c" },
+          "strategyFingerprint": { "algorithm": "sha256-jcs-v1", "value": "sha256:61e794c396b5fbfa0e30b7b94314a047056c9eb3b8363ae003b5c8598c69f58e" },
+          "basisStateRevision": 7,
+          "activatedAtRevision": 8,
+          "activationTransitionId": "transition-retry-ready-second-001",
+          "activatedAt": "2026-08-30T09:01:05-03:00",
+          "authorizationBinding": {
+            "enforcementId": "authenf-plan-inspection-001-r2",
+            "enforcementFingerprint": { "algorithm": "sha256-jcs-v1", "value": "sha256:a1891c00917cb520151d2b833a07af1cb108c61a358b2961c6e12678ec53fb0f" },
+            "decisionId": "authdec-plan-inspection-001-r2",
+            "decisionFingerprint": { "algorithm": "sha256-jcs-v1", "value": "sha256:d02d02a972fcd5ca1f343a16f8226a255a2a54ea062c120d3703ea483823f720" },
+            "expiresAt": "2026-08-30T09:10:00-03:00",
+            "activatedAtRevision": 8
+          }
+        }
+      }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-plan-ref-duplicate"
+    },
+    {
+      "caseId": "state-active-plan-fingerprint-is-exact",
+      "baseState": "task-state-running.json",
+      "patch": [{ "op": "replace", "path": "/activePlanBinding/planFingerprint/value", "value": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-active-plan-mismatch"
+    },
+    {
+      "caseId": "state-plan-ref-matches-plan-document",
+      "baseState": "task-state-running.json",
+      "patch": [{ "op": "replace", "path": "/ledger/planRefs/0/planFingerprint/value", "value": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-plan-ref-mismatch"
+    },
+    {
+      "caseId": "state-plan-activation-points-to-ready-transition",
+      "baseState": "task-state-running.json",
+      "patch": [{ "op": "replace", "path": "/ledger/planRefs/0/activationTransitionId", "value": "transition-planning-001" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-plan-activation-mismatch"
+    },
+    {
+      "caseId": "state-plan-activation-is-next-cas-revision",
+      "baseState": "task-state-running.json",
+      "patch": [
+        { "op": "replace", "path": "/activePlanBinding/activatedAtRevision", "value": 4 },
+        { "op": "replace", "path": "/ledger/planRefs/0/activatedAtRevision", "value": 4 },
+        { "op": "replace", "path": "/ledger/transitions/2/stateRevision", "value": 4 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-plan-activation-mismatch"
+    },
+    {
+      "caseId": "state-attempt-plan-must-exist",
+      "baseState": "task-state-running.json",
+      "patch": [{ "op": "replace", "path": "/ledger/attempts/0/planRef/planRevision", "value": 2 }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-attempt-plan-missing"
+    },
+    {
+      "caseId": "state-attempt-strategy-matches-plan",
+      "baseState": "task-state-running.json",
+      "patch": [{ "op": "replace", "path": "/ledger/attempts/0/strategyFingerprint/value", "value": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-attempt-strategy-plan-mismatch"
+    },
+    {
+      "caseId": "state-attempt-requires-step-run-history",
+      "baseState": "task-state-running.json",
+      "patch": [
+        { "op": "remove", "path": "/activeStepRunRef" },
+        { "op": "replace", "path": "/ledger/stepRuns", "value": [] }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-plan-provenance-missing"
+    },
+    {
+      "caseId": "state-step-run-id-is-unique",
+      "baseState": "task-state-running.json",
+      "patch": [{ "op": "replace", "path": "/ledger/stepRuns/1/stepRunId", "value": "step-run-change-inspect-01" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-step-run-duplicate"
+    },
+    {
+      "caseId": "state-step-run-belongs-to-attempt",
+      "baseState": "task-state-running.json",
+      "patch": [{ "op": "replace", "path": "/ledger/stepRuns/1/attemptId", "value": "attempt-does-not-exist" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-step-run-attempt-mismatch"
+    },
+    {
+      "caseId": "state-step-run-belongs-to-plan",
+      "baseState": "task-state-running.json",
+      "patch": [{ "op": "replace", "path": "/ledger/stepRuns/1/stepRef", "value": "step-does-not-exist" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-step-run-plan-mismatch"
+    },
+    {
+      "caseId": "state-step-run-output-was-planned",
+      "baseState": "task-state-running.json",
+      "patch": [{ "op": "add", "path": "/ledger/stepRuns/1/outputRefs/-", "value": "output-not-in-plan" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-step-run-output-mismatch"
+    },
+    {
+      "caseId": "state-step-run-evidence-exists-in-ledger",
+      "baseState": "task-state-running.json",
+      "patch": [{ "op": "add", "path": "/ledger/stepRuns/0/evidenceRefs/-", "value": "evidence-not-recorded" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-step-run-evidence-missing"
+    },
+    {
+      "caseId": "state-step-runs-form-plan-prefix",
+      "baseState": "task-state-running.json",
+      "patch": [{ "op": "replace", "path": "/ledger/stepRuns/1/stepRef", "value": "step-change-verify-link" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-step-run-order-invalid"
+    },
+    {
+      "caseId": "state-step-runs-do-not-overlap",
+      "baseState": "task-state-succeeded.json",
+      "patch": [{ "op": "replace", "path": "/ledger/stepRuns/1/startedAt", "value": "2026-08-30T09:30:28-03:00" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-step-run-overlap"
+    },
+    {
+      "caseId": "state-has-at-most-one-active-step-run",
+      "baseState": "task-state-running.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/stepRuns/0/status", "value": "active" },
+        { "op": "remove", "path": "/ledger/stepRuns/0/endedAt" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-multiple-active-step-runs"
+    },
+    {
+      "caseId": "state-active-step-pointer-is-exact",
+      "baseState": "task-state-running.json",
+      "patch": [{ "op": "replace", "path": "/activeStepRunRef", "value": "step-run-change-inspect-01" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-active-step-run-mismatch"
+    },
+    {
+      "caseId": "state-active-attempt-uses-active-plan",
+      "baseState": "task-state-retry-running.json",
+      "patch": [{ "op": "replace", "path": "/ledger/attempts/1/planRef/planRevision", "value": 1 }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-active-attempt-plan-mismatch"
+    },
+    {
+      "caseId": "state-effect-points-to-existing-step-run",
+      "baseState": "task-state-running.json",
+      "patch": [{ "op": "replace", "path": "/ledger/effects/0/executionOrigins/0/stepRunRef", "value": "step-run-does-not-exist" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-effect-step-run-mismatch"
+    },
+    {
+      "caseId": "state-effect-action-was-planned",
+      "baseState": "task-state-running.json",
+      "patch": [{ "op": "replace", "path": "/ledger/effects/0/executionOrigins/0/actionRef", "value": "action-does-not-exist" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-effect-plan-intent-mismatch"
+    },
+    {
+      "caseId": "state-effect-key-matches-planned-intent",
+      "baseState": "task-state-running.json",
+      "patch": [{ "op": "replace", "path": "/ledger/effects/0/effectKey", "value": "task-20260830-change-001/another-intent" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-effect-plan-intent-mismatch"
+    },
+    {
+      "caseId": "state-checkpoint-cannot-cross-plan-revision",
+      "baseState": "task-state-succeeded.json",
+      "patch": [{ "op": "replace", "path": "/ledger/checkpoints/0/planRef/planRevision", "value": 2 }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-checkpoint-plan-mismatch"
+    },
+    {
+      "caseId": "state-checkpoint-resume-step-exists",
+      "baseState": "task-state-succeeded.json",
+      "patch": [{ "op": "replace", "path": "/ledger/checkpoints/0/resumeStepRef", "value": "step-does-not-exist" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-checkpoint-step-mismatch"
+    },
+    {
+      "caseId": "state-completed-attempt-completed-entire-plan",
+      "baseState": "task-state-succeeded.json",
+      "patch": [{ "op": "remove", "path": "/ledger/stepRuns/4" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-completed-attempt-plan-incomplete"
+    },
+    {
+      "caseId": "state-replan-preserves-old-plan-history",
+      "baseState": "task-state-retry-running.json",
+      "patch": [{ "op": "remove", "path": "/ledger/planRefs/0" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-attempt-plan-missing"
+    },
+    {
+      "caseId": "state-plan-basis-matches-plan-document",
+      "baseState": "task-state-running.json",
+      "patch": [{ "op": "replace", "path": "/ledger/planRefs/0/basisStateRevision", "value": 1 }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-plan-ref-mismatch"
+    },
+    {
+      "caseId": "state-failed-step-stops-attempt-chain",
+      "baseState": "task-state-running.json",
+      "patch": [{ "op": "replace", "path": "/ledger/stepRuns/0/status", "value": "failed" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-step-run-after-noncompleted"
+    },
+    {
+      "caseId": "state-completed-delivery-produced-planned-output",
+      "baseState": "task-state-succeeded.json",
+      "patch": [{ "op": "replace", "path": "/ledger/stepRuns/4/outputRefs", "value": [] }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-completed-step-output-incomplete"
+    },
+    {
+      "caseId": "state-completed-verification-has-real-evidence",
+      "baseState": "task-state-succeeded.json",
+      "patch": [{ "op": "replace", "path": "/ledger/stepRuns/2/evidenceRefs", "value": [] }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-verification-evidence-missing"
+    },
+    {
+      "caseId": "state-step-run-time-does-not-run-backward",
+      "baseState": "task-state-running.json",
+      "patch": [{ "op": "replace", "path": "/ledger/stepRuns/0/endedAt", "value": "2026-08-30T09:30:04-03:00" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-step-run-time-invalid"
+    },
+    {
+      "caseId": "state-active-step-belongs-to-active-attempt",
+      "baseState": "task-state-retry-running.json",
+      "patch": [{ "op": "replace", "path": "/activeAttemptId", "value": "attempt-inspection-001-01" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-active-step-attempt-mismatch"
+    },
+    {
+      "caseId": "state-success-requires-completed-attempt",
+      "baseState": "task-state-succeeded.json",
+      "patch": [{ "op": "replace", "path": "/ledger/attempts/0/status", "value": "failed" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-success-plan-attempt-mismatch"
+    },
+    {
+      "caseId": "state-plan-activation-cannot-be-reused",
+      "baseState": "task-state-ready.json",
+      "patch": [{
+        "op": "add",
+        "path": "/ledger/planRefs/-",
+        "value": {
+          "planId": "plan-change-001",
+          "planRevision": 2,
+          "planFingerprint": { "algorithm": "sha256-jcs-v1", "value": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+          "strategyFingerprint": { "algorithm": "sha256-jcs-v1", "value": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+          "basisStateRevision": 2,
+          "activatedAtRevision": 3,
+          "activationTransitionId": "transition-ready-001",
+          "activatedAt": "2026-08-30T09:30:03-03:00",
+          "authorizationBinding": {
+            "enforcementId": "authenf-plan-change-001-r2",
+            "enforcementFingerprint": { "algorithm": "sha256-jcs-v1", "value": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+            "decisionId": "authdec-plan-change-001-r2",
+            "decisionFingerprint": { "algorithm": "sha256-jcs-v1", "value": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+            "expiresAt": "2026-08-30T09:40:00-03:00",
+            "activatedAtRevision": 3
+          }
+        }
+      }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-plan-activation-duplicate"
+    },
+    {
+      "caseId": "state-verification-evidence-matches-planned-output",
+      "baseState": "task-state-succeeded.json",
+      "patch": [{ "op": "replace", "path": "/ledger/stepRuns/2/evidenceRefs", "value": ["evidence-readme-lock"] }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-verification-evidence-mismatch"
+    },
+    {
+      "caseId": "state-completed-journaled-action-has-effect",
+      "baseState": "task-state-succeeded.json",
+      "patch": [
+        { "op": "remove", "path": "/ledger/attempts/0/effectRefs/0" },
+        { "op": "remove", "path": "/ledger/effects/0" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-completed-step-journal-missing"
+    },
+    {
+      "caseId": "state-journaled-effect-has-precheckpoint",
+      "baseState": "task-state-running.json",
+      "patch": [
+        { "op": "remove", "path": "/latestCheckpointRef" },
+        { "op": "remove", "path": "/ledger/attempts/0/checkpointRef" },
+        { "op": "remove", "path": "/ledger/checkpoints/0" },
+        { "op": "remove", "path": "/ledger/artifactRefs/0" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-effect-precheckpoint-missing"
+    },
+    {
+      "caseId": "state-effect-checkpoint-revision-must-precede-origin",
+      "baseState": "task-state-succeeded.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/checkpoints/0/stateRevision", "value": 6 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-effect-precheckpoint-missing"
+    },
+    {
+      "caseId": "state-plan-activation-cannot-predate-plan",
+      "baseState": "task-state-retry-running.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/transitions/6/at", "value": "2026-08-30T09:01:02-03:00" },
+        { "op": "replace", "path": "/ledger/planRefs/1/activatedAt", "value": "2026-08-30T09:01:02-03:00" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-plan-activation-time-invalid"
+    },
+    {
+      "caseId": "state-step-run-must-stay-inside-attempt-window",
+      "baseState": "task-state-succeeded.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/stepRuns/0/startedAt", "value": "2026-08-30T09:30:04-03:00" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-step-run-outside-attempt"
+    },
+    {
+      "caseId": "state-effect-must-stay-inside-step-run-window",
+      "baseState": "task-state-succeeded.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/effects/0/executionOrigins/0/recordedAt", "value": "2026-08-30T09:30:29-03:00" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-effect-outside-step-run"
+    },
+    {
+      "caseId": "state-checkpoint-must-stay-inside-attempt-window",
+      "baseState": "task-state-succeeded.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/checkpoints/0/createdAt", "value": "2026-08-30T09:30:04-03:00" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-checkpoint-outside-attempt"
+    },
+    {
+      "caseId": "state-checkpoint-revision-belongs-to-attempt",
+      "baseState": "task-state-succeeded.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/checkpoints/0/stateRevision", "value": 3 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-checkpoint-outside-attempt"
+    },
+    {
+      "caseId": "state-completed-delivery-has-materialization",
+      "baseState": "task-state-succeeded.json",
+      "patch": [
+        { "op": "remove", "path": "/ledger/stepRuns/4/deliveryBindings" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-delivery-materialization-mismatch"
+    },
+    {
+      "caseId": "state-artifact-output-materializes-an-artifact",
+      "baseState": "task-state-succeeded.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/stepRuns/4/deliveryBindings/0/artifactRefs", "value": [] }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-delivery-materialization-mismatch"
+    },
+    {
+      "caseId": "state-delivery-metadata-matches-plan-output",
+      "baseState": "task-state-succeeded.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/stepRuns/4/deliveryBindings/0/kind", "value": "report" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-delivery-materialization-mismatch"
+    },
+    {
+      "caseId": "state-active-step-cannot-exceed-plan-timeout",
+      "baseState": "task-state-running.json",
+      "patch": [
+        { "op": "replace", "path": "/stateRevision", "value": 6 },
+        { "op": "replace", "path": "/updatedAt", "value": "2026-08-30T09:32:01-03:00" },
+        { "op": "replace", "path": "/usage/activeDurationMs", "value": 121000 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-step-timeout-exceeded"
+    },
+    {
+      "caseId": "state-checkpoint-cannot-confirm-future-effect",
+      "baseState": "task-state-succeeded.json",
+      "patch": [
+        { "op": "add", "path": "/ledger/checkpoints/0/lastConfirmedEffectRef", "value": "effect-readme-modified" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-checkpoint-effect-causality-invalid"
+    },
+    {
+      "caseId": "state-context-capture-record-matches-activated-plan",
+      "baseState": "task-state-succeeded.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/contextCaptureRecords/0/digest", "value": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-context-capture-plan-mismatch"
+    }
+  ]
+}

@@ -1,0 +1,106 @@
+{
+  "contractVersion": "1.0",
+  "resultId": "result-change-blocked-001",
+  "requestId": "req-20260830-change-001",
+  "requestFingerprint": {
+    "algorithm": "sha256-jcs-v1",
+    "value": "sha256:44340c327366e5c0c78780634343b74720dfff72be25e70a4cfff87b23bbb6e7"
+  },
+  "taskId": "task-20260830-change-001",
+  "stateRef": {
+    "stateRevision": 7,
+    "transitionId": "transition-change-blocked-001",
+    "emissionSequence": 1
+  },
+  "reportedAt": "2026-08-30T09:31:00-03:00",
+  "status": "blocked",
+  "summary": "O README ficou bloqueado por outro processo; a leitura confirmou que a alteração ainda não foi aplicada.",
+  "criteria": [
+    {
+      "criterionId": "criterion-link-present",
+      "status": "not-run",
+      "evidenceRefs": []
+    },
+    {
+      "criterionId": "criterion-scope-preserved",
+      "status": "not-run",
+      "evidenceRefs": []
+    }
+  ],
+  "evidence": [
+    {
+      "evidenceId": "evidence-readme-lock",
+      "kind": "state-readback",
+      "capturedAt": "2026-08-30T09:30:59-03:00",
+      "summary": "O recurso autorizado estava temporariamente bloqueado por outro processo.",
+      "digest": "sha256:b6da8aff0eda7093d12fe17f89cc8a7e293ef54a58c46154990d0c0c8d10522a",
+      "artifactRefs": ["artifact-change-block-checkpoint"],
+      "origin": {
+        "kind": "runtime",
+        "id": "overcore-runtime-v1"
+      }
+    },
+    {
+      "evidenceId": "evidence-effect-not-applied",
+      "kind": "state-readback",
+      "capturedAt": "2026-08-30T09:30:59-03:00",
+      "summary": "A leitura posterior confirmou que o link ainda não existia e nenhum byte foi alterado.",
+      "digest": "sha256:058f1c09d636a7cd63d353db2740f1cfe8ae9cf6e5b55060a8e1a730aa52e95b",
+      "artifactRefs": [],
+      "origin": {
+        "kind": "runtime",
+        "id": "overcore-runtime-v1"
+      }
+    }
+  ],
+  "artifacts": [
+    {
+      "artifactId": "artifact-change-block-checkpoint",
+      "kind": "checkpoint",
+      "uri": "urn:overcore:checkpoint:task-20260830-change-001:block-001",
+      "digest": "sha256:06ad9e600256092f49875b545309b9e3f5d08850422cc7c159b4ccaf30801252",
+      "mediaType": "application/json",
+      "sensitivity": "internal",
+      "createdAt": "2026-08-30T09:31:00-03:00"
+    }
+  ],
+  "effects": [
+    {
+      "effectId": "effect-readme-modified",
+      "effectKey": "task-20260830-change-001/readme-reference",
+      "intentFingerprint": {
+        "algorithm": "sha256-jcs-v1",
+        "value": "sha256:090dd346688c358f935953437ce63ae20a33e2347cb88eb633c27d043d2c90b0"
+      },
+      "resourceRef": "ref-overcore-readme",
+      "operation": "filesystem.modify",
+      "status": "not-applied",
+      "evidenceRefs": ["evidence-effect-not-applied"]
+    }
+  ],
+  "execution": {
+    "attemptCount": 1,
+    "maxParallelismObserved": 1,
+    "durationMs": 60000,
+    "startedAt": "2026-08-30T09:30:05-03:00",
+    "lastTransitionAt": "2026-08-30T09:31:00-03:00",
+    "checkpointArtifactRef": "artifact-change-block-checkpoint"
+  },
+  "inputRequired": {
+    "blockId": "block-readme-lock-001",
+    "mode": "resume-same-request",
+    "code": "block-resource-temporarily-locked",
+    "kind": "external-condition",
+    "reason": "A escrita autorizada não pode começar enquanto outro processo mantiver o bloqueio.",
+    "question": "O processo que bloqueia o README pode ser encerrado ou o bloqueio será liberado para retomarmos?",
+    "options": [
+      {
+        "id": "option-release-original-resource",
+        "label": "Liberar o recurso original",
+        "consequence": "A mesma tarefa retoma do checkpoint, revalida o recurso e preserva a tentativa lógica."
+      }
+    ],
+    "impact": "A tarefa permanece pausada; nenhum efeito será repetido até a condição ser comprovadamente restaurada.",
+    "evidenceRefs": ["evidence-readme-lock", "evidence-effect-not-applied"]
+  }
+}

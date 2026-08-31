@@ -1,0 +1,81 @@
+{
+  "contractVersion": "1.0",
+  "reportId": "readiness-expired-not-feasible",
+  "draftId": "draft-expired-deadline-report",
+  "draftRevision": 1,
+  "draftFingerprint": {
+    "algorithm": "sha256-jcs-v1",
+    "value": "sha256:357172db54010463c1172d2eb37623b927127b9b24a6562122d90e1474719e28"
+  },
+  "generatedAt": "2026-08-30T12:10:01-03:00",
+  "status": "not-feasible",
+  "readinessChecks": [
+    {
+      "checkId": "objective-clear",
+      "status": "passed",
+      "summary": "O objetivo e o prazo estão explicitamente definidos.",
+      "evidenceRefs": ["evidence-deadline-expired"],
+      "decisionRefs": []
+    },
+    {
+      "checkId": "context-resolvable",
+      "status": "passed",
+      "summary": "A constatação temporal não depende de recurso externo.",
+      "evidenceRefs": ["evidence-deadline-expired"],
+      "decisionRefs": []
+    },
+    {
+      "checkId": "authority-sufficient",
+      "status": "passed",
+      "summary": "Nenhum efeito externo seria necessário para produzir o relatório.",
+      "evidenceRefs": ["evidence-deadline-expired"],
+      "decisionRefs": []
+    },
+    {
+      "checkId": "criteria-testable",
+      "status": "passed",
+      "summary": "O horário de conclusão pode ser comparado objetivamente com o prazo.",
+      "evidenceRefs": ["evidence-deadline-expired"],
+      "decisionRefs": []
+    },
+    {
+      "checkId": "budget-feasible",
+      "status": "failed",
+      "summary": "O prazo terminou antes da criação do draft e não pode ser satisfeito retroativamente.",
+      "evidenceRefs": ["evidence-deadline-expired"],
+      "decisionRefs": []
+    },
+    {
+      "checkId": "output-defined",
+      "status": "passed",
+      "summary": "A entrega solicitada é um relatório.",
+      "evidenceRefs": ["evidence-deadline-expired"],
+      "decisionRefs": []
+    },
+    {
+      "checkId": "rollback-ready",
+      "status": "passed",
+      "summary": "Nenhum efeito externo foi planejado.",
+      "evidenceRefs": ["evidence-deadline-expired"],
+      "decisionRefs": []
+    }
+  ],
+  "automaticDecisions": [],
+  "requiredDecisions": [],
+  "appliedDecisionAnswers": [],
+  "evidence": [
+    {
+      "evidenceId": "evidence-deadline-expired",
+      "kind": "environment-check",
+      "capturedAt": "2026-08-30T12:10:01-03:00",
+      "summary": "O prazo de 11:00 antecede a criação do draft às 12:10.",
+      "digest": "sha256:aae3d9d46608d773e203a5fa874b33b895ba93fcff6197ea7060be2fb344f198",
+      "sourceRefs": []
+    }
+  ],
+  "failure": {
+    "code": "preflight-deadline-expired",
+    "summary": "A tarefa não pode cumprir um prazo já encerrado sem alterar uma constraint material.",
+    "evidenceRefs": ["evidence-deadline-expired"]
+  }
+}

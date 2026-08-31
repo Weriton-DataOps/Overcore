@@ -1,0 +1,1515 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:overcore:internal-models:task-state:v1",
+  "title": "OverCore Task State v1",
+  "description": "Snapshot interno, persistente e versionado de uma tarefa admitida.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "modelVersion",
+    "taskId",
+    "requestBinding",
+    "acceptedAt",
+    "updatedAt",
+    "stateRevision",
+    "executionEpoch",
+    "lifecycle",
+    "criterionProgress",
+    "usage",
+    "ledger"
+  ],
+  "properties": {
+    "modelVersion": {
+      "const": "1.0"
+    },
+    "taskId": {
+      "$ref": "#/$defs/identifier"
+    },
+    "requestBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requestId", "requestFingerprint"],
+      "properties": {
+        "requestId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "requestFingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        }
+      }
+    },
+    "acceptedAt": {
+      "$ref": "#/$defs/dateTime"
+    },
+    "updatedAt": {
+      "$ref": "#/$defs/dateTime"
+    },
+    "stateRevision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "executionEpoch": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Fence monotônico que invalida escritores e executores antigos."
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "enteredAt", "lastTransitionId"],
+      "properties": {
+        "state": {
+          "$ref": "#/$defs/taskStatus"
+        },
+        "enteredAt": {
+          "$ref": "#/$defs/dateTime"
+        },
+        "lastTransitionId": {
+          "$ref": "#/$defs/identifier"
+        }
+      }
+    },
+    "criterionProgress": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {
+        "$ref": "#/$defs/criterionProgress"
+      }
+    },
+    "activePlanBinding": {
+      "$ref": "#/$defs/activePlanBinding"
+    },
+    "activeAttemptId": {
+      "$ref": "#/$defs/identifier"
+    },
+    "activeStepRunRef": {
+      "$ref": "#/$defs/identifier"
+    },
+    "activeBlockRef": {
+      "$ref": "#/$defs/identifier"
+    },
+    "cancellation": {
+      "$ref": "#/$defs/cancellation"
+    },
+    "latestCheckpointRef": {
+      "$ref": "#/$defs/identifier"
+    },
+    "terminalResultRef": {
+      "$ref": "#/$defs/identifier"
+    },
+    "usage": {
+      "$ref": "#/$defs/usage"
+    },
+    "ledger": {
+      "$ref": "#/$defs/ledger"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "lifecycle": {
+            "properties": {
+              "state": {
+                "enum": ["accepted", "planning", "ready"]
+              }
+            },
+            "required": ["state"]
+          }
+        },
+        "required": ["lifecycle"]
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            { "required": ["activeStepRunRef"] },
+            { "required": ["activeAttemptId"] },
+            { "required": ["activeBlockRef"] },
+            { "required": ["cancellation"] },
+            { "required": ["terminalResultRef"] }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "lifecycle": {
+            "properties": {
+              "state": {
+                "enum": ["accepted", "planning"]
+              }
+            },
+            "required": ["state"]
+          }
+        },
+        "required": ["lifecycle"]
+      },
+      "then": {
+        "not": {
+          "required": ["activePlanBinding"]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "lifecycle": {
+            "properties": {
+              "state": {
+                "const": "ready"
+              }
+            },
+            "required": ["state"]
+          }
+        },
+        "required": ["lifecycle"]
+      },
+      "then": {
+        "required": ["activePlanBinding"],
+        "properties": {
+          "ledger": {
+            "properties": {
+              "planRefs": {
+                "minItems": 1
+              }
+            },
+            "required": ["planRefs"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "lifecycle": {
+            "properties": {
+              "state": {
+                "enum": ["running", "verifying"]
+              }
+            },
+            "required": ["state"]
+          }
+        },
+        "required": ["lifecycle"]
+      },
+      "then": {
+        "required": ["activePlanBinding", "activeAttemptId"],
+        "properties": {
+          "ledger": {
+            "properties": {
+              "planRefs": {
+                "minItems": 1
+              }
+            },
+            "required": ["planRefs"]
+          }
+        },
+        "not": {
+          "anyOf": [
+            { "required": ["activeBlockRef"] },
+            { "required": ["cancellation"] },
+            { "required": ["terminalResultRef"] }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "lifecycle": {
+            "properties": {
+              "state": {
+                "const": "blocked"
+              }
+            },
+            "required": ["state"]
+          }
+        },
+        "required": ["lifecycle"]
+      },
+      "then": {
+        "required": ["activeBlockRef"],
+        "not": {
+          "anyOf": [
+            { "required": ["activeAttemptId"] },
+            { "required": ["cancellation"] },
+            { "required": ["terminalResultRef"] }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "lifecycle": {
+            "properties": {
+              "state": {
+                "const": "cancelling"
+              }
+            },
+            "required": ["state"]
+          }
+        },
+        "required": ["lifecycle"]
+      },
+      "then": {
+        "required": ["cancellation"],
+        "not": {
+          "anyOf": [
+            { "required": ["activeBlockRef"] },
+            { "required": ["terminalResultRef"] }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "lifecycle": {
+            "properties": {
+              "state": {
+                "enum": ["succeeded", "failed", "cancelled"]
+              }
+            },
+            "required": ["state"]
+          }
+        },
+        "required": ["lifecycle"]
+      },
+      "then": {
+        "required": ["terminalResultRef"],
+        "not": {
+          "anyOf": [
+            { "required": ["activeAttemptId"] },
+            { "required": ["activeBlockRef"] }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "lifecycle": {
+            "properties": {
+              "state": {
+                "const": "succeeded"
+              }
+            },
+            "required": ["state"]
+          }
+        },
+        "required": ["lifecycle"]
+      },
+      "then": {
+        "required": ["activePlanBinding"],
+        "properties": {
+          "criterionProgress": {
+            "items": {
+              "properties": {
+                "status": {
+                  "const": "passed"
+                }
+              },
+              "required": ["status"]
+            }
+          },
+          "ledger": {
+            "properties": {
+              "planRefs": {
+                "minItems": 1
+              },
+              "effects": {
+                "items": {
+                  "properties": {
+                    "state": {
+                      "enum": ["confirmed", "not-applied"]
+                    }
+                  },
+                  "required": ["state"]
+                }
+              }
+            },
+            "required": ["planRefs"]
+          }
+        },
+        "not": {
+          "required": ["cancellation"]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "lifecycle": {
+            "properties": {
+              "state": {
+                "const": "failed"
+              }
+            },
+            "required": ["state"]
+          }
+        },
+        "required": ["lifecycle"]
+      },
+      "then": {
+        "properties": {
+          "ledger": {
+            "properties": {
+              "effects": {
+                "items": {
+                  "properties": {
+                    "state": {
+                      "enum": ["confirmed", "not-applied"]
+                    }
+                  },
+                  "required": ["state"]
+                }
+              }
+            }
+          }
+        },
+        "not": {
+          "required": ["cancellation"]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "lifecycle": {
+            "properties": {
+              "state": {
+                "const": "cancelled"
+              }
+            },
+            "required": ["state"]
+          }
+        },
+        "required": ["lifecycle"]
+      },
+      "then": {
+        "required": ["cancellation"],
+        "properties": {
+          "cancellation": {
+            "properties": {
+              "status": {
+                "const": "quiesced"
+              }
+            },
+            "required": ["status"]
+          },
+          "ledger": {
+            "properties": {
+              "effects": {
+                "items": {
+                  "properties": {
+                    "state": {
+                      "enum": ["confirmed", "not-applied", "unknown"]
+                    }
+                  },
+                  "required": ["state"]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$"
+    },
+    "dateTime": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "fingerprint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "value"],
+      "properties": {
+        "algorithm": {
+          "const": "sha256-jcs-v1"
+        },
+        "value": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "operationToken": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z][a-z0-9]*)+$",
+      "maxLength": 100
+    },
+    "planPointer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["planId", "planRevision"],
+      "properties": {
+        "planId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "planRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20
+        }
+      }
+    },
+    "activePlanBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "planId",
+        "planRevision",
+        "planFingerprint",
+        "strategyFingerprint",
+        "authorizationBinding",
+        "activatedAtRevision"
+      ],
+      "properties": {
+        "planId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "planRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20
+        },
+        "planFingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "strategyFingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "authorizationBinding": {
+          "$ref": "#/$defs/authorizationBinding"
+        },
+        "activatedAtRevision": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "taskStatus": {
+      "enum": [
+        "accepted",
+        "planning",
+        "ready",
+        "running",
+        "verifying",
+        "blocked",
+        "cancelling",
+        "succeeded",
+        "failed",
+        "cancelled"
+      ]
+    },
+    "authorizationBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enforcementId",
+        "enforcementFingerprint",
+        "decisionId",
+        "decisionFingerprint",
+        "expiresAt",
+        "activatedAtRevision"
+      ],
+      "properties": {
+        "enforcementId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "enforcementFingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "decisionId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "decisionFingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/dateTime"
+        },
+        "activatedAtRevision": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "criterionProgress": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["criterionId", "status", "evidenceRefs"],
+      "properties": {
+        "criterionId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "status": {
+          "enum": ["passed", "failed", "not-run"]
+        },
+        "evidenceRefs": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "not-run"
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "evidenceRefs": {
+                "maxItems": 0
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "evidenceRefs": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "runtimeBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "engine",
+        "sdkVersion",
+        "authSource",
+        "sessionId",
+        "model",
+        "inputTokens",
+        "outputTokens",
+        "estimatedCostUsd",
+        "permissionDenials",
+        "eventCount"
+      ],
+      "properties": {
+        "engine": { "const": "anthropic-claude-agent-sdk" },
+        "sdkVersion": { "type": "string", "minLength": 1, "maxLength": 50 },
+        "authSource": { "const": "oauth-login" },
+        "sessionId": { "type": "string", "minLength": 8, "maxLength": 200 },
+        "model": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "inputTokens": { "type": "integer", "minimum": 0 },
+        "outputTokens": { "type": "integer", "minimum": 0 },
+        "estimatedCostUsd": { "type": "number", "minimum": 0 },
+        "permissionDenials": { "type": "integer", "minimum": 0 },
+        "eventCount": { "type": "integer", "minimum": 1 },
+        "outputDigest": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "usage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attemptCount", "maxParallelismObserved", "activeDurationMs"],
+      "properties": {
+        "attemptCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxParallelismObserved": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "activeDurationMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "costUsd": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "block": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "blockId",
+        "blockingResultId",
+        "blockedAtRevision",
+        "blockedFrom",
+        "resumeTarget",
+        "mode",
+        "condition",
+        "evidenceRefs",
+        "createdAt"
+      ],
+      "properties": {
+        "blockId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "blockingResultId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "blockedAtRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "blockedFrom": {
+          "enum": ["planning", "ready", "running", "verifying"]
+        },
+        "resumeTarget": {
+          "enum": ["planning", "ready", "verifying"]
+        },
+        "mode": {
+          "enum": ["resume-same-request", "replacement-request-required"]
+        },
+        "condition": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 2000
+        },
+        "checkpointRef": {
+          "$ref": "#/$defs/identifier"
+        },
+        "suspendedAttemptId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "evidenceRefs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "createdAt": {
+          "$ref": "#/$defs/dateTime"
+        }
+      }
+    },
+    "cancellation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cancellationId",
+        "initiatedBy",
+        "requestedAt",
+        "status",
+        "lastUpdatedRevision",
+        "evidenceRefs"
+      ],
+      "properties": {
+        "cancellationId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "initiatedBy": {
+          "enum": ["client", "policy", "runtime", "deadline"]
+        },
+        "requestedAt": {
+          "$ref": "#/$defs/dateTime"
+        },
+        "status": {
+          "enum": ["requested", "quiesced"]
+        },
+        "lastUpdatedRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "evidenceRefs": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        }
+      }
+    },
+    "ledger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "transitions",
+        "attempts",
+        "effects",
+        "blocks",
+        "checkpoints",
+        "evidenceRefs",
+        "artifactRefs",
+        "resultRefs"
+      ],
+      "properties": {
+        "transitions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/transition"
+          }
+        },
+        "planRefs": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "$ref": "#/$defs/planRef"
+          }
+        },
+        "attempts": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "$ref": "#/$defs/attempt"
+          }
+        },
+        "stepRuns": {
+          "type": "array",
+          "maxItems": 640,
+          "items": {
+            "$ref": "#/$defs/stepRun"
+          }
+        },
+        "effects": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/effect"
+          }
+        },
+        "blocks": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/block"
+          }
+        },
+        "checkpoints": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/checkpoint"
+          }
+        },
+        "evidenceRefs": {
+          "type": "array",
+          "maxItems": 512,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "contextCaptureRecords": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "evidenceRef",
+              "refId",
+              "digest",
+              "capturedAt",
+              "recordedAt",
+              "recordedAtRevision"
+            ],
+            "properties": {
+              "evidenceRef": {
+                "$ref": "#/$defs/identifier"
+              },
+              "refId": {
+                "$ref": "#/$defs/identifier"
+              },
+              "digest": {
+                "$ref": "#/$defs/sha256"
+              },
+              "capturedAt": {
+                "$ref": "#/$defs/dateTime"
+              },
+              "recordedAt": {
+                "$ref": "#/$defs/dateTime"
+              },
+              "recordedAtRevision": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        },
+        "artifactRefs": {
+          "type": "array",
+          "maxItems": 256,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "resultRefs": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/resultRef"
+          }
+        }
+      }
+    },
+    "transition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "transitionId",
+        "sequence",
+        "stateRevision",
+        "from",
+        "to",
+        "at",
+        "triggerKind",
+        "evidenceRefs"
+      ],
+      "properties": {
+        "transitionId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "stateRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "from": {
+          "oneOf": [
+            { "$ref": "#/$defs/taskStatus" },
+            { "type": "null" }
+          ]
+        },
+        "to": {
+          "$ref": "#/$defs/taskStatus"
+        },
+        "at": {
+          "$ref": "#/$defs/dateTime"
+        },
+        "triggerKind": {
+          "enum": [
+            "admission",
+            "planning-started",
+            "planning-completed",
+            "execution-started",
+            "verification-started",
+            "verification-passed",
+            "block-detected",
+            "condition-restored",
+            "retry-scheduled",
+            "cancellation-requested",
+            "cancellation-settled",
+            "recovery-exhausted",
+            "terminal-failure",
+            "policy"
+          ]
+        },
+        "triggerRef": {
+          "$ref": "#/$defs/identifier"
+        },
+        "resultRef": {
+          "$ref": "#/$defs/identifier"
+        },
+        "evidenceRefs": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        }
+      }
+    },
+    "planRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "planId",
+        "planRevision",
+        "planFingerprint",
+        "strategyFingerprint",
+        "basisStateRevision",
+        "activatedAtRevision",
+        "activationTransitionId",
+        "activatedAt",
+        "authorizationBinding"
+      ],
+      "properties": {
+        "planId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "planRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20
+        },
+        "planFingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "strategyFingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "basisStateRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "activatedAtRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "activationTransitionId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "activatedAt": {
+          "$ref": "#/$defs/dateTime"
+        },
+        "authorizationBinding": {
+          "$ref": "#/$defs/authorizationBinding"
+        }
+      }
+    },
+    "attempt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attemptId",
+        "ordinal",
+        "status",
+        "planRef",
+        "strategyFingerprint",
+        "executionEpoch",
+        "startedAt",
+        "lastUpdatedRevision",
+        "effectRefs",
+        "evidenceRefs"
+      ],
+      "properties": {
+        "attemptId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "ordinal": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "status": {
+          "enum": ["active", "awaiting-verification", "suspended", "completed", "failed", "cancelled"]
+        },
+        "planRef": {
+          "$ref": "#/$defs/planPointer"
+        },
+        "strategyFingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "executionEpoch": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "startedAt": {
+          "$ref": "#/$defs/dateTime"
+        },
+        "endedAt": {
+          "$ref": "#/$defs/dateTime"
+        },
+        "lastUpdatedRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "checkpointRef": {
+          "$ref": "#/$defs/identifier"
+        },
+        "effectRefs": {
+          "type": "array",
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "evidenceRefs": {
+          "type": "array",
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "runtimeBinding": {
+          "$ref": "#/$defs/runtimeBinding"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": ["completed", "failed", "cancelled"]
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "required": ["endedAt"]
+          },
+          "else": {
+            "not": {
+              "required": ["endedAt"]
+            }
+          }
+        }
+      ]
+    },
+    "stepRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stepRunId",
+        "planRef",
+        "stepRef",
+        "attemptId",
+        "executionEpoch",
+        "status",
+        "startedAt",
+        "lastUpdatedRevision",
+        "outputRefs",
+        "evidenceRefs"
+      ],
+      "properties": {
+        "stepRunId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "planRef": {
+          "$ref": "#/$defs/planPointer"
+        },
+        "stepRef": {
+          "$ref": "#/$defs/identifier"
+        },
+        "attemptId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "executionEpoch": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "status": {
+          "enum": ["active", "completed", "failed", "suspended", "cancelled"]
+        },
+        "startedAt": {
+          "$ref": "#/$defs/dateTime"
+        },
+        "endedAt": {
+          "$ref": "#/$defs/dateTime"
+        },
+        "lastUpdatedRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "outputRefs": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "deliveryBindings": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["outputRef", "resultRef", "kind", "artifactRefs"],
+            "properties": {
+              "outputRef": {
+                "$ref": "#/$defs/identifier"
+              },
+              "resultRef": {
+                "$ref": "#/$defs/identifier"
+              },
+              "kind": {
+                "enum": ["text", "json", "report", "file", "repository-change", "artifact-set", "no-artifact"]
+              },
+              "mediaType": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 200
+              },
+              "schemaRef": {
+                "type": "string",
+                "format": "uri-reference",
+                "maxLength": 2000
+              },
+              "destinationRef": {
+                "$ref": "#/$defs/identifier"
+              },
+              "artifactRefs": {
+                "type": "array",
+                "maxItems": 32,
+                "uniqueItems": true,
+                "items": {
+                  "$ref": "#/$defs/identifier"
+                }
+              }
+            }
+          }
+        },
+        "evidenceRefs": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": ["completed", "failed", "cancelled"]
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "required": ["endedAt"]
+          },
+          "else": {
+            "not": {
+              "required": ["endedAt"]
+            }
+          }
+        }
+      ]
+    },
+    "effectOrigin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "originId",
+        "ordinal",
+        "attemptRef",
+        "planRef",
+        "stepRunRef",
+        "actionRef",
+        "executionEpoch",
+        "state",
+        "recordedAt",
+        "recordedAtRevision",
+        "updatedAt",
+        "lastUpdatedRevision",
+        "evidenceRefs"
+      ],
+      "properties": {
+        "originId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "ordinal": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "attemptRef": {
+          "$ref": "#/$defs/identifier"
+        },
+        "planRef": {
+          "$ref": "#/$defs/planPointer"
+        },
+        "stepRunRef": {
+          "$ref": "#/$defs/identifier"
+        },
+        "actionRef": {
+          "$ref": "#/$defs/identifier"
+        },
+        "executionEpoch": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "state": {
+          "enum": ["reserved", "applying", "confirmed", "not-applied", "unknown"]
+        },
+        "recordedAt": {
+          "$ref": "#/$defs/dateTime"
+        },
+        "recordedAtRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/dateTime"
+        },
+        "lastUpdatedRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "evidenceRefs": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "enum": ["confirmed", "not-applied", "unknown"]
+              }
+            },
+            "required": ["state"]
+          },
+          "then": {
+            "properties": {
+              "evidenceRefs": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "effectId",
+        "effectKey",
+        "intentFingerprint",
+        "attemptRefs",
+        "executionOrigins",
+        "planRef",
+        "stepRunRef",
+        "actionRef",
+        "resourceRef",
+        "operation",
+        "state",
+        "executionEpoch",
+        "recordedAt",
+        "updatedAt",
+        "lastUpdatedRevision",
+        "evidenceRefs"
+      ],
+      "properties": {
+        "effectId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "effectKey": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{7,255}$"
+        },
+        "intentFingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "attemptRefs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "executionOrigins": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "items": {
+            "$ref": "#/$defs/effectOrigin"
+          }
+        },
+        "planRef": {
+          "$ref": "#/$defs/planPointer"
+        },
+        "stepRunRef": {
+          "$ref": "#/$defs/identifier"
+        },
+        "actionRef": {
+          "$ref": "#/$defs/identifier"
+        },
+        "resourceRef": {
+          "$ref": "#/$defs/identifier"
+        },
+        "operation": {
+          "$ref": "#/$defs/operationToken"
+        },
+        "state": {
+          "enum": ["reserved", "applying", "confirmed", "not-applied", "unknown"]
+        },
+        "executionEpoch": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "recordedAt": {
+          "$ref": "#/$defs/dateTime"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/dateTime"
+        },
+        "lastUpdatedRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "evidenceRefs": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "compensatesEffectRef": {
+          "$ref": "#/$defs/identifier"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "enum": ["confirmed", "not-applied", "unknown"]
+              }
+            },
+            "required": ["state"]
+          },
+          "then": {
+            "properties": {
+              "evidenceRefs": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "checkpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "checkpointRef",
+        "digest",
+        "requestFingerprint",
+        "stateRevision",
+        "resumeTarget",
+        "createdAt"
+      ],
+      "properties": {
+        "checkpointRef": {
+          "$ref": "#/$defs/identifier"
+        },
+        "digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "requestFingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "stateRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "attemptId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "planRef": {
+          "$ref": "#/$defs/planPointer"
+        },
+        "resumeStepRef": {
+          "$ref": "#/$defs/identifier"
+        },
+        "resumeTarget": {
+          "enum": ["planning", "ready", "verifying"]
+        },
+        "lastConfirmedEffectRef": {
+          "$ref": "#/$defs/identifier"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/dateTime"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["attemptId"]
+          },
+          "then": {
+            "required": ["planRef", "resumeStepRef"]
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                { "required": ["planRef"] },
+                { "required": ["resumeStepRef"] }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "resultRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resultId",
+        "stateRevision",
+        "transitionId",
+        "emissionSequence",
+        "status",
+        "resultFingerprint",
+        "emittedAt"
+      ],
+      "properties": {
+        "resultId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "stateRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "transitionId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "emissionSequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "supersedesResultId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "status": {
+          "enum": ["blocked", "succeeded", "failed", "cancelled"]
+        },
+        "resultFingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "emittedAt": {
+          "$ref": "#/$defs/dateTime"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,74 @@
+{
+  "contractVersion": "1.0",
+  "resultId": "result-inspection-blocked-001",
+  "requestId": "req-20260830-inspection-001",
+  "requestFingerprint": {
+    "algorithm": "sha256-jcs-v1",
+    "value": "sha256:33fcb5a04d18b6d00536ea6085bc36838b350ddd3058041ea741005069d306d6"
+  },
+  "taskId": "task-20260830-inspection-001",
+  "stateRef": {
+    "stateRevision": 3,
+    "transitionId": "transition-blocked-001",
+    "emissionSequence": 1
+  },
+  "reportedAt": "2026-08-30T09:01:00-03:00",
+  "status": "blocked",
+  "summary": "A referência do repositório não estava acessível; nenhum critério foi executado e nenhum efeito ocorreu.",
+  "criteria": [
+    {
+      "criterionId": "criterion-json-readable",
+      "status": "not-run",
+      "evidenceRefs": []
+    },
+    {
+      "criterionId": "criterion-contract-closed",
+      "status": "not-run",
+      "evidenceRefs": []
+    }
+  ],
+  "evidence": [
+    {
+      "evidenceId": "evidence-repository-unavailable",
+      "kind": "state-readback",
+      "capturedAt": "2026-08-30T09:00:59-03:00",
+      "summary": "A resolução da referência do repositório retornou indisponível.",
+      "digest": "sha256:cc117039ecad92424aba602d9565c1c5182a8d342922217bef7ba0f1e5ae53fa",
+      "artifactRefs": [],
+      "origin": {
+        "kind": "runtime",
+        "id": "overcore-runtime-v1"
+      }
+    }
+  ],
+  "artifacts": [],
+  "effects": [],
+  "execution": {
+    "attemptCount": 0,
+    "maxParallelismObserved": 0,
+    "durationMs": 60000,
+    "lastTransitionAt": "2026-08-30T09:01:00-03:00"
+  },
+  "inputRequired": {
+    "blockId": "block-resource-unavailable-001",
+    "mode": "resume-same-request",
+    "code": "block-resource-unavailable",
+    "kind": "resource",
+    "reason": "A referência necessária não pôde ser resolvida no ambiente de execução.",
+    "question": "A referência original será restaurada ou será necessário abrir um novo pedido para outra referência?",
+    "options": [
+      {
+        "id": "option-restore-resource",
+        "label": "Restaurar a referência original",
+        "consequence": "A tarefa retoma do checkpoint sem alterar seu objetivo."
+      },
+      {
+        "id": "option-replace-resource",
+        "label": "Fornecer outra referência",
+        "consequence": "Nasce novo Preflight, novo TaskRequest e nova taskId; a tarefa atual não troca silenciosamente de pedido."
+      }
+    ],
+    "impact": "A inspeção permanece pausada e nenhum recurso é modificado.",
+    "evidenceRefs": ["evidence-repository-unavailable"]
+  }
+}

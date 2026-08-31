@@ -1,0 +1,2131 @@
+{
+  "fixtureVersion": "1.0",
+  "mutationFormat": "rfc6902",
+  "cases": [
+    {
+      "caseId": "ready-requires-active-plan",
+      "baseExample": "../exemplos/task-state-ready.json",
+      "patch": [
+        { "op": "remove", "path": "/activePlanBinding" },
+        { "op": "remove", "path": "/ledger/planRefs" }
+      ],
+      "expectedSchemaValid": false
+    },
+    {
+      "caseId": "request-binding-rebound",
+      "baseExample": "../exemplos/task-state-accepted.json",
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/requestBinding/requestId",
+          "value": "req-different-material-request"
+        }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-request-rebound"
+    },
+    {
+      "caseId": "accepted-jumps-running",
+      "baseExample": "../exemplos/task-state-running.json",
+      "patch": [
+        { "op": "remove", "path": "/ledger/transitions/2" },
+        { "op": "remove", "path": "/ledger/transitions/1" },
+        { "op": "replace", "path": "/ledger/transitions/1/from", "value": "accepted" },
+        { "op": "replace", "path": "/ledger/transitions/1/sequence", "value": 2 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-illegal-transition"
+    },
+    {
+      "caseId": "terminal-reopened",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "patch": [
+        { "op": "replace", "path": "/lifecycle/state", "value": "planning" },
+        { "op": "replace", "path": "/lifecycle/enteredAt", "value": "2026-08-30T09:32:03-03:00" },
+        { "op": "replace", "path": "/lifecycle/lastTransitionId", "value": "transition-invalid-reopen" },
+        { "op": "replace", "path": "/updatedAt", "value": "2026-08-30T09:32:03-03:00" },
+        { "op": "replace", "path": "/stateRevision", "value": 16 },
+        { "op": "remove", "path": "/activePlanBinding" },
+        { "op": "remove", "path": "/terminalResultRef" },
+        {
+          "op": "add",
+          "path": "/ledger/transitions/-",
+          "value": {
+            "transitionId": "transition-invalid-reopen",
+            "sequence": 10,
+            "stateRevision": 16,
+            "from": "succeeded",
+            "to": "planning",
+            "at": "2026-08-30T09:32:03-03:00",
+            "triggerKind": "planning-started",
+            "evidenceRefs": []
+          }
+        }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-terminal-reopened"
+    },
+    {
+      "caseId": "revision-behind-journal",
+      "baseExample": "../exemplos/task-state-running.json",
+      "patch": [
+        { "op": "replace", "path": "/stateRevision", "value": 4 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-stale-revision"
+    },
+    {
+      "caseId": "transition-history-erased",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "patch": [
+        { "op": "remove", "path": "/ledger/transitions/0" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-history-rewritten"
+    },
+    {
+      "caseId": "confirmed-effect-rewritten",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/effects/0/state", "value": "not-applied" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-confirmed-effect-rewritten"
+    },
+    {
+      "caseId": "duplicate-effect-key",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "patch": [
+        {
+          "op": "add",
+          "path": "/ledger/effects/-",
+          "value": {
+            "effectId": "effect-readme-duplicate",
+            "effectKey": "task-20260830-change-001/readme-reference",
+            "intentFingerprint": {
+              "algorithm": "sha256-jcs-v1",
+              "value": "sha256:090dd346688c358f935953437ce63ae20a33e2347cb88eb633c27d043d2c90b0"
+            },
+            "attemptRefs": ["attempt-change-001-01"],
+            "executionOrigins": [
+              {
+                "originId": "origin-effect-readme-duplicate-01",
+                "ordinal": 1,
+                "attemptRef": "attempt-change-001-01",
+                "planRef": { "planId": "plan-change-001", "planRevision": 1 },
+                "stepRunRef": "step-run-change-apply-01",
+                "actionRef": "action-modify-readme-link",
+                "executionEpoch": 1,
+                "state": "not-applied",
+                "recordedAt": "2026-08-30T09:32:01-03:00",
+                "recordedAtRevision": 9,
+                "updatedAt": "2026-08-30T09:32:01-03:00",
+                "lastUpdatedRevision": 9,
+                "evidenceRefs": ["evidence-scope-diff"]
+              }
+            ],
+            "planRef": { "planId": "plan-change-001", "planRevision": 1 },
+            "stepRunRef": "step-run-change-apply-01",
+            "actionRef": "action-modify-readme-link",
+            "resourceRef": "ref-overcore-readme",
+            "operation": "filesystem.modify",
+            "state": "not-applied",
+            "executionEpoch": 1,
+            "recordedAt": "2026-08-30T09:32:01-03:00",
+            "updatedAt": "2026-08-30T09:32:01-03:00",
+            "lastUpdatedRevision": 9,
+            "evidenceRefs": ["evidence-scope-diff"]
+          }
+        }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-duplicate-effect-key"
+    },
+    {
+      "caseId": "retry-reuses-strategy",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "patch": [
+        { "op": "replace", "path": "/usage/attemptCount", "value": 2 },
+        {
+          "op": "add",
+          "path": "/ledger/attempts/-",
+          "value": {
+            "attemptId": "attempt-change-001-02",
+            "ordinal": 2,
+            "status": "failed",
+            "planRef": { "planId": "plan-change-001", "planRevision": 1 },
+            "strategyFingerprint": {
+              "algorithm": "sha256-jcs-v1",
+              "value": "sha256:4cacdebff2d82278d6592b865a80090e4d30ebbeda74758c4fec1517d999e3dd"
+            },
+            "executionEpoch": 1,
+            "startedAt": "2026-08-30T09:31:00-03:00",
+            "endedAt": "2026-08-30T09:31:30-03:00",
+            "lastUpdatedRevision": 7,
+            "effectRefs": [],
+            "evidenceRefs": ["evidence-scope-diff"]
+          }
+        }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-retry-strategy-reused"
+    },
+    {
+      "caseId": "attempt-count-mismatch",
+      "baseExample": "../exemplos/task-state-running.json",
+      "patch": [
+        { "op": "replace", "path": "/usage/attemptCount", "value": 0 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-attempt-count-mismatch"
+    },
+    {
+      "caseId": "result-points-to-stale-revision",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/resultRefs/1/stateRevision", "value": 14 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-result-revision-mismatch"
+    },
+    {
+      "caseId": "terminal-result-reemitted",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "patch": [
+        {
+          "op": "add",
+          "path": "/ledger/resultRefs/-",
+          "value": {
+            "resultId": "result-change-success-duplicate",
+            "stateRevision": 15,
+            "transitionId": "transition-success-001",
+            "emissionSequence": 3,
+            "supersedesResultId": "result-change-success-001",
+            "status": "succeeded",
+            "resultFingerprint": {
+              "algorithm": "sha256-jcs-v1",
+              "value": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+            },
+            "emittedAt": "2026-08-30T09:32:03-03:00"
+          }
+        }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-terminal-result-reemitted"
+    },
+    {
+      "caseId": "success-with-unknown-effect",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/effects/0/state", "value": "unknown" }
+      ],
+      "expectedSchemaValid": false,
+      "expectedDomainCode": "task-state-success-with-unknown-effect"
+    },
+    {
+      "caseId": "unknown-effect-repeated-blindly",
+      "baseExample": "../exemplos/task-state-running.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/effects/0/state", "value": "unknown" },
+        { "op": "add", "path": "/ledger/effects/0/evidenceRefs/-", "value": "evidence-effect-ambiguous" },
+        {
+          "op": "add",
+          "path": "/ledger/effects/-",
+          "value": {
+            "effectId": "effect-readme-blind-retry",
+            "effectKey": "task-20260830-change-001/readme-reference",
+            "intentFingerprint": {
+              "algorithm": "sha256-jcs-v1",
+              "value": "sha256:090dd346688c358f935953437ce63ae20a33e2347cb88eb633c27d043d2c90b0"
+            },
+            "attemptRefs": ["attempt-change-001-01"],
+            "executionOrigins": [
+              {
+                "originId": "origin-effect-readme-blind-retry-01",
+                "ordinal": 1,
+                "attemptRef": "attempt-change-001-01",
+                "planRef": { "planId": "plan-change-001", "planRevision": 1 },
+                "stepRunRef": "step-run-change-apply-01",
+                "actionRef": "action-modify-readme-link",
+                "executionEpoch": 1,
+                "state": "reserved",
+                "recordedAt": "2026-08-30T09:30:31-03:00",
+                "recordedAtRevision": 6,
+                "updatedAt": "2026-08-30T09:30:31-03:00",
+                "lastUpdatedRevision": 6,
+                "evidenceRefs": []
+              }
+            ],
+            "planRef": { "planId": "plan-change-001", "planRevision": 1 },
+            "stepRunRef": "step-run-change-apply-01",
+            "actionRef": "action-modify-readme-link",
+            "resourceRef": "ref-overcore-readme",
+            "operation": "filesystem.modify",
+            "state": "reserved",
+            "executionEpoch": 1,
+            "recordedAt": "2026-08-30T09:30:31-03:00",
+            "updatedAt": "2026-08-30T09:30:31-03:00",
+            "lastUpdatedRevision": 6,
+            "evidenceRefs": []
+          }
+        }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-unknown-effect-repeated"
+    },
+    {
+      "caseId": "cancelled-without-cancelling",
+      "baseExample": "../exemplos/task-state-cancelled.json",
+      "patch": [
+        { "op": "remove", "path": "/ledger/transitions/2" },
+        { "op": "replace", "path": "/ledger/transitions/2/from", "value": "planning" },
+        { "op": "replace", "path": "/ledger/transitions/2/sequence", "value": 3 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-cancellation-not-persisted-first"
+    },
+    {
+      "caseId": "multiple-active-attempts",
+      "baseExample": "../exemplos/task-state-retry-running.json",
+      "patch": [
+        { "op": "replace", "path": "/usage/attemptCount", "value": 3 },
+        {
+          "op": "add",
+          "path": "/ledger/attempts/-",
+          "value": {
+            "attemptId": "attempt-inspection-001-03",
+            "ordinal": 3,
+            "status": "active",
+            "planRef": { "planId": "plan-inspection-001", "planRevision": 2 },
+            "strategyFingerprint": {
+              "algorithm": "sha256-jcs-v1",
+              "value": "sha256:82982c5afbe3b546dcf77c84bd8ddc18ffc0b23a277ed1fd804155535889ab6e"
+            },
+            "executionEpoch": 2,
+            "startedAt": "2026-08-30T09:01:11-03:00",
+            "lastUpdatedRevision": 9,
+            "effectRefs": [],
+            "evidenceRefs": []
+          }
+        }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-multiple-active-attempts"
+    },
+    {
+      "caseId": "retry-keeps-previous-attempt-active",
+      "baseExample": "../exemplos/task-state-retry-running.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/attempts/0/status", "value": "active" },
+        { "op": "remove", "path": "/ledger/attempts/0/endedAt" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-multiple-active-attempts"
+    },
+    {
+      "caseId": "duplicate-criterion-progress",
+      "baseExample": "../exemplos/task-state-accepted.json",
+      "patch": [
+        {
+          "op": "add",
+          "path": "/criterionProgress/-",
+          "value": {
+            "criterionId": "criterion-json-readable",
+            "status": "not-run",
+            "evidenceRefs": []
+          }
+        }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-duplicate-criterion"
+    },
+    {
+      "caseId": "historical-block-checkpoint-erased",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "patch": [
+        { "op": "remove", "path": "/latestCheckpointRef" },
+        { "op": "remove", "path": "/ledger/checkpoints/1" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-checkpoint-ref-missing"
+    },
+    {
+      "caseId": "terminal-result-status-mismatch",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/resultRefs/1/status", "value": "failed" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-result-transition-mismatch"
+    },
+    {
+      "caseId": "terminal-keeps-active-attempt",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/attempts/0/status", "value": "active" },
+        { "op": "remove", "path": "/ledger/attempts/0/endedAt" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-not-quiescent"
+    },
+    {
+      "caseId": "quiesced-with-effect-applying",
+      "baseExample": "../exemplos/task-state-cancelled.json",
+      "patch": [
+        { "op": "replace", "path": "/usage/attemptCount", "value": 1 },
+        { "op": "replace", "path": "/usage/maxParallelismObserved", "value": 1 },
+        {
+          "op": "add",
+          "path": "/ledger/attempts/-",
+          "value": {
+            "attemptId": "attempt-cancelled-invalid",
+            "ordinal": 1,
+            "status": "active",
+            "strategyFingerprint": {
+              "algorithm": "sha256-jcs-v1",
+              "value": "sha256:376f8e91a19d5a4021d349ddbbd0b4da183d3a91dfbd27a55413b19cadab78c8"
+            },
+            "executionEpoch": 1,
+            "startedAt": "2026-08-30T09:30:05-03:00",
+            "lastUpdatedRevision": 3,
+            "effectRefs": ["effect-cancelled-applying"],
+            "evidenceRefs": []
+          }
+        },
+        {
+          "op": "add",
+          "path": "/ledger/effects/-",
+          "value": {
+            "effectId": "effect-cancelled-applying",
+            "effectKey": "task-20260830-change-001/cancel-race",
+            "intentFingerprint": {
+              "algorithm": "sha256-jcs-v1",
+              "value": "sha256:dc2a26a44d0565baec249e15a5d42d4ba9cfac3710cfb058b43a5df0a08974bf"
+            },
+            "attemptRefs": ["attempt-cancelled-invalid"],
+            "resourceRef": "ref-overcore-readme",
+            "operation": "filesystem.modify",
+            "state": "applying",
+            "executionEpoch": 1,
+            "recordedAt": "2026-08-30T09:30:06-03:00",
+            "updatedAt": "2026-08-30T09:30:09-03:00",
+            "lastUpdatedRevision": 3,
+            "evidenceRefs": []
+          }
+        }
+      ],
+      "expectedSchemaValid": false,
+      "expectedDomainCode": "task-state-not-quiescent"
+    },
+    {
+      "caseId": "replacement-request-block-resumed",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/blocks/0/mode", "value": "replacement-request-required" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-replacement-block-resumed"
+    },
+    {
+      "caseId": "result-revision-diverges-from-transition",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/resultRefs/0/stateRevision", "value": 6 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-result-revision-mismatch"
+    },
+    {
+      "caseId": "block-revision-diverges-from-transition",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/blocks/0/blockedAtRevision", "value": 6 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-block-transition-mismatch"
+    },
+    {
+      "caseId": "replacement-block-hides-trigger-and-resumes",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/blocks/0/mode", "value": "replacement-request-required" },
+        { "op": "replace", "path": "/ledger/transitions/4/triggerRef", "value": "block-hidden-trigger-001" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-block-transition-mismatch"
+    },
+    {
+      "caseId": "mutation-without-revision-advance",
+      "baseExample": "../exemplos/task-state-running.json",
+      "patch": [
+        { "op": "replace", "path": "/usage/activeDurationMs", "value": 30001 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-revision-not-advanced"
+    },
+    {
+      "caseId": "execution-epoch-regressed",
+      "baseExample": "../exemplos/task-state-retry-running.json",
+      "patch": [
+        { "op": "replace", "path": "/executionEpoch", "value": 1 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-execution-epoch-regressed"
+    },
+    {
+      "caseId": "effect-operation-rewritten",
+      "baseExample": "../exemplos/task-state-running.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/effects/0/operation", "value": "filesystem.delete" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-effect-identity-rewritten"
+    },
+    {
+      "caseId": "effect-compensates-itself",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "patch": [
+        { "op": "add", "path": "/ledger/effects/0/compensatesEffectRef", "value": "effect-readme-modified" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-compensation-ref-invalid"
+    },
+    {
+      "caseId": "result-emissions-out-of-order",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/resultRefs/0/emissionSequence", "value": 2 },
+        { "op": "replace", "path": "/ledger/resultRefs/1/emissionSequence", "value": 1 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-result-history-invalid"
+    },
+    {
+      "caseId": "result-supersedes-itself",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/resultRefs/1/supersedesResultId", "value": "result-change-success-001" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-result-history-invalid"
+    },
+    {
+      "caseId": "state-created-from-decisions-required",
+      "baseExample": "../../contratos/exemplos/task-readiness-decisions-required.json",
+      "action": "admit-as-task-state",
+      "patch": [],
+      "expectedSchemaValid": false,
+      "expectedDomainCode": "task-state-source-not-admissible"
+    },
+    {
+      "caseId": "terminal-failure-marked-retryable",
+      "baseExample": "../../contratos/exemplos/task-result-falha.json",
+      "action": "validate-task-result",
+      "patch": [
+        { "op": "replace", "path": "/failure/retryable", "value": true }
+      ],
+      "expectedSchemaValid": false,
+      "expectedDomainCode": "task-result-terminal-cannot-retry"
+    },
+    {
+      "caseId": "terminal-result-with-unknown-effect",
+      "baseExample": "../../contratos/exemplos/task-result-sucesso.json",
+      "action": "validate-task-result",
+      "patch": [
+        { "op": "replace", "path": "/effects/0/status", "value": "unknown" }
+      ],
+      "expectedSchemaValid": false,
+      "expectedDomainCode": "task-result-terminal-effect-unknown"
+    },
+    {
+      "caseId": "task-result-supersedes-itself",
+      "baseExample": "../../contratos/exemplos/task-result-sucesso.json",
+      "action": "validate-task-result",
+      "patch": [
+        { "op": "replace", "path": "/stateRef/supersedesResultId", "value": "result-change-success-001" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-result-supersedes-itself"
+    },
+    {
+      "caseId": "task-result-compensation-self-reference",
+      "baseExample": "../../contratos/exemplos/task-result-sucesso.json",
+      "action": "validate-task-result",
+      "patch": [
+        { "op": "replace", "path": "/effects/0/status", "value": "rolled-back" },
+        { "op": "add", "path": "/effects/0/compensationEffectRef", "value": "effect-readme-modified" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-result-compensation-self-reference"
+    },
+    {
+      "caseId": "task-result-compensation-target-not-confirmed",
+      "baseExample": "../../contratos/exemplos/task-result-sucesso.json",
+      "action": "validate-task-result",
+      "patch": [
+        { "op": "replace", "path": "/effects/0/status", "value": "rolled-back" },
+        { "op": "add", "path": "/effects/0/compensationEffectRef", "value": "effect-readme-compensation-001" },
+        {
+          "op": "add",
+          "path": "/effects/-",
+          "value": {
+            "effectId": "effect-readme-compensation-001",
+            "effectKey": "task-20260830-change-001/readme-reference-compensation",
+            "intentFingerprint": {
+              "algorithm": "sha256-jcs-v1",
+              "value": "sha256:145c761e6103716e94fb83bb53a933d8f208d33b8a5ae830be55182fe69fa593"
+            },
+            "resourceRef": "ref-overcore-readme",
+            "operation": "filesystem.modify",
+            "status": "not-applied",
+            "evidenceRefs": ["evidence-link-readback"]
+          }
+        }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-result-compensation-target-not-confirmed"
+    },
+    {
+      "caseId": "attempt-strategy-history-rewritten",
+      "baseExample": "../exemplos/task-state-retry-running.json",
+      "patch": [
+        { "op": "replace", "path": "/stateRevision", "value": 10 },
+        {
+          "op": "replace",
+          "path": "/ledger/attempts/0/strategyFingerprint/value",
+          "value": "sha256:035bc7ad6dcf0ee777557b070a3fbc70d6d12e2ce7be10ab7631f443d20a0932"
+        }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-attempt-identity-rewritten"
+    },
+    {
+      "caseId": "usage-duration-regressed",
+      "baseExample": "../exemplos/task-state-running.json",
+      "patch": [
+        { "op": "replace", "path": "/stateRevision", "value": 6 },
+        { "op": "replace", "path": "/usage/activeDurationMs", "value": 1 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-usage-regressed"
+    },
+    {
+      "caseId": "transition-result-without-ledger-entry",
+      "baseExample": "../exemplos/task-state-running.json",
+      "patch": [
+        { "op": "replace", "path": "/stateRevision", "value": 6 },
+        { "op": "add", "path": "/ledger/transitions/1/resultRef", "value": "result-orphan-transition-001" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-result-transition-mismatch"
+    },
+    {
+      "caseId": "attempt-trigger-ref-missing",
+      "baseExample": "../exemplos/task-state-running.json",
+      "patch": [
+        { "op": "replace", "path": "/stateRevision", "value": 6 },
+        { "op": "replace", "path": "/ledger/transitions/3/triggerRef", "value": "attempt-missing-trigger-001" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-transition-trigger-missing"
+    },
+    {
+      "caseId": "attempt-checkpoint-ref-missing",
+      "baseExample": "../exemplos/task-state-running.json",
+      "patch": [
+        { "op": "replace", "path": "/stateRevision", "value": 6 },
+        { "op": "add", "path": "/ledger/attempts/0/checkpointRef", "value": "checkpoint-missing-attempt-001" },
+        { "op": "replace", "path": "/ledger/attempts/0/lastUpdatedRevision", "value": 6 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-checkpoint-ref-missing"
+    },
+    {
+      "caseId": "state-effect-outside-request-authority",
+      "baseExample": "../exemplos/task-state-running.json",
+      "patch": [
+        { "op": "replace", "path": "/stateRevision", "value": 6 },
+        { "op": "replace", "path": "/ledger/effects/0/resourceRef", "value": "ref-resource-not-granted" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-effect-outside-authority"
+    },
+    {
+      "caseId": "state-duration-budget-exceeded",
+      "baseExample": "../exemplos/task-state-running.json",
+      "patch": [
+        { "op": "replace", "path": "/stateRevision", "value": 6 },
+        { "op": "replace", "path": "/usage/activeDurationMs", "value": 300001 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-budget-exceeded"
+    },
+    {
+      "caseId": "state-token-budget-exceeded",
+      "baseExample": "../exemplos/task-state-running.json",
+      "requestPatch": [
+        { "op": "add", "path": "/budget/maxTokens", "value": 10 }
+      ],
+      "patch": [
+        { "op": "replace", "path": "/stateRevision", "value": 6 },
+        { "op": "add", "path": "/usage/tokens", "value": 11 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-budget-exceeded"
+    },
+    {
+      "caseId": "state-cost-budget-exceeded",
+      "baseExample": "../exemplos/task-state-running.json",
+      "requestPatch": [
+        { "op": "add", "path": "/budget/maxCostUsd", "value": 1.0 }
+      ],
+      "patch": [
+        { "op": "replace", "path": "/stateRevision", "value": 6 },
+        { "op": "add", "path": "/usage/costUsd", "value": 1.01 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-budget-exceeded"
+    },
+    {
+      "caseId": "accepted-at-history-rewritten",
+      "baseExample": "../exemplos/task-state-running.json",
+      "patch": [
+        { "op": "replace", "path": "/stateRevision", "value": 6 },
+        { "op": "replace", "path": "/acceptedAt", "value": "2026-08-30T09:29:59-03:00" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-accepted-at-rewritten"
+    },
+    {
+      "caseId": "lifecycle-entered-at-diverges",
+      "baseExample": "../exemplos/task-state-running.json",
+      "patch": [
+        { "op": "replace", "path": "/stateRevision", "value": 6 },
+        { "op": "replace", "path": "/lifecycle/enteredAt", "value": "2026-08-30T09:30:06-03:00" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-time-inconsistent"
+    },
+    {
+      "caseId": "attempt-change-with-stale-subrecord-revision",
+      "baseExample": "../exemplos/task-state-running.json",
+      "patch": [
+        { "op": "replace", "path": "/stateRevision", "value": 6 },
+        { "op": "replace", "path": "/updatedAt", "value": "2026-08-30T09:30:31-03:00" },
+        { "op": "add", "path": "/ledger/evidenceRefs/-", "value": "evidence-attempt-extra-001" },
+        { "op": "add", "path": "/ledger/attempts/0/evidenceRefs/-", "value": "evidence-attempt-extra-001" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-subrecord-revision-stale"
+    },
+    {
+      "caseId": "task-result-checkpoint-ref-missing",
+      "baseExample": "../../contratos/exemplos/task-result-sucesso.json",
+      "action": "validate-task-result",
+      "patch": [
+        { "op": "add", "path": "/execution/checkpointArtifactRef", "value": "artifact-checkpoint-missing-001" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-result-checkpoint-ref-missing"
+    },
+    {
+      "caseId": "task-result-effect-outside-authority",
+      "baseExample": "../../contratos/exemplos/task-result-sucesso.json",
+      "action": "validate-task-result",
+      "patch": [
+        { "op": "replace", "path": "/effects/0/operation", "value": "filesystem.delete" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-result-effect-outside-authority"
+    },
+    {
+      "caseId": "task-result-duration-budget-exceeded",
+      "baseExample": "../../contratos/exemplos/task-result-sucesso.json",
+      "action": "validate-task-result",
+      "patch": [
+        { "op": "replace", "path": "/execution/durationMs", "value": 300001 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-result-budget-exceeded"
+    },
+    {
+      "caseId": "historical-block-mode-diverges-from-ledger",
+      "baseExample": "../../contratos/exemplos/task-result-alteracao-bloqueada.json",
+      "stateExample": "../exemplos/task-state-succeeded.json",
+      "action": "validate-result-projection",
+      "patch": [
+        { "op": "replace", "path": "/inputRequired/mode", "value": "replacement-request-required" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-result-block-mode-mismatch"
+    },
+    {
+      "caseId": "current-effect-state-diverges-from-journal",
+      "baseExample": "../../contratos/exemplos/task-result-sucesso.json",
+      "stateExample": "../exemplos/task-state-succeeded.json",
+      "action": "validate-result-projection",
+      "patch": [
+        { "op": "replace", "path": "/effects/0/status", "value": "not-applied" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-result-effect-state-mismatch"
+    },
+    {
+      "caseId": "current-started-at-diverges-from-first-attempt",
+      "baseExample": "../../contratos/exemplos/task-result-sucesso.json",
+      "stateExample": "../exemplos/task-state-succeeded.json",
+      "action": "validate-result-projection",
+      "patch": [
+        { "op": "replace", "path": "/execution/startedAt", "value": "2026-08-30T09:30:00-03:00" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-result-started-at-mismatch"
+    },
+    {
+      "caseId": "current-finished-at-diverges-from-terminal-transition",
+      "baseExample": "../../contratos/exemplos/task-result-sucesso.json",
+      "stateExample": "../exemplos/task-state-succeeded.json",
+      "action": "validate-result-projection",
+      "patch": [
+        { "op": "replace", "path": "/execution/finishedAt", "value": "2026-08-30T09:32:01-03:00" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-result-finished-at-mismatch"
+    },
+    {
+      "caseId": "current-usage-diverges-from-snapshot",
+      "baseExample": "../../contratos/exemplos/task-result-sucesso.json",
+      "stateExample": "../exemplos/task-state-succeeded.json",
+      "action": "validate-result-projection",
+      "patch": [
+        { "op": "replace", "path": "/execution/maxParallelismObserved", "value": 0 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-result-usage-projection-mismatch"
+    },
+    {
+      "caseId": "effect-update-precedes-record",
+      "baseExample": "../exemplos/task-state-running.json",
+      "patch": [
+        { "op": "replace", "path": "/stateRevision", "value": 6 },
+        { "op": "replace", "path": "/ledger/effects/0/updatedAt", "value": "2026-08-30T09:30:29-03:00" },
+        { "op": "replace", "path": "/ledger/effects/0/lastUpdatedRevision", "value": 6 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-time-inconsistent"
+    },
+    {
+      "caseId": "effect-change-with-stale-subrecord-revision",
+      "baseExample": "../exemplos/task-state-running.json",
+      "patch": [
+        { "op": "replace", "path": "/stateRevision", "value": 6 },
+        { "op": "replace", "path": "/updatedAt", "value": "2026-08-30T09:30:31-03:00" },
+        { "op": "replace", "path": "/ledger/effects/0/state", "value": "applying" },
+        { "op": "replace", "path": "/ledger/effects/0/updatedAt", "value": "2026-08-30T09:30:31-03:00" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-subrecord-revision-stale"
+    },
+    {
+      "caseId": "cancellation-identity-rewritten",
+      "baseExample": "../exemplos/task-state-cancelling.json",
+      "patch": [
+        { "op": "replace", "path": "/stateRevision", "value": 4 },
+        { "op": "replace", "path": "/updatedAt", "value": "2026-08-30T09:30:10-03:00" },
+        { "op": "replace", "path": "/cancellation/initiatedBy", "value": "policy" },
+        { "op": "replace", "path": "/cancellation/lastUpdatedRevision", "value": 4 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-cancellation-identity-rewritten"
+    },
+    {
+      "caseId": "task-result-token-budget-exceeded",
+      "baseExample": "../../contratos/exemplos/task-result-sucesso.json",
+      "action": "validate-task-result",
+      "requestPatch": [
+        { "op": "add", "path": "/budget/maxTokens", "value": 10 }
+      ],
+      "patch": [
+        { "op": "add", "path": "/execution/tokens", "value": 11 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-result-budget-exceeded"
+    },
+    {
+      "caseId": "task-result-cost-budget-exceeded",
+      "baseExample": "../../contratos/exemplos/task-result-sucesso.json",
+      "action": "validate-task-result",
+      "requestPatch": [
+        { "op": "add", "path": "/budget/maxCostUsd", "value": 1.0 }
+      ],
+      "patch": [
+        { "op": "add", "path": "/execution/costUsd", "value": 1.01 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-result-budget-exceeded"
+    },
+    {
+      "caseId": "terminal-keeps-suspended-attempt",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/attempts/0/status", "value": "suspended" },
+        { "op": "remove", "path": "/ledger/attempts/0/endedAt" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-not-quiescent"
+    },
+    {
+      "caseId": "attempt-without-execution-start-transition",
+      "baseExample": "../exemplos/task-state-running.json",
+      "patch": [
+        { "op": "replace", "path": "/stateRevision", "value": 6 },
+        { "op": "replace", "path": "/ledger/transitions/3/triggerKind", "value": "planning-completed" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-attempt-start-transition-missing"
+    },
+    {
+      "caseId": "effect-epoch-not-bound-to-attempt",
+      "baseExample": "../exemplos/task-state-running.json",
+      "patch": [
+        { "op": "replace", "path": "/stateRevision", "value": 6 },
+        { "op": "replace", "path": "/ledger/effects/0/executionEpoch", "value": 2 },
+        { "op": "replace", "path": "/ledger/effects/0/executionOrigins/0/executionEpoch", "value": 2 },
+        { "op": "replace", "path": "/ledger/effects/0/lastUpdatedRevision", "value": 6 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-effect-epoch-unbound"
+    },
+    {
+      "caseId": "task-result-evidence-after-report",
+      "baseExample": "../../contratos/exemplos/task-result-sucesso.json",
+      "action": "validate-task-result",
+      "patch": [
+        { "op": "replace", "path": "/evidence/0/capturedAt", "value": "2026-08-30T09:32:03-03:00" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-result-future-evidence"
+    },
+    {
+      "caseId": "task-result-finishes-before-first-attempt",
+      "baseExample": "../../contratos/exemplos/task-result-sucesso.json",
+      "action": "validate-task-result",
+      "patch": [
+        { "op": "replace", "path": "/execution/finishedAt", "value": "2026-08-30T09:30:04-03:00" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-result-time-inconsistent"
+    },
+    {
+      "caseId": "active-attempt-with-zero-observed-parallelism",
+      "baseExample": "../exemplos/task-state-running.json",
+      "patch": [
+        { "op": "replace", "path": "/stateRevision", "value": 6 },
+        { "op": "replace", "path": "/usage/maxParallelismObserved", "value": 0 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-parallelism-mismatch"
+    },
+    {
+      "caseId": "attempt-epoch-newer-than-task",
+      "baseExample": "../exemplos/task-state-retry-running.json",
+      "patch": [
+        { "op": "replace", "path": "/stateRevision", "value": 10 },
+        { "op": "replace", "path": "/ledger/attempts/0/executionEpoch", "value": 3 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-execution-epoch-mismatch"
+    },
+    {
+      "caseId": "current-result-omits-journal-effect",
+      "baseExample": "../../contratos/exemplos/task-result-sucesso.json",
+      "stateExample": "../exemplos/task-state-succeeded.json",
+      "action": "validate-result-projection",
+      "patch": [
+        { "op": "remove", "path": "/effects/0" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-result-effect-set-mismatch"
+    },
+    {
+      "caseId": "current-result-cancellation-initiator-diverges",
+      "baseExample": "../../contratos/exemplos/task-result-cancelado.json",
+      "stateExample": "../exemplos/task-state-cancelled.json",
+      "action": "validate-result-projection",
+      "patch": [
+        { "op": "replace", "path": "/cancellation/initiatedBy", "value": "policy" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-result-cancellation-initiator-mismatch"
+    },
+    {
+      "caseId": "cancellation-does-not-advance-fence",
+      "baseExample": "../exemplos/task-state-cancelling-active.json",
+      "patch": [
+        { "op": "replace", "path": "/executionEpoch", "value": 1 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-cancellation-fence-missing"
+    },
+    {
+      "caseId": "effect-recorded-after-cancellation",
+      "baseExample": "../exemplos/task-state-cancelling-active.json",
+      "patch": [
+        { "op": "replace", "path": "/stateRevision", "value": 7 },
+        { "op": "replace", "path": "/updatedAt", "value": "2026-08-30T09:30:32-03:00" },
+        { "op": "replace", "path": "/usage/activeDurationMs", "value": 32000 },
+        { "op": "replace", "path": "/ledger/effects/0/recordedAt", "value": "2026-08-30T09:30:31.500-03:00" },
+        { "op": "replace", "path": "/ledger/effects/0/updatedAt", "value": "2026-08-30T09:30:32-03:00" },
+        { "op": "replace", "path": "/ledger/effects/0/lastUpdatedRevision", "value": 7 },
+        { "op": "replace", "path": "/ledger/effects/0/executionOrigins/0/recordedAt", "value": "2026-08-30T09:30:31.500-03:00" },
+        { "op": "replace", "path": "/ledger/effects/0/executionOrigins/0/updatedAt", "value": "2026-08-30T09:30:32-03:00" },
+        { "op": "replace", "path": "/ledger/effects/0/executionOrigins/0/lastUpdatedRevision", "value": 7 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-work-started-after-cancellation"
+    },
+    {
+      "caseId": "new-effect-after-cancellation-with-retrodated-time",
+      "baseExample": "../exemplos/task-state-cancelling-active.json",
+      "patch": [
+        { "op": "replace", "path": "/stateRevision", "value": 7 },
+        { "op": "replace", "path": "/updatedAt", "value": "2026-08-30T09:30:32-03:00" },
+        { "op": "add", "path": "/ledger/attempts/0/effectRefs/-", "value": "effect-retrodated-after-cancel" },
+        { "op": "replace", "path": "/ledger/attempts/0/lastUpdatedRevision", "value": 7 },
+        {
+          "op": "add",
+          "path": "/ledger/effects/-",
+          "value": {
+            "effectId": "effect-retrodated-after-cancel",
+            "effectKey": "task-20260830-change-001/retrodated-after-cancel",
+            "intentFingerprint": {
+              "algorithm": "sha256-jcs-v1",
+              "value": "sha256:3a8ebbc8e76c07d99b975a13ffc12338b864528164000b7b1c9f555b7d734169"
+            },
+            "attemptRefs": ["attempt-change-001-01"],
+            "executionOrigins": [
+              {
+                "originId": "origin-effect-retrodated-after-cancel-01",
+                "ordinal": 1,
+                "attemptRef": "attempt-change-001-01",
+                "planRef": { "planId": "plan-change-001", "planRevision": 1 },
+                "stepRunRef": "step-run-change-apply-01",
+                "actionRef": "action-modify-readme-link",
+                "executionEpoch": 1,
+                "state": "reserved",
+                "recordedAt": "2026-08-30T09:30:30-03:00",
+                "recordedAtRevision": 7,
+                "updatedAt": "2026-08-30T09:30:30-03:00",
+                "lastUpdatedRevision": 7,
+                "evidenceRefs": []
+              }
+            ],
+            "planRef": { "planId": "plan-change-001", "planRevision": 1 },
+            "stepRunRef": "step-run-change-apply-01",
+            "actionRef": "action-modify-readme-link",
+            "resourceRef": "ref-overcore-readme",
+            "operation": "filesystem.modify",
+            "state": "reserved",
+            "executionEpoch": 1,
+            "recordedAt": "2026-08-30T09:30:30-03:00",
+            "updatedAt": "2026-08-30T09:30:30-03:00",
+            "lastUpdatedRevision": 7,
+            "evidenceRefs": []
+          }
+        }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-work-added-after-cancellation"
+    },
+    {
+      "caseId": "result-emitted-after-terminal-result",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/ledger/resultRefs/0",
+          "value": {
+            "resultId": "result-change-success-001",
+            "stateRevision": 15,
+            "transitionId": "transition-success-001",
+            "emissionSequence": 1,
+            "status": "succeeded",
+            "resultFingerprint": {
+              "algorithm": "sha256-jcs-v1",
+              "value": "sha256:daeee050e2f5eda7dfefc0bf04da48c7c215cae788efe2c279eaf2757e20eb8f"
+            },
+            "emittedAt": "2026-08-30T09:32:02-03:00"
+          }
+        },
+        {
+          "op": "replace",
+          "path": "/ledger/resultRefs/1",
+          "value": {
+            "resultId": "result-change-blocked-001",
+            "stateRevision": 7,
+            "transitionId": "transition-change-blocked-001",
+            "emissionSequence": 2,
+            "supersedesResultId": "result-change-success-001",
+            "status": "blocked",
+            "resultFingerprint": {
+              "algorithm": "sha256-jcs-v1",
+              "value": "sha256:2f97d9cfe6f2472e1fcf8380649cfd6a72ffc8ba3d778b6adfc21f81324db8dd"
+            },
+            "emittedAt": "2026-08-30T09:32:03-03:00"
+          }
+        },
+        { "op": "replace", "path": "/updatedAt", "value": "2026-08-30T09:32:03-03:00" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-result-after-terminal"
+    },
+    {
+      "caseId": "terminal-attempt-status-rewritten",
+      "baseExample": "../exemplos/task-state-retry-running.json",
+      "patch": [
+        { "op": "replace", "path": "/stateRevision", "value": 10 },
+        { "op": "replace", "path": "/updatedAt", "value": "2026-08-30T09:01:11-03:00" },
+        { "op": "replace", "path": "/ledger/attempts/0/status", "value": "completed" },
+        { "op": "replace", "path": "/ledger/attempts/0/lastUpdatedRevision", "value": 10 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-attempt-terminal-rewritten"
+    },
+    {
+      "caseId": "running-block-checkpoint-without-attempt",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "patch": [
+        { "op": "remove", "path": "/ledger/checkpoints/1/attemptId" },
+        { "op": "remove", "path": "/ledger/checkpoints/1/planRef" },
+        { "op": "remove", "path": "/ledger/checkpoints/1/resumeStepRef" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-block-checkpoint-mismatch"
+    },
+    {
+      "caseId": "running-block-checkpoint-resume-target-diverges",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/checkpoints/1/resumeTarget", "value": "planning" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-block-checkpoint-mismatch"
+    },
+    {
+      "caseId": "effect-state-regresses-applying-to-reserved",
+      "baseExample": "../exemplos/task-state-running.json",
+      "baselinePatch": [
+        { "op": "replace", "path": "/stateRevision", "value": 6 },
+        { "op": "replace", "path": "/updatedAt", "value": "2026-08-30T09:30:31-03:00" },
+        { "op": "replace", "path": "/usage/activeDurationMs", "value": 31000 },
+        { "op": "replace", "path": "/ledger/effects/0/state", "value": "applying" },
+        { "op": "replace", "path": "/ledger/effects/0/updatedAt", "value": "2026-08-30T09:30:31-03:00" },
+        { "op": "replace", "path": "/ledger/effects/0/lastUpdatedRevision", "value": 6 },
+        { "op": "replace", "path": "/ledger/effects/0/executionOrigins/0/state", "value": "applying" },
+        { "op": "replace", "path": "/ledger/effects/0/executionOrigins/0/updatedAt", "value": "2026-08-30T09:30:31-03:00" },
+        { "op": "replace", "path": "/ledger/effects/0/executionOrigins/0/lastUpdatedRevision", "value": 6 }
+      ],
+      "patch": [
+        { "op": "replace", "path": "/stateRevision", "value": 7 },
+        { "op": "replace", "path": "/updatedAt", "value": "2026-08-30T09:30:32-03:00" },
+        { "op": "replace", "path": "/usage/activeDurationMs", "value": 32000 },
+        { "op": "replace", "path": "/ledger/effects/0/state", "value": "reserved" },
+        { "op": "replace", "path": "/ledger/effects/0/updatedAt", "value": "2026-08-30T09:30:32-03:00" },
+        { "op": "replace", "path": "/ledger/effects/0/lastUpdatedRevision", "value": 7 },
+        { "op": "replace", "path": "/ledger/effects/0/executionOrigins/0/state", "value": "reserved" },
+        { "op": "replace", "path": "/ledger/effects/0/executionOrigins/0/updatedAt", "value": "2026-08-30T09:30:32-03:00" },
+        { "op": "replace", "path": "/ledger/effects/0/executionOrigins/0/lastUpdatedRevision", "value": 7 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-effect-state-regressed"
+    },
+    {
+      "caseId": "result-emitted-before-transition",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/resultRefs/1/emittedAt", "value": "2026-08-30T09:32:01-03:00" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-result-emission-before-transition"
+    },
+    {
+      "caseId": "success-transition-uses-policy-trigger",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/transitions/8/triggerKind", "value": "policy" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-transition-trigger-incompatible"
+    },
+    {
+      "caseId": "effect-attempt-link-is-not-reciprocal",
+      "baseExample": "../exemplos/task-state-running.json",
+      "patch": [
+        { "op": "remove", "path": "/ledger/attempts/0/effectRefs/0" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-attempt-effect-link-mismatch"
+    },
+    {
+      "caseId": "cancelling-active-attempt-without-pointer",
+      "baseExample": "../exemplos/task-state-cancelling-active.json",
+      "patch": [
+        { "op": "remove", "path": "/activeAttemptId" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-active-attempt-mismatch"
+    },
+    {
+      "caseId": "cancellation-request-time-diverges-from-transition",
+      "baseExample": "../exemplos/task-state-cancelled.json",
+      "patch": [
+        { "op": "replace", "path": "/cancellation/requestedAt", "value": "2026-08-30T09:30:08-03:00" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-cancellation-transition-mismatch"
+    },
+    {
+      "caseId": "checkpoint-created-after-block",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/checkpoints/1/createdAt", "value": "2026-08-30T09:31:01-03:00" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-block-checkpoint-mismatch"
+    },
+    {
+      "caseId": "checkpoint-revision-after-block",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/checkpoints/1/stateRevision", "value": 8 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-block-checkpoint-mismatch"
+    },
+    {
+      "caseId": "reserved-effect-starts-after-cancellation",
+      "baseExample": "../exemplos/task-state-cancelling-active.json",
+      "patch": [
+        { "op": "replace", "path": "/stateRevision", "value": 7 },
+        { "op": "replace", "path": "/updatedAt", "value": "2026-08-30T09:30:32-03:00" },
+        { "op": "replace", "path": "/ledger/effects/0/state", "value": "applying" },
+        { "op": "replace", "path": "/ledger/effects/0/updatedAt", "value": "2026-08-30T09:30:32-03:00" },
+        { "op": "replace", "path": "/ledger/effects/0/lastUpdatedRevision", "value": 7 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-effect-started-after-cancellation"
+    },
+    {
+      "caseId": "state-revision-skips-generations",
+      "baseExample": "../exemplos/task-state-running.json",
+      "patch": [
+        { "op": "replace", "path": "/stateRevision", "value": 15 },
+        { "op": "replace", "path": "/updatedAt", "value": "2026-08-30T09:30:31-03:00" },
+        { "op": "replace", "path": "/usage/activeDurationMs", "value": 30001 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-revision-gap"
+    },
+    {
+      "caseId": "new-effect-carries-old-revision",
+      "baseExample": "../exemplos/task-state-running.json",
+      "patch": [
+        { "op": "replace", "path": "/stateRevision", "value": 6 },
+        { "op": "replace", "path": "/updatedAt", "value": "2026-08-30T09:30:31-03:00" },
+        { "op": "add", "path": "/ledger/attempts/0/effectRefs/-", "value": "effect-born-with-old-revision" },
+        { "op": "replace", "path": "/ledger/attempts/0/lastUpdatedRevision", "value": 6 },
+        {
+          "op": "add",
+          "path": "/ledger/effects/-",
+          "value": {
+            "effectId": "effect-born-with-old-revision",
+            "effectKey": "task-20260830-change-001/old-revision",
+            "intentFingerprint": {
+              "algorithm": "sha256-jcs-v1",
+              "value": "sha256:d6ee61f8889e136ceb7017550e35d10841a67d20fe57918876f3855ee8bb62fd"
+            },
+            "attemptRefs": ["attempt-change-001-01"],
+            "executionOrigins": [
+              {
+                "originId": "origin-effect-born-with-old-revision-01",
+                "ordinal": 1,
+                "attemptRef": "attempt-change-001-01",
+                "planRef": { "planId": "plan-change-001", "planRevision": 1 },
+                "stepRunRef": "step-run-change-apply-01",
+                "actionRef": "action-modify-readme-link",
+                "executionEpoch": 1,
+                "state": "reserved",
+                "recordedAt": "2026-08-30T09:30:31-03:00",
+                "recordedAtRevision": 5,
+                "updatedAt": "2026-08-30T09:30:31-03:00",
+                "lastUpdatedRevision": 5,
+                "evidenceRefs": []
+              }
+            ],
+            "planRef": { "planId": "plan-change-001", "planRevision": 1 },
+            "stepRunRef": "step-run-change-apply-01",
+            "actionRef": "action-modify-readme-link",
+            "resourceRef": "ref-overcore-readme",
+            "operation": "filesystem.modify",
+            "state": "reserved",
+            "executionEpoch": 1,
+            "recordedAt": "2026-08-30T09:30:31-03:00",
+            "updatedAt": "2026-08-30T09:30:31-03:00",
+            "lastUpdatedRevision": 5,
+            "evidenceRefs": []
+          }
+        }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-subrecord-revision-stale"
+    },
+    {
+      "caseId": "public-checkpoint-digest-diverges",
+      "baseExample": "../../contratos/exemplos/task-result-alteracao-bloqueada.json",
+      "stateExample": "../exemplos/task-state-succeeded.json",
+      "action": "validate-result-projection",
+      "patch": [
+        { "op": "replace", "path": "/artifacts/0/digest", "value": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-result-checkpoint-digest-mismatch"
+    },
+    {
+      "caseId": "attempt-intervals-overlap",
+      "baseExample": "../exemplos/task-state-retry-running.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/attempts/1/startedAt", "value": "2026-08-30T09:00:59-03:00" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-attempt-overlap"
+    },
+    {
+      "caseId": "planning-block-resumes-ahead-of-origin",
+      "baseExample": "../exemplos/task-state-blocked.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/blocks/0/resumeTarget", "value": "verifying" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-block-resume-target-invalid"
+    },
+    {
+      "caseId": "latest-checkpoint-pointer-is-stale",
+      "baseExample": "../exemplos/task-state-running.json",
+      "patch": [
+        { "op": "replace", "path": "/stateRevision", "value": 6 },
+        { "op": "replace", "path": "/updatedAt", "value": "2026-08-30T09:30:31-03:00" },
+        { "op": "add", "path": "/ledger/artifactRefs/-", "value": "artifact-running-checkpoint-001" },
+        {
+          "op": "add",
+          "path": "/ledger/checkpoints/-",
+          "value": {
+            "checkpointRef": "artifact-running-checkpoint-001",
+            "digest": "sha256:be59115c541f926a9335a53a7c9c2218180260ff8bc6e9fccee7dc7c8332959b",
+            "requestFingerprint": {
+              "algorithm": "sha256-jcs-v1",
+              "value": "sha256:44340c327366e5c0c78780634343b74720dfff72be25e70a4cfff87b23bbb6e7"
+            },
+            "stateRevision": 6,
+            "attemptId": "attempt-change-001-01",
+            "planRef": { "planId": "plan-change-001", "planRevision": 1 },
+            "resumeStepRef": "step-change-apply",
+            "resumeTarget": "ready",
+            "createdAt": "2026-08-30T09:30:31-03:00"
+          }
+        }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-checkpoint-latest-mismatch"
+    },
+    {
+      "caseId": "resume-cites-an-older-block",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "patch": [
+        {
+          "op": "add",
+          "path": "/ledger/blocks/-",
+          "value": {
+            "blockId": "block-readme-decoy-001",
+            "blockingResultId": "result-change-blocked-001",
+            "blockedAtRevision": 7,
+            "blockedFrom": "running",
+            "resumeTarget": "ready",
+            "mode": "resume-same-request",
+            "condition": "Registro histórico usado somente como alvo incorreto do teste adversarial.",
+            "checkpointRef": "artifact-change-block-checkpoint",
+            "suspendedAttemptId": "attempt-change-001-01",
+            "evidenceRefs": ["evidence-readme-lock", "evidence-effect-not-applied"],
+            "createdAt": "2026-08-30T09:31:00-03:00"
+          }
+        },
+        { "op": "replace", "path": "/ledger/transitions/5/triggerRef", "value": "block-readme-decoy-001" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-block-resume-mismatch"
+    },
+    {
+      "caseId": "cancelled-result-may-preserve-unknown-effect",
+      "baseExample": "../../contratos/exemplos/task-result-cancelado.json",
+      "action": "validate-task-result",
+      "patch": [
+        {
+          "op": "add",
+          "path": "/effects/-",
+          "value": {
+            "effectId": "effect-cancelled-unknown-001",
+            "effectKey": "task-20260830-change-001/cancelled-unknown",
+            "intentFingerprint": {
+              "algorithm": "sha256-jcs-v1",
+              "value": "sha256:7ef254f0d37b15cfe03999cb64be4b4ae3f328d5b4f8aace24940817117ecacc"
+            },
+            "resourceRef": "ref-overcore-readme",
+            "operation": "filesystem.modify",
+            "status": "unknown",
+            "evidenceRefs": ["evidence-client-cancellation"]
+          }
+        }
+      ],
+      "expectedSchemaValid": true,
+      "forbiddenDomainCodes": ["task-result-terminal-effect-unknown"]
+    },
+    {
+      "caseId": "plan-history-is-append-only",
+      "baseExample": "../exemplos/task-state-running.json",
+      "patch": [{ "op": "replace", "path": "/ledger/planRefs/0/planFingerprint/value", "value": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-history-rewritten"
+    },
+    {
+      "caseId": "step-run-history-is-append-only",
+      "baseExample": "../exemplos/task-state-retry-running.json",
+      "patch": [{ "op": "remove", "path": "/ledger/stepRuns/0" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-step-run-history-rewritten"
+    },
+    {
+      "caseId": "attempt-plan-provenance-is-immutable",
+      "baseExample": "../exemplos/task-state-running.json",
+      "patch": [{ "op": "replace", "path": "/ledger/attempts/0/planRef/planRevision", "value": 2 }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-attempt-identity-rewritten"
+    },
+    {
+      "caseId": "effect-plan-provenance-is-immutable",
+      "baseExample": "../exemplos/task-state-running.json",
+      "patch": [{ "op": "replace", "path": "/ledger/effects/0/actionRef", "value": "action-rewritten" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-effect-identity-rewritten"
+    },
+    {
+      "caseId": "successful-task-requires-completed-attempt",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "patch": [{ "op": "replace", "path": "/ledger/attempts/0/status", "value": "failed" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-success-attempt-not-completed"
+    },
+    {
+      "caseId": "result-evidence-cannot-predate-producing-step",
+      "baseExample": "../../contratos/exemplos/task-result-sucesso.json",
+      "stateExample": "../exemplos/task-state-succeeded.json",
+      "action": "validate-result-projection",
+      "patch": [
+        { "op": "replace", "path": "/evidence/1/capturedAt", "value": "2026-08-30T09:31:58-03:00" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-result-evidence-outside-step-run"
+    },
+    {
+      "caseId": "result-evidence-cannot-follow-producing-step",
+      "baseExample": "../../contratos/exemplos/task-result-sucesso.json",
+      "stateExample": "../exemplos/task-state-succeeded.json",
+      "action": "validate-result-projection",
+      "patch": [
+        { "op": "replace", "path": "/evidence/1/capturedAt", "value": "2026-08-30T09:32:01-03:00" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-result-evidence-outside-step-run"
+    },
+    {
+      "caseId": "result-evidence-cannot-predate-execution",
+      "baseExample": "../../contratos/exemplos/task-result-sucesso.json",
+      "action": "validate-task-result",
+      "patch": [
+        { "op": "replace", "path": "/evidence/0/capturedAt", "value": "2026-08-30T09:30:04-03:00" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-result-preexecution-observation"
+    },
+    {
+      "caseId": "result-artifact-cannot-predate-execution",
+      "baseExample": "../../contratos/exemplos/task-result-sucesso.json",
+      "action": "validate-task-result",
+      "patch": [
+        { "op": "replace", "path": "/artifacts/0/createdAt", "value": "2026-08-30T09:30:04-03:00" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-result-preexecution-observation"
+    },
+    {
+      "caseId": "successful-state-requires-delivery-binding",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "patch": [
+        { "op": "remove", "path": "/ledger/stepRuns/4/deliveryBindings" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-success-delivery-missing"
+    },
+    {
+      "caseId": "delivery-binding-artifact-must-exist-in-ledger",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/stepRuns/4/deliveryBindings/0/artifactRefs/0", "value": "artifact-missing-from-ledger" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-delivery-reference-invalid"
+    },
+    {
+      "caseId": "public-result-cannot-drop-materialized-delivery",
+      "baseExample": "../../contratos/exemplos/task-result-sucesso.json",
+      "stateExample": "../exemplos/task-state-succeeded.json",
+      "action": "validate-result-projection",
+      "patch": [
+        { "op": "replace", "path": "/evidence/1/artifactRefs", "value": [] },
+        { "op": "remove", "path": "/artifacts/0" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-result-delivery-projection-mismatch"
+    },
+    {
+      "caseId": "active-duration-includes-planning-and-ready",
+      "baseExample": "../exemplos/task-state-ready.json",
+      "patch": [
+        { "op": "replace", "path": "/usage/activeDurationMs", "value": 0 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-active-duration-mismatch"
+    },
+    {
+      "caseId": "block-cannot-predate-task-admission",
+      "baseExample": "../exemplos/task-state-blocked.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/blocks/0/createdAt", "value": "2026-08-30T08:59:59-03:00" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-time-inconsistent"
+    },
+    {
+      "caseId": "checkpoint-cannot-confirm-future-effect",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "patch": [
+        { "op": "add", "path": "/ledger/checkpoints/0/lastConfirmedEffectRef", "value": "effect-readme-modified" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-checkpoint-effect-invalid"
+    },
+    {
+      "caseId": "task-cannot-predate-its-request",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "patch": [
+        { "op": "replace", "path": "/acceptedAt", "value": "2026-08-30T09:29:59-03:00" },
+        { "op": "replace", "path": "/ledger/transitions/0/at", "value": "2026-08-30T09:29:59-03:00" },
+        { "op": "replace", "path": "/usage/activeDurationMs", "value": 113000 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-admission-before-request"
+    },
+    {
+      "caseId": "successful-task-cannot-outlive-deadline",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "requestPatch": [
+        { "op": "add", "path": "/deadline", "value": "2026-08-30T09:31:30-03:00" }
+      ],
+      "patch": [],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-deadline-violated"
+    },
+    {
+      "caseId": "successful-result-cannot-outlive-deadline",
+      "baseExample": "../../contratos/exemplos/task-result-sucesso.json",
+      "action": "validate-task-result",
+      "requestPatch": [
+        { "op": "add", "path": "/deadline", "value": "2026-08-30T09:31:30-03:00" }
+      ],
+      "patch": [],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-result-deadline-violated"
+    },
+    {
+      "caseId": "context-capture-cannot-be-recorded-in-future-revision",
+      "baseExample": "../exemplos/task-state-ready.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/contextCaptureRecords/0/recordedAtRevision", "value": 4 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-context-capture-invalid"
+    },
+    {
+      "caseId": "context-capture-history-is-append-only",
+      "baseExample": "../exemplos/task-state-ready.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/contextCaptureRecords/0/digest", "value": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-history-rewritten"
+    },
+    {
+      "caseId": "effect-origin-summary-cannot-diverge",
+      "baseExample": "../exemplos/task-state-running.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/effects/0/executionOrigins/0/state", "value": "applying" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-effect-origin-summary-mismatch"
+    },
+    {
+      "caseId": "effect-origin-history-cannot-be-rewritten",
+      "baseExample": "../exemplos/task-state-running.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/effects/0/executionOrigins/0/actionRef", "value": "action-rewritten" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-effect-origin-history-rewritten"
+    },
+    {
+      "caseId": "effect-origin-cannot-append-before-not-applied",
+      "baseExample": "../exemplos/task-state-running.json",
+      "patch": [
+        { "op": "replace", "path": "/stateRevision", "value": 6 },
+        { "op": "replace", "path": "/updatedAt", "value": "2026-08-30T09:30:31-03:00" },
+        { "op": "replace", "path": "/usage/activeDurationMs", "value": 31000 },
+        {
+          "op": "add",
+          "path": "/ledger/effects/0/executionOrigins/-",
+          "value": {
+            "originId": "origin-effect-readme-modified-02",
+            "ordinal": 2,
+            "attemptRef": "attempt-change-001-01",
+            "planRef": { "planId": "plan-change-001", "planRevision": 1 },
+            "stepRunRef": "step-run-change-apply-01",
+            "actionRef": "action-modify-readme-link",
+            "executionEpoch": 1,
+            "state": "reserved",
+            "recordedAt": "2026-08-30T09:30:31-03:00",
+            "recordedAtRevision": 6,
+            "updatedAt": "2026-08-30T09:30:31-03:00",
+            "lastUpdatedRevision": 6,
+            "evidenceRefs": []
+          }
+        },
+        { "op": "replace", "path": "/ledger/effects/0/updatedAt", "value": "2026-08-30T09:30:31-03:00" },
+        { "op": "replace", "path": "/ledger/effects/0/lastUpdatedRevision", "value": 6 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-effect-origin-append-invalid"
+    },
+    {
+      "caseId": "cancellation-freezes-effect-origin-append",
+      "baseExample": "../exemplos/task-state-cancelling-active.json",
+      "baselinePatch": [
+        { "op": "replace", "path": "/stateRevision", "value": 7 },
+        { "op": "replace", "path": "/updatedAt", "value": "2026-08-30T09:30:32-03:00" },
+        { "op": "replace", "path": "/usage/activeDurationMs", "value": 32000 },
+        { "op": "replace", "path": "/ledger/effects/0/state", "value": "not-applied" },
+        { "op": "replace", "path": "/ledger/effects/0/updatedAt", "value": "2026-08-30T09:30:32-03:00" },
+        { "op": "replace", "path": "/ledger/effects/0/lastUpdatedRevision", "value": 7 },
+        { "op": "add", "path": "/ledger/effects/0/evidenceRefs/-", "value": "evidence-client-cancellation-active" },
+        { "op": "replace", "path": "/ledger/effects/0/executionOrigins/0/state", "value": "not-applied" },
+        { "op": "replace", "path": "/ledger/effects/0/executionOrigins/0/updatedAt", "value": "2026-08-30T09:30:32-03:00" },
+        { "op": "replace", "path": "/ledger/effects/0/executionOrigins/0/lastUpdatedRevision", "value": 7 },
+        { "op": "add", "path": "/ledger/effects/0/executionOrigins/0/evidenceRefs/-", "value": "evidence-client-cancellation-active" }
+      ],
+      "patch": [
+        { "op": "replace", "path": "/stateRevision", "value": 8 },
+        { "op": "replace", "path": "/updatedAt", "value": "2026-08-30T09:30:33-03:00" },
+        { "op": "replace", "path": "/usage/activeDurationMs", "value": 33000 },
+        {
+          "op": "add",
+          "path": "/ledger/effects/0/executionOrigins/-",
+          "value": {
+            "originId": "origin-effect-readme-modified-02",
+            "ordinal": 2,
+            "attemptRef": "attempt-change-001-01",
+            "planRef": { "planId": "plan-change-001", "planRevision": 1 },
+            "stepRunRef": "step-run-change-apply-01",
+            "actionRef": "action-modify-readme-link",
+            "executionEpoch": 1,
+            "state": "reserved",
+            "recordedAt": "2026-08-30T09:30:33-03:00",
+            "recordedAtRevision": 8,
+            "updatedAt": "2026-08-30T09:30:33-03:00",
+            "lastUpdatedRevision": 8,
+            "evidenceRefs": []
+          }
+        },
+        { "op": "replace", "path": "/ledger/effects/0/state", "value": "reserved" },
+        { "op": "replace", "path": "/ledger/effects/0/updatedAt", "value": "2026-08-30T09:30:33-03:00" },
+        { "op": "replace", "path": "/ledger/effects/0/lastUpdatedRevision", "value": 8 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-work-added-after-cancellation"
+    },
+    {
+      "caseId": "effect-checkpoint-revision-cannot-follow-origin-reservation",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/checkpoints/0/stateRevision", "value": 6 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-effect-precheckpoint-missing"
+    },
+    {
+      "caseId": "new-effect-origin-cannot-predate-previous-snapshot",
+      "baseExample": "../exemplos/task-state-running.json",
+      "baselinePatch": [
+        { "op": "replace", "path": "/stateRevision", "value": 6 },
+        { "op": "replace", "path": "/updatedAt", "value": "2026-08-30T09:30:31-03:00" },
+        { "op": "replace", "path": "/usage/activeDurationMs", "value": 31000 },
+        { "op": "add", "path": "/ledger/evidenceRefs/-", "value": "evidence-effect-not-applied" },
+        { "op": "replace", "path": "/ledger/effects/0/state", "value": "not-applied" },
+        { "op": "replace", "path": "/ledger/effects/0/updatedAt", "value": "2026-08-30T09:30:30.400-03:00" },
+        { "op": "replace", "path": "/ledger/effects/0/lastUpdatedRevision", "value": 6 },
+        { "op": "add", "path": "/ledger/effects/0/evidenceRefs/-", "value": "evidence-effect-not-applied" },
+        { "op": "replace", "path": "/ledger/effects/0/executionOrigins/0/state", "value": "not-applied" },
+        { "op": "replace", "path": "/ledger/effects/0/executionOrigins/0/updatedAt", "value": "2026-08-30T09:30:30.400-03:00" },
+        { "op": "replace", "path": "/ledger/effects/0/executionOrigins/0/lastUpdatedRevision", "value": 6 },
+        { "op": "add", "path": "/ledger/effects/0/executionOrigins/0/evidenceRefs/-", "value": "evidence-effect-not-applied" }
+      ],
+      "patch": [
+        { "op": "replace", "path": "/stateRevision", "value": 7 },
+        { "op": "replace", "path": "/updatedAt", "value": "2026-08-30T09:30:32-03:00" },
+        { "op": "replace", "path": "/usage/activeDurationMs", "value": 32000 },
+        {
+          "op": "add",
+          "path": "/ledger/effects/0/executionOrigins/-",
+          "value": {
+            "originId": "origin-effect-readme-modified-02",
+            "ordinal": 2,
+            "attemptRef": "attempt-change-001-01",
+            "planRef": { "planId": "plan-change-001", "planRevision": 1 },
+            "stepRunRef": "step-run-change-apply-01",
+            "actionRef": "action-modify-readme-link",
+            "executionEpoch": 1,
+            "state": "reserved",
+            "recordedAt": "2026-08-30T09:30:30.500-03:00",
+            "recordedAtRevision": 7,
+            "updatedAt": "2026-08-30T09:30:30.500-03:00",
+            "lastUpdatedRevision": 7,
+            "evidenceRefs": []
+          }
+        },
+        { "op": "replace", "path": "/ledger/effects/0/state", "value": "reserved" },
+        { "op": "replace", "path": "/ledger/effects/0/evidenceRefs", "value": [] },
+        { "op": "replace", "path": "/ledger/effects/0/updatedAt", "value": "2026-08-30T09:30:30.500-03:00" },
+        { "op": "replace", "path": "/ledger/effects/0/lastUpdatedRevision", "value": 7 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-effect-origin-append-invalid"
+    },
+    {
+      "caseId": "effect-origin-updated-at-cannot-regress-between-revisions",
+      "baseExample": "../exemplos/task-state-running.json",
+      "baselinePatch": [
+        { "op": "replace", "path": "/stateRevision", "value": 6 },
+        { "op": "replace", "path": "/updatedAt", "value": "2026-08-30T09:30:31-03:00" },
+        { "op": "replace", "path": "/usage/activeDurationMs", "value": 31000 },
+        { "op": "replace", "path": "/ledger/effects/0/state", "value": "applying" },
+        { "op": "replace", "path": "/ledger/effects/0/updatedAt", "value": "2026-08-30T09:30:31-03:00" },
+        { "op": "replace", "path": "/ledger/effects/0/lastUpdatedRevision", "value": 6 },
+        { "op": "replace", "path": "/ledger/effects/0/executionOrigins/0/state", "value": "applying" },
+        { "op": "replace", "path": "/ledger/effects/0/executionOrigins/0/updatedAt", "value": "2026-08-30T09:30:31-03:00" },
+        { "op": "replace", "path": "/ledger/effects/0/executionOrigins/0/lastUpdatedRevision", "value": 6 }
+      ],
+      "patch": [
+        { "op": "replace", "path": "/stateRevision", "value": 7 },
+        { "op": "replace", "path": "/updatedAt", "value": "2026-08-30T09:30:32-03:00" },
+        { "op": "replace", "path": "/usage/activeDurationMs", "value": 32000 },
+        { "op": "replace", "path": "/ledger/effects/0/updatedAt", "value": "2026-08-30T09:30:30.500-03:00" },
+        { "op": "replace", "path": "/ledger/effects/0/lastUpdatedRevision", "value": 7 },
+        { "op": "replace", "path": "/ledger/effects/0/executionOrigins/0/updatedAt", "value": "2026-08-30T09:30:30.500-03:00" },
+        { "op": "replace", "path": "/ledger/effects/0/executionOrigins/0/lastUpdatedRevision", "value": 7 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-effect-origin-time-regressed"
+    },
+    {
+      "caseId": "historical-result-effect-status-must-match-that-revision",
+      "baseExample": "../../contratos/exemplos/task-result-alteracao-bloqueada.json",
+      "stateExample": "../exemplos/task-state-succeeded.json",
+      "action": "validate-result-projection",
+      "patch": [
+        { "op": "replace", "path": "/effects/0/status", "value": "confirmed" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-result-effect-projection-mismatch"
+    },
+    {
+      "caseId": "effect-cannot-have-two-compensators",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "patch": [
+        { "op": "copy", "from": "/ledger/effects/0", "path": "/ledger/effects/-" },
+        { "op": "replace", "path": "/ledger/effects/1/effectId", "value": "effect-readme-compensation-001" },
+        { "op": "replace", "path": "/ledger/effects/1/effectKey", "value": "task-20260830-change-001/readme-reference-compensation-001" },
+        { "op": "replace", "path": "/ledger/effects/1/intentFingerprint/value", "value": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+        { "op": "replace", "path": "/ledger/effects/1/executionOrigins", "value": [
+          {
+            "originId": "origin-effect-readme-compensation-001",
+            "ordinal": 1,
+            "attemptRef": "attempt-change-001-01",
+            "planRef": { "planId": "plan-change-001", "planRevision": 1 },
+            "stepRunRef": "step-run-change-apply-01",
+            "actionRef": "action-modify-readme-link",
+            "executionEpoch": 1,
+            "state": "confirmed",
+            "recordedAt": "2026-08-30T09:32:00-03:00",
+            "recordedAtRevision": 13,
+            "updatedAt": "2026-08-30T09:32:00.200-03:00",
+            "lastUpdatedRevision": 13,
+            "evidenceRefs": ["evidence-effect-confirmed"]
+          }
+        ] },
+        { "op": "replace", "path": "/ledger/effects/1/recordedAt", "value": "2026-08-30T09:32:00-03:00" },
+        { "op": "replace", "path": "/ledger/effects/1/updatedAt", "value": "2026-08-30T09:32:00.200-03:00" },
+        { "op": "replace", "path": "/ledger/effects/1/lastUpdatedRevision", "value": 13 },
+        { "op": "add", "path": "/ledger/effects/1/compensatesEffectRef", "value": "effect-readme-modified" },
+        { "op": "add", "path": "/ledger/attempts/0/effectRefs/-", "value": "effect-readme-compensation-001" },
+        { "op": "copy", "from": "/ledger/effects/1", "path": "/ledger/effects/-" },
+        { "op": "replace", "path": "/ledger/effects/2/effectId", "value": "effect-readme-compensation-002" },
+        { "op": "replace", "path": "/ledger/effects/2/effectKey", "value": "task-20260830-change-001/readme-reference-compensation-002" },
+        { "op": "replace", "path": "/ledger/effects/2/intentFingerprint/value", "value": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+        { "op": "replace", "path": "/ledger/effects/2/executionOrigins/0/originId", "value": "origin-effect-readme-compensation-002" },
+        { "op": "replace", "path": "/ledger/effects/2/executionOrigins/0/recordedAt", "value": "2026-08-30T09:32:00.300-03:00" },
+        { "op": "replace", "path": "/ledger/effects/2/executionOrigins/0/recordedAtRevision", "value": 14 },
+        { "op": "replace", "path": "/ledger/effects/2/executionOrigins/0/updatedAt", "value": "2026-08-30T09:32:00.800-03:00" },
+        { "op": "replace", "path": "/ledger/effects/2/executionOrigins/0/lastUpdatedRevision", "value": 14 },
+        { "op": "replace", "path": "/ledger/effects/2/recordedAt", "value": "2026-08-30T09:32:00.300-03:00" },
+        { "op": "replace", "path": "/ledger/effects/2/updatedAt", "value": "2026-08-30T09:32:00.800-03:00" },
+        { "op": "replace", "path": "/ledger/effects/2/lastUpdatedRevision", "value": 14 },
+        { "op": "add", "path": "/ledger/attempts/0/effectRefs/-", "value": "effect-readme-compensation-002" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-compensation-ambiguous"
+    },
+    {
+      "caseId": "compensator-cannot-predate-target-confirmation",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "patch": [
+        { "op": "copy", "from": "/ledger/effects/0", "path": "/ledger/effects/-" },
+        { "op": "replace", "path": "/ledger/effects/1/effectId", "value": "effect-readme-compensation-early" },
+        { "op": "replace", "path": "/ledger/effects/1/effectKey", "value": "task-20260830-change-001/readme-reference-compensation-early" },
+        { "op": "replace", "path": "/ledger/effects/1/intentFingerprint/value", "value": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" },
+        { "op": "replace", "path": "/ledger/effects/1/executionOrigins", "value": [
+          {
+            "originId": "origin-effect-readme-compensation-early",
+            "ordinal": 1,
+            "attemptRef": "attempt-change-001-01",
+            "planRef": { "planId": "plan-change-001", "planRevision": 1 },
+            "stepRunRef": "step-run-change-apply-01",
+            "actionRef": "action-modify-readme-link",
+            "executionEpoch": 1,
+            "state": "confirmed",
+            "recordedAt": "2026-08-30T09:31:58-03:00",
+            "recordedAtRevision": 11,
+            "updatedAt": "2026-08-30T09:31:58.500-03:00",
+            "lastUpdatedRevision": 11,
+            "evidenceRefs": ["evidence-effect-confirmed"]
+          }
+        ] },
+        { "op": "replace", "path": "/ledger/effects/1/recordedAt", "value": "2026-08-30T09:31:58-03:00" },
+        { "op": "replace", "path": "/ledger/effects/1/updatedAt", "value": "2026-08-30T09:31:58.500-03:00" },
+        { "op": "replace", "path": "/ledger/effects/1/lastUpdatedRevision", "value": 11 },
+        { "op": "add", "path": "/ledger/effects/1/compensatesEffectRef", "value": "effect-readme-modified" },
+        { "op": "add", "path": "/ledger/attempts/0/effectRefs/-", "value": "effect-readme-compensation-early" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-compensation-causality-invalid"
+    },
+    {
+      "caseId": "compensation-chain-is-not-supported-in-v1",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "patch": [
+        { "op": "copy", "from": "/ledger/effects/0", "path": "/ledger/effects/-" },
+        { "op": "replace", "path": "/ledger/effects/1/effectId", "value": "effect-readme-compensation-chain-001" },
+        { "op": "replace", "path": "/ledger/effects/1/effectKey", "value": "task-20260830-change-001/readme-reference-compensation-chain-001" },
+        { "op": "replace", "path": "/ledger/effects/1/intentFingerprint/value", "value": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" },
+        { "op": "replace", "path": "/ledger/effects/1/executionOrigins", "value": [
+          {
+            "originId": "origin-effect-readme-compensation-chain-001",
+            "ordinal": 1,
+            "attemptRef": "attempt-change-001-01",
+            "planRef": { "planId": "plan-change-001", "planRevision": 1 },
+            "stepRunRef": "step-run-change-apply-01",
+            "actionRef": "action-modify-readme-link",
+            "executionEpoch": 1,
+            "state": "confirmed",
+            "recordedAt": "2026-08-30T09:32:00-03:00",
+            "recordedAtRevision": 13,
+            "updatedAt": "2026-08-30T09:32:00.200-03:00",
+            "lastUpdatedRevision": 13,
+            "evidenceRefs": ["evidence-effect-confirmed"]
+          }
+        ] },
+        { "op": "replace", "path": "/ledger/effects/1/recordedAt", "value": "2026-08-30T09:32:00-03:00" },
+        { "op": "replace", "path": "/ledger/effects/1/updatedAt", "value": "2026-08-30T09:32:00.200-03:00" },
+        { "op": "replace", "path": "/ledger/effects/1/lastUpdatedRevision", "value": 13 },
+        { "op": "add", "path": "/ledger/effects/1/compensatesEffectRef", "value": "effect-readme-modified" },
+        { "op": "add", "path": "/ledger/attempts/0/effectRefs/-", "value": "effect-readme-compensation-chain-001" },
+        { "op": "copy", "from": "/ledger/effects/1", "path": "/ledger/effects/-" },
+        { "op": "replace", "path": "/ledger/effects/2/effectId", "value": "effect-readme-compensation-chain-002" },
+        { "op": "replace", "path": "/ledger/effects/2/effectKey", "value": "task-20260830-change-001/readme-reference-compensation-chain-002" },
+        { "op": "replace", "path": "/ledger/effects/2/intentFingerprint/value", "value": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" },
+        { "op": "replace", "path": "/ledger/effects/2/executionOrigins/0/originId", "value": "origin-effect-readme-compensation-chain-002" },
+        { "op": "replace", "path": "/ledger/effects/2/executionOrigins/0/recordedAt", "value": "2026-08-30T09:32:00.300-03:00" },
+        { "op": "replace", "path": "/ledger/effects/2/executionOrigins/0/recordedAtRevision", "value": 14 },
+        { "op": "replace", "path": "/ledger/effects/2/executionOrigins/0/updatedAt", "value": "2026-08-30T09:32:00.800-03:00" },
+        { "op": "replace", "path": "/ledger/effects/2/executionOrigins/0/lastUpdatedRevision", "value": 14 },
+        { "op": "replace", "path": "/ledger/effects/2/recordedAt", "value": "2026-08-30T09:32:00.300-03:00" },
+        { "op": "replace", "path": "/ledger/effects/2/updatedAt", "value": "2026-08-30T09:32:00.800-03:00" },
+        { "op": "replace", "path": "/ledger/effects/2/lastUpdatedRevision", "value": 14 },
+        { "op": "replace", "path": "/ledger/effects/2/compensatesEffectRef", "value": "effect-readme-compensation-chain-001" },
+        { "op": "add", "path": "/ledger/attempts/0/effectRefs/-", "value": "effect-readme-compensation-chain-002" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-compensation-chain-unsupported"
+    },
+    {
+      "caseId": "new-effect-cannot-be-born-confirmed",
+      "baseExample": "../exemplos/task-state-running.json",
+      "baselinePatch": [
+        { "op": "remove", "path": "/ledger/effects/0" },
+        { "op": "replace", "path": "/ledger/attempts/0/effectRefs", "value": [] }
+      ],
+      "patch": [
+        { "op": "replace", "path": "/stateRevision", "value": 6 },
+        { "op": "replace", "path": "/updatedAt", "value": "2026-08-30T09:30:31-03:00" },
+        { "op": "replace", "path": "/usage/activeDurationMs", "value": 31000 },
+        { "op": "add", "path": "/ledger/effects/-", "value": {
+          "effectId": "effect-readme-born-confirmed",
+          "effectKey": "task-20260830-change-001/readme-born-confirmed",
+          "intentFingerprint": {
+            "algorithm": "sha256-jcs-v1",
+            "value": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+          },
+          "attemptRefs": ["attempt-change-001-01"],
+          "executionOrigins": [
+            {
+              "originId": "origin-effect-readme-born-confirmed-01",
+              "ordinal": 1,
+              "attemptRef": "attempt-change-001-01",
+              "planRef": { "planId": "plan-change-001", "planRevision": 1 },
+              "stepRunRef": "step-run-change-apply-01",
+              "actionRef": "action-modify-readme-link",
+              "executionEpoch": 1,
+              "state": "confirmed",
+              "recordedAt": "2026-08-30T09:30:31-03:00",
+              "recordedAtRevision": 6,
+              "updatedAt": "2026-08-30T09:30:31-03:00",
+              "lastUpdatedRevision": 6,
+              "evidenceRefs": ["evidence-snapshot-ref-overcore-readme"]
+            }
+          ],
+          "planRef": { "planId": "plan-change-001", "planRevision": 1 },
+          "stepRunRef": "step-run-change-apply-01",
+          "actionRef": "action-modify-readme-link",
+          "resourceRef": "ref-overcore-readme",
+          "operation": "filesystem.modify",
+          "state": "confirmed",
+          "executionEpoch": 1,
+          "recordedAt": "2026-08-30T09:30:31-03:00",
+          "updatedAt": "2026-08-30T09:30:31-03:00",
+          "lastUpdatedRevision": 6,
+          "evidenceRefs": ["evidence-snapshot-ref-overcore-readme"]
+        } },
+        { "op": "add", "path": "/ledger/attempts/0/effectRefs/-", "value": "effect-readme-born-confirmed" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-effect-must-reserve-before-application"
+    },
+    {
+      "caseId": "origin-id-is-global-within-ledger",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "baselinePatch": [
+        { "op": "copy", "from": "/ledger/effects/0", "path": "/ledger/effects/-" },
+        { "op": "replace", "path": "/ledger/effects/1/effectId", "value": "effect-readme-second-intent" },
+        { "op": "replace", "path": "/ledger/effects/1/effectKey", "value": "task-20260830-change-001/readme-second-intent" },
+        { "op": "replace", "path": "/ledger/effects/1/intentFingerprint/value", "value": "sha256:1212121212121212121212121212121212121212121212121212121212121212" },
+        { "op": "replace", "path": "/ledger/effects/1/executionOrigins/0/originId", "value": "origin-effect-readme-second-intent-01" },
+        { "op": "replace", "path": "/ledger/effects/1/executionOrigins/1/originId", "value": "origin-effect-readme-second-intent-02" },
+        { "op": "add", "path": "/ledger/attempts/0/effectRefs/-", "value": "effect-readme-second-intent" }
+      ],
+      "patch": [
+        { "op": "replace", "path": "/ledger/effects/1/executionOrigins/0/originId", "value": "origin-effect-readme-modified-01" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-origin-id-conflict"
+    },
+    {
+      "caseId": "compensation-target-is-immutable-after-reservation",
+      "baseExample": "../exemplos/task-state-running.json",
+      "baselinePatch": [
+        { "op": "replace", "path": "/stateRevision", "value": 7 },
+        { "op": "replace", "path": "/updatedAt", "value": "2026-08-30T09:30:32-03:00" },
+        { "op": "replace", "path": "/usage/activeDurationMs", "value": 32000 },
+        { "op": "replace", "path": "/ledger/effects/0/state", "value": "confirmed" },
+        { "op": "replace", "path": "/ledger/effects/0/updatedAt", "value": "2026-08-30T09:30:31-03:00" },
+        { "op": "replace", "path": "/ledger/effects/0/lastUpdatedRevision", "value": 6 },
+        { "op": "replace", "path": "/ledger/effects/0/evidenceRefs", "value": ["evidence-snapshot-ref-overcore-readme"] },
+        { "op": "replace", "path": "/ledger/effects/0/executionOrigins/0/state", "value": "confirmed" },
+        { "op": "replace", "path": "/ledger/effects/0/executionOrigins/0/updatedAt", "value": "2026-08-30T09:30:31-03:00" },
+        { "op": "replace", "path": "/ledger/effects/0/executionOrigins/0/lastUpdatedRevision", "value": 6 },
+        { "op": "replace", "path": "/ledger/effects/0/executionOrigins/0/evidenceRefs", "value": ["evidence-snapshot-ref-overcore-readme"] },
+        { "op": "add", "path": "/ledger/effects/-", "value": {
+          "effectId": "effect-readme-compensation-immutable",
+          "effectKey": "task-20260830-change-001/readme-compensation-immutable",
+          "intentFingerprint": {
+            "algorithm": "sha256-jcs-v1",
+            "value": "sha256:3434343434343434343434343434343434343434343434343434343434343434"
+          },
+          "attemptRefs": ["attempt-change-001-01"],
+          "executionOrigins": [
+            {
+              "originId": "origin-effect-readme-compensation-immutable-01",
+              "ordinal": 1,
+              "attemptRef": "attempt-change-001-01",
+              "planRef": { "planId": "plan-change-001", "planRevision": 1 },
+              "stepRunRef": "step-run-change-apply-01",
+              "actionRef": "action-modify-readme-link",
+              "executionEpoch": 1,
+              "state": "reserved",
+              "recordedAt": "2026-08-30T09:30:32-03:00",
+              "recordedAtRevision": 7,
+              "updatedAt": "2026-08-30T09:30:32-03:00",
+              "lastUpdatedRevision": 7,
+              "evidenceRefs": []
+            }
+          ],
+          "planRef": { "planId": "plan-change-001", "planRevision": 1 },
+          "stepRunRef": "step-run-change-apply-01",
+          "actionRef": "action-modify-readme-link",
+          "resourceRef": "ref-overcore-readme",
+          "operation": "filesystem.modify",
+          "state": "reserved",
+          "executionEpoch": 1,
+          "recordedAt": "2026-08-30T09:30:32-03:00",
+          "updatedAt": "2026-08-30T09:30:32-03:00",
+          "lastUpdatedRevision": 7,
+          "evidenceRefs": [],
+          "compensatesEffectRef": "effect-readme-modified"
+        } },
+        { "op": "add", "path": "/ledger/attempts/0/effectRefs/-", "value": "effect-readme-compensation-immutable" }
+      ],
+      "patch": [
+        { "op": "replace", "path": "/stateRevision", "value": 8 },
+        { "op": "replace", "path": "/updatedAt", "value": "2026-08-30T09:30:33-03:00" },
+        { "op": "replace", "path": "/usage/activeDurationMs", "value": 33000 },
+        { "op": "remove", "path": "/ledger/effects/1/compensatesEffectRef" },
+        { "op": "replace", "path": "/ledger/effects/1/updatedAt", "value": "2026-08-30T09:30:33-03:00" },
+        { "op": "replace", "path": "/ledger/effects/1/lastUpdatedRevision", "value": 8 },
+        { "op": "replace", "path": "/ledger/effects/1/executionOrigins/0/updatedAt", "value": "2026-08-30T09:30:33-03:00" },
+        { "op": "replace", "path": "/ledger/effects/1/executionOrigins/0/lastUpdatedRevision", "value": 8 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-compensation-identity-rewritten"
+    },
+    {
+      "caseId": "new-attempt-must-advance-execution-epoch",
+      "baseExample": "../exemplos/task-state-retry-running.json",
+      "patch": [
+        { "op": "replace", "path": "/executionEpoch", "value": 1 },
+        { "op": "replace", "path": "/ledger/attempts/1/executionEpoch", "value": 1 },
+        { "op": "replace", "path": "/ledger/stepRuns/2/executionEpoch", "value": 1 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-execution-epoch-mismatch"
+    },
+    {
+      "caseId": "nonreserved-origin-cannot-be-born-in-final-state",
+      "baseExample": "../exemplos/task-state-succeeded.json",
+      "patch": [
+        { "op": "replace", "path": "/ledger/effects/0/executionOrigins/1/recordedAtRevision", "value": 12 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-effect-must-reserve-before-application"
+    },
+    {
+      "caseId": "later-reconciliation-does-not-erase-historical-effect-presence",
+      "baseExample": "../../contratos/exemplos/task-result-alteracao-bloqueada.json",
+      "stateExample": "../exemplos/task-state-succeeded.json",
+      "action": "validate-result-projection",
+      "statePatch": [
+        { "op": "remove", "path": "/ledger/effects/0/executionOrigins/1" },
+        { "op": "replace", "path": "/ledger/effects/0/executionOrigins/0/state", "value": "confirmed" },
+        { "op": "replace", "path": "/ledger/effects/0/executionOrigins/0/updatedAt", "value": "2026-08-30T09:31:59-03:00" },
+        { "op": "replace", "path": "/ledger/effects/0/executionOrigins/0/lastUpdatedRevision", "value": 12 },
+        { "op": "replace", "path": "/ledger/effects/0/executionOrigins/0/evidenceRefs", "value": ["evidence-effect-confirmed"] },
+        { "op": "replace", "path": "/ledger/effects/0/state", "value": "confirmed" },
+        { "op": "replace", "path": "/ledger/effects/0/updatedAt", "value": "2026-08-30T09:31:59-03:00" },
+        { "op": "replace", "path": "/ledger/effects/0/lastUpdatedRevision", "value": 12 },
+        { "op": "replace", "path": "/ledger/effects/0/evidenceRefs", "value": ["evidence-effect-confirmed"] }
+      ],
+      "patch": [
+        { "op": "replace", "path": "/effects/0/status", "value": "unknown" }
+      ],
+      "expectedSchemaValid": true,
+      "forbiddenDomainCodes": ["task-result-effect-projection-mismatch"]
+    },
+    {
+      "caseId": "active-plan-cannot-lose-authorization-binding",
+      "baseExample": "../exemplos/task-state-ready.json",
+      "patch": [
+        { "op": "remove", "path": "/activePlanBinding/authorizationBinding" }
+      ],
+      "expectedSchemaValid": false
+    },
+    {
+      "caseId": "plan-history-cannot-lose-authorization-binding",
+      "baseExample": "../exemplos/task-state-ready.json",
+      "patch": [
+        { "op": "remove", "path": "/ledger/planRefs/0/authorizationBinding" }
+      ],
+      "expectedSchemaValid": false
+    },
+    {
+      "caseId": "active-authorization-must-match-plan-history",
+      "baseExample": "../exemplos/task-state-ready.json",
+      "patch": [
+        { "op": "replace", "path": "/activePlanBinding/authorizationBinding/enforcementId", "value": "authenf-other-plan-001" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-active-authorization-mismatch"
+    },
+    {
+      "caseId": "plan-authorization-must-exist-before-expiry",
+      "baseExample": "../exemplos/task-state-ready.json",
+      "patch": [
+        { "op": "replace", "path": "/activePlanBinding/authorizationBinding/expiresAt", "value": "2026-08-30T09:30:02-03:00" },
+        { "op": "replace", "path": "/ledger/planRefs/0/authorizationBinding/expiresAt", "value": "2026-08-30T09:30:02-03:00" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-plan-authorization-invalid"
+    },
+    {
+      "caseId": "active-execution-cannot-outlive-authorization",
+      "baseExample": "../exemplos/task-state-ready.json",
+      "patch": [
+        { "op": "replace", "path": "/activePlanBinding/authorizationBinding/expiresAt", "value": "2026-08-30T09:30:03-03:00" },
+        { "op": "replace", "path": "/ledger/planRefs/0/authorizationBinding/expiresAt", "value": "2026-08-30T09:30:03-03:00" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-active-authorization-expired"
+    },
+    {
+      "caseId": "authorization-activation-revision-must-match-plan",
+      "baseExample": "../exemplos/task-state-ready.json",
+      "patch": [
+        { "op": "replace", "path": "/activePlanBinding/authorizationBinding/activatedAtRevision", "value": 2 },
+        { "op": "replace", "path": "/ledger/planRefs/0/authorizationBinding/activatedAtRevision", "value": 2 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "task-state-plan-authorization-invalid"
+    }
+  ]
+}

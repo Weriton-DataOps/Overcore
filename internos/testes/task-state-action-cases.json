@@ -1,0 +1,596 @@
+{
+  "fixtureVersion": "1.0",
+  "cases": [
+    {
+      "caseId": "ready-with-active-plan-admits-attempt",
+      "currentStateExample": "../exemplos/task-state-ready.json",
+      "command": {
+        "commandId": "command-start-planned-attempt-001",
+        "kind": "start-attempt",
+        "expectedRevision": 3,
+        "expectedExecutionEpoch": 1,
+        "authorizationEnforcementId": "authenf-change-r1-001",
+        "authorizationRecordFingerprint": {
+          "algorithm": "sha256-jcs-v1",
+          "value": "sha256:341e4942fa1751a6c0c4f854c5d1735de9acdba622921fbf7eb341c27a396cc9"
+        },
+        "observedAt": "2026-08-30T09:30:03.100-03:00"
+      },
+      "authorizationContext": {
+        "authorizationRequest": "../../contratos/exemplos/authorization-request-change-r1.json",
+        "authorizationDecision": "../../contratos/exemplos/authorization-decision-change-r1-permit.json",
+        "authorizationEnforcement": "../autorizacao/exemplos/authorization-enforcement-change-r1.json"
+      },
+      "expectedDecision": "accepted",
+      "expectedCode": "task-state-command-admitted"
+    },
+    {
+      "caseId": "cas-rejects-stale-writer",
+      "currentStateExample": "../exemplos/task-state-running.json",
+      "command": {
+        "commandId": "command-stale-writer-001",
+        "kind": "update-progress",
+        "expectedRevision": 4,
+        "expectedExecutionEpoch": 1
+      },
+      "expectedDecision": "rejected",
+      "expectedCode": "task-state-revision-conflict"
+    },
+    {
+      "caseId": "fence-rejects-old-executor",
+      "currentStateExample": "../exemplos/task-state-retry-running.json",
+      "command": {
+        "commandId": "command-old-executor-001",
+        "kind": "reserve-effect",
+        "expectedRevision": 9,
+        "expectedExecutionEpoch": 1
+      },
+      "expectedDecision": "rejected",
+      "expectedCode": "task-state-execution-epoch-fenced"
+    },
+    {
+      "caseId": "cancellation-wins-against-late-completion",
+      "currentStateExample": "../exemplos/task-state-cancelling-active.json",
+      "command": {
+        "commandId": "command-late-completion-001",
+        "kind": "complete-attempt",
+        "expectedRevision": 5,
+        "expectedExecutionEpoch": 1
+      },
+      "expectedDecision": "rejected",
+      "expectedCode": "task-state-revision-conflict"
+    },
+    {
+      "caseId": "cancellation-rejects-new-effect",
+      "currentStateExample": "../exemplos/task-state-cancelling-active.json",
+      "command": {
+        "commandId": "command-new-effect-after-cancel-001",
+        "kind": "reserve-effect",
+        "expectedRevision": 6,
+        "expectedExecutionEpoch": 2
+      },
+      "expectedDecision": "rejected",
+      "expectedCode": "task-state-cancellation-in-progress"
+    },
+    {
+      "caseId": "success-rejects-late-cancellation",
+      "currentStateExample": "../exemplos/task-state-succeeded.json",
+      "command": {
+        "commandId": "command-late-cancel-001",
+        "kind": "request-cancellation",
+        "expectedRevision": 15
+      },
+      "expectedDecision": "rejected",
+      "expectedCode": "task-state-terminal-immutable"
+    },
+    {
+      "caseId": "current-writer-is-admitted",
+      "currentStateExample": "../exemplos/task-state-running.json",
+      "command": {
+        "commandId": "command-current-effect-001",
+        "kind": "apply-effect",
+        "expectedRevision": 5,
+        "expectedExecutionEpoch": 1,
+        "effectId": "effect-readme-modified",
+        "expectedOriginId": "origin-effect-readme-modified-01",
+        "authorizationEnforcementId": "authenf-change-r1-001",
+        "authorizationRecordFingerprint": {
+          "algorithm": "sha256-jcs-v1",
+          "value": "sha256:341e4942fa1751a6c0c4f854c5d1735de9acdba622921fbf7eb341c27a396cc9"
+        },
+        "observedAt": "2026-08-30T09:30:30.100-03:00",
+        "satisfiedControls": [
+          "checkpoint-before-mutation",
+          "verify-after-effect",
+          "reconcile-before-retry",
+          "revocation-check-before-effect"
+        ],
+        "revocationCheck": {
+          "statusRef": "omni-revocation-status-change-r1",
+          "status": "active",
+          "observedAt": "2026-08-30T09:30:30.100-03:00"
+        }
+      },
+      "authorizationContext": {
+        "authorizationRequest": "../../contratos/exemplos/authorization-request-change-r1.json",
+        "authorizationDecision": "../../contratos/exemplos/authorization-decision-change-r1-permit.json",
+        "authorizationEnforcement": "../autorizacao/exemplos/authorization-enforcement-change-r1.json"
+      },
+      "expectedDecision": "accepted",
+      "expectedCode": "task-state-command-admitted"
+    },
+    {
+      "caseId": "effect-command-requires-epoch",
+      "currentStateExample": "../exemplos/task-state-running.json",
+      "command": {
+        "commandId": "command-effect-without-epoch-001",
+        "kind": "reserve-effect",
+        "expectedRevision": 5
+      },
+      "expectedDecision": "rejected",
+      "expectedCode": "task-state-execution-epoch-required"
+    },
+    {
+      "caseId": "mutation-command-requires-revision",
+      "currentStateExample": "../exemplos/task-state-running.json",
+      "command": {
+        "commandId": "command-without-revision-001",
+        "kind": "update-progress",
+        "expectedExecutionEpoch": 1
+      },
+      "expectedDecision": "rejected",
+      "expectedCode": "task-state-revision-required"
+    },
+    {
+      "caseId": "unknown-command-is-fail-closed",
+      "currentStateExample": "../exemplos/task-state-cancelling-active.json",
+      "command": {
+        "commandId": "command-arbitrary-new-work-001",
+        "kind": "arbitrary-new-work",
+        "expectedRevision": 6
+      },
+      "expectedDecision": "rejected",
+      "expectedCode": "task-state-command-kind-unknown"
+    },
+    {
+      "caseId": "apply-effect-requires-epoch",
+      "currentStateExample": "../exemplos/task-state-cancelling-active.json",
+      "command": {
+        "commandId": "command-apply-without-epoch-001",
+        "kind": "apply-effect",
+        "expectedRevision": 6
+      },
+      "expectedDecision": "rejected",
+      "expectedCode": "task-state-execution-epoch-required"
+    },
+    {
+      "caseId": "reserve-effect-is-not-allowed-before-running",
+      "currentStateExample": "../exemplos/task-state-accepted.json",
+      "command": {
+        "commandId": "command-reserve-before-running-001",
+        "kind": "reserve-effect",
+        "expectedRevision": 1,
+        "expectedExecutionEpoch": 1
+      },
+      "expectedDecision": "rejected",
+      "expectedCode": "task-state-command-not-allowed-in-state"
+    },
+    {
+      "caseId": "cancelling-allows-only-reconciliation-work",
+      "currentStateExample": "../exemplos/task-state-cancelling-active.json",
+      "command": {
+        "commandId": "command-reconcile-during-cancel-001",
+        "kind": "reconcile-effect",
+        "expectedRevision": 6,
+        "expectedExecutionEpoch": 2,
+        "effectId": "effect-readme-modified",
+        "expectedOriginId": "origin-effect-readme-modified-01"
+      },
+      "expectedDecision": "accepted",
+      "expectedCode": "task-state-command-admitted"
+    },
+    {
+      "caseId": "cancellation-cannot-settle-before-quiescence",
+      "currentStateExample": "../exemplos/task-state-cancelling.json",
+      "command": {
+        "commandId": "command-settle-before-quiescence-001",
+        "kind": "settle-cancellation",
+        "expectedRevision": 3,
+        "expectedExecutionEpoch": 2
+      },
+      "expectedDecision": "rejected",
+      "expectedCode": "task-state-cancellation-not-quiescent"
+    },
+    {
+      "caseId": "cancellation-cannot-quiesce-with-active-work",
+      "currentStateExample": "../exemplos/task-state-cancelling-active.json",
+      "command": {
+        "commandId": "command-quiesce-with-active-work-001",
+        "kind": "mark-cancellation-quiesced",
+        "expectedRevision": 6,
+        "expectedExecutionEpoch": 2
+      },
+      "expectedDecision": "rejected",
+      "expectedCode": "task-state-cancellation-not-quiescent"
+    },
+    {
+      "caseId": "cancellation-may-mark-quiesced-without-active-work",
+      "currentStateExample": "../exemplos/task-state-cancelling.json",
+      "command": {
+        "commandId": "command-mark-quiesced-001",
+        "kind": "mark-cancellation-quiesced",
+        "expectedRevision": 3,
+        "expectedExecutionEpoch": 2
+      },
+      "expectedDecision": "accepted",
+      "expectedCode": "task-state-command-admitted"
+    },
+    {
+      "caseId": "quiesced-cancellation-may-settle",
+      "currentStateExample": "../exemplos/task-state-cancelling-quiesced.json",
+      "command": {
+        "commandId": "command-settle-quiesced-001",
+        "kind": "settle-cancellation",
+        "expectedRevision": 4,
+        "expectedExecutionEpoch": 2
+      },
+      "expectedDecision": "accepted",
+      "expectedCode": "task-state-command-admitted"
+    },
+    {
+      "caseId": "apply-effect-requires-current-origin-id",
+      "currentStateExample": "../exemplos/task-state-running.json",
+      "command": {
+        "commandId": "command-apply-without-origin-001",
+        "kind": "apply-effect",
+        "expectedRevision": 5,
+        "expectedExecutionEpoch": 1,
+        "effectId": "effect-readme-modified"
+      },
+      "expectedDecision": "rejected",
+      "expectedCode": "task-state-origin-id-required"
+    },
+    {
+      "caseId": "stale-effect-origin-is-fenced",
+      "currentStateExample": "../exemplos/task-state-running.json",
+      "command": {
+        "commandId": "command-stale-origin-001",
+        "kind": "apply-effect",
+        "expectedRevision": 5,
+        "expectedExecutionEpoch": 1,
+        "effectId": "effect-readme-modified",
+        "expectedOriginId": "origin-effect-readme-modified-00"
+      },
+      "expectedDecision": "rejected",
+      "expectedCode": "task-state-effect-origin-fenced"
+    },
+    {
+      "caseId": "reserve-rejects-duplicate-origin-id",
+      "currentStateExample": "../exemplos/task-state-running.json",
+      "command": {
+        "commandId": "command-duplicate-origin-001",
+        "kind": "reserve-effect",
+        "expectedRevision": 5,
+        "expectedExecutionEpoch": 1,
+        "effectId": "effect-another-intent-001",
+        "originId": "origin-effect-readme-modified-01"
+      },
+      "expectedDecision": "rejected",
+      "expectedCode": "task-state-origin-id-conflict"
+    },
+    {
+      "caseId": "reserve-new-origin-is-admitted-in-running-state",
+      "currentStateExample": "../exemplos/task-state-retry-running.json",
+      "command": {
+        "commandId": "command-reserve-new-origin-001",
+        "kind": "reserve-effect",
+        "expectedRevision": 9,
+        "expectedExecutionEpoch": 2,
+        "effectId": "effect-inspection-new-001",
+        "originId": "origin-effect-inspection-new-01"
+      },
+      "expectedDecision": "accepted",
+      "expectedCode": "task-state-command-admitted"
+    },
+    {
+      "caseId": "reserve-cannot-overlap-nonterminal-origin",
+      "currentStateExample": "../exemplos/task-state-running.json",
+      "command": {
+        "commandId": "command-overlap-origin-001",
+        "kind": "reserve-effect",
+        "expectedRevision": 5,
+        "expectedExecutionEpoch": 1,
+        "effectId": "effect-readme-modified",
+        "originId": "origin-effect-readme-modified-02"
+      },
+      "expectedDecision": "rejected",
+      "expectedCode": "task-state-effect-not-retryable"
+    },
+    {
+      "caseId": "applying-effect-must-be-reconciled-not-applied-again",
+      "currentStateExample": "../exemplos/task-state-running.json",
+      "statePatch": [
+        { "op": "replace", "path": "/stateRevision", "value": 6 },
+        { "op": "replace", "path": "/updatedAt", "value": "2026-08-30T09:30:31-03:00" },
+        { "op": "replace", "path": "/usage/activeDurationMs", "value": 31000 },
+        { "op": "replace", "path": "/ledger/effects/0/state", "value": "applying" },
+        { "op": "replace", "path": "/ledger/effects/0/updatedAt", "value": "2026-08-30T09:30:31-03:00" },
+        { "op": "replace", "path": "/ledger/effects/0/lastUpdatedRevision", "value": 6 },
+        { "op": "replace", "path": "/ledger/effects/0/executionOrigins/0/state", "value": "applying" },
+        { "op": "replace", "path": "/ledger/effects/0/executionOrigins/0/updatedAt", "value": "2026-08-30T09:30:31-03:00" },
+        { "op": "replace", "path": "/ledger/effects/0/executionOrigins/0/lastUpdatedRevision", "value": 6 }
+      ],
+      "command": {
+        "commandId": "command-reapply-inflight-effect-001",
+        "kind": "apply-effect",
+        "expectedRevision": 6,
+        "expectedExecutionEpoch": 1,
+        "effectId": "effect-readme-modified",
+        "expectedOriginId": "origin-effect-readme-modified-01"
+      },
+      "expectedDecision": "rejected",
+      "expectedCode": "task-state-effect-reconciliation-required"
+    },
+    {
+      "caseId": "start-attempt-requires-authorization-binding",
+      "currentStateExample": "../exemplos/task-state-ready.json",
+      "command": {
+        "commandId": "command-start-without-authorization-001",
+        "kind": "start-attempt",
+        "expectedRevision": 3,
+        "expectedExecutionEpoch": 1
+      },
+      "expectedDecision": "rejected",
+      "expectedCode": "task-state-authorization-binding-required"
+    },
+    {
+      "caseId": "start-attempt-rejects-other-enforcement",
+      "currentStateExample": "../exemplos/task-state-ready.json",
+      "command": {
+        "commandId": "command-start-other-enforcement-001",
+        "kind": "start-attempt",
+        "expectedRevision": 3,
+        "expectedExecutionEpoch": 1,
+        "authorizationEnforcementId": "authenf-other-plan-001",
+        "authorizationRecordFingerprint": {
+          "algorithm": "sha256-jcs-v1",
+          "value": "sha256:341e4942fa1751a6c0c4f854c5d1735de9acdba622921fbf7eb341c27a396cc9"
+        },
+        "observedAt": "2026-08-30T09:30:03.100-03:00"
+      },
+      "expectedDecision": "rejected",
+      "expectedCode": "task-state-authorization-binding-mismatch"
+    },
+    {
+      "caseId": "start-attempt-rejects-expired-authorization",
+      "currentStateExample": "../exemplos/task-state-ready.json",
+      "command": {
+        "commandId": "command-start-expired-authorization-001",
+        "kind": "start-attempt",
+        "expectedRevision": 3,
+        "expectedExecutionEpoch": 1,
+        "authorizationEnforcementId": "authenf-change-r1-001",
+        "authorizationRecordFingerprint": {
+          "algorithm": "sha256-jcs-v1",
+          "value": "sha256:341e4942fa1751a6c0c4f854c5d1735de9acdba622921fbf7eb341c27a396cc9"
+        },
+        "observedAt": "2026-08-30T09:35:00-03:00"
+      },
+      "expectedDecision": "rejected",
+      "expectedCode": "task-state-authorization-expired"
+    },
+    {
+      "caseId": "start-attempt-requires-persisted-enforcement",
+      "currentStateExample": "../exemplos/task-state-ready.json",
+      "command": {
+        "commandId": "command-start-without-record-001",
+        "kind": "start-attempt",
+        "expectedRevision": 3,
+        "expectedExecutionEpoch": 1,
+        "authorizationEnforcementId": "authenf-change-r1-001",
+        "authorizationRecordFingerprint": {
+          "algorithm": "sha256-jcs-v1",
+          "value": "sha256:341e4942fa1751a6c0c4f854c5d1735de9acdba622921fbf7eb341c27a396cc9"
+        },
+        "observedAt": "2026-08-30T09:30:03.100-03:00"
+      },
+      "expectedDecision": "rejected",
+      "expectedCode": "task-state-authorization-record-required"
+    },
+    {
+      "caseId": "dispatch-read-action-is-authorized",
+      "currentStateExample": "../exemplos/task-state-running.json",
+      "command": {
+        "commandId": "command-dispatch-read-authorized-001",
+        "kind": "dispatch-action",
+        "expectedRevision": 5,
+        "expectedExecutionEpoch": 1,
+        "authorizationEnforcementId": "authenf-change-r1-001",
+        "authorizationRecordFingerprint": {
+          "algorithm": "sha256-jcs-v1",
+          "value": "sha256:341e4942fa1751a6c0c4f854c5d1735de9acdba622921fbf7eb341c27a396cc9"
+        },
+        "observedAt": "2026-08-30T09:30:30.200-03:00",
+        "actionId": "action-read-readme",
+        "satisfiedControls": ["sanitize-output"]
+      },
+      "authorizationContext": {
+        "authorizationRequest": "../../contratos/exemplos/authorization-request-change-r1.json",
+        "authorizationDecision": "../../contratos/exemplos/authorization-decision-change-r1-permit.json",
+        "authorizationEnforcement": "../autorizacao/exemplos/authorization-enforcement-change-r1.json"
+      },
+      "expectedDecision": "accepted",
+      "expectedCode": "task-state-command-admitted"
+    },
+    {
+      "caseId": "dispatch-rejects-action-not-in-decision",
+      "currentStateExample": "../exemplos/task-state-running.json",
+      "command": {
+        "commandId": "command-dispatch-unlisted-action-001",
+        "kind": "dispatch-action",
+        "expectedRevision": 5,
+        "expectedExecutionEpoch": 1,
+        "authorizationEnforcementId": "authenf-change-r1-001",
+        "authorizationRecordFingerprint": {
+          "algorithm": "sha256-jcs-v1",
+          "value": "sha256:341e4942fa1751a6c0c4f854c5d1735de9acdba622921fbf7eb341c27a396cc9"
+        },
+        "observedAt": "2026-08-30T09:30:30.200-03:00",
+        "actionId": "action-not-in-authorized-plan",
+        "satisfiedControls": []
+      },
+      "authorizationContext": {
+        "authorizationRequest": "../../contratos/exemplos/authorization-request-change-r1.json",
+        "authorizationDecision": "../../contratos/exemplos/authorization-decision-change-r1-permit.json",
+        "authorizationEnforcement": "../autorizacao/exemplos/authorization-enforcement-change-r1.json"
+      },
+      "expectedDecision": "rejected",
+      "expectedCode": "task-state-action-not-authorized"
+    },
+    {
+      "caseId": "dispatch-requires-all-controls",
+      "currentStateExample": "../exemplos/task-state-running.json",
+      "command": {
+        "commandId": "command-dispatch-missing-control-001",
+        "kind": "dispatch-action",
+        "expectedRevision": 5,
+        "expectedExecutionEpoch": 1,
+        "authorizationEnforcementId": "authenf-change-r1-001",
+        "authorizationRecordFingerprint": {
+          "algorithm": "sha256-jcs-v1",
+          "value": "sha256:341e4942fa1751a6c0c4f854c5d1735de9acdba622921fbf7eb341c27a396cc9"
+        },
+        "observedAt": "2026-08-30T09:30:30.200-03:00",
+        "actionId": "action-read-readme",
+        "satisfiedControls": []
+      },
+      "authorizationContext": {
+        "authorizationRequest": "../../contratos/exemplos/authorization-request-change-r1.json",
+        "authorizationDecision": "../../contratos/exemplos/authorization-decision-change-r1-permit.json",
+        "authorizationEnforcement": "../autorizacao/exemplos/authorization-enforcement-change-r1.json"
+      },
+      "expectedDecision": "rejected",
+      "expectedCode": "task-state-authorization-control-missing"
+    },
+    {
+      "caseId": "journaled-dispatch-requires-revocation-check",
+      "currentStateExample": "../exemplos/task-state-running.json",
+      "command": {
+        "commandId": "command-dispatch-no-revocation-001",
+        "kind": "dispatch-action",
+        "expectedRevision": 5,
+        "expectedExecutionEpoch": 1,
+        "authorizationEnforcementId": "authenf-change-r1-001",
+        "authorizationRecordFingerprint": {
+          "algorithm": "sha256-jcs-v1",
+          "value": "sha256:341e4942fa1751a6c0c4f854c5d1735de9acdba622921fbf7eb341c27a396cc9"
+        },
+        "observedAt": "2026-08-30T09:30:30.200-03:00",
+        "actionId": "action-modify-readme-link",
+        "satisfiedControls": [
+          "checkpoint-before-mutation",
+          "verify-after-effect",
+          "reconcile-before-retry",
+          "revocation-check-before-effect"
+        ]
+      },
+      "authorizationContext": {
+        "authorizationRequest": "../../contratos/exemplos/authorization-request-change-r1.json",
+        "authorizationDecision": "../../contratos/exemplos/authorization-decision-change-r1-permit.json",
+        "authorizationEnforcement": "../autorizacao/exemplos/authorization-enforcement-change-r1.json"
+      },
+      "expectedDecision": "rejected",
+      "expectedCode": "task-state-revocation-check-required"
+    },
+    {
+      "caseId": "journaled-dispatch-rejects-revoked-authorization",
+      "currentStateExample": "../exemplos/task-state-running.json",
+      "command": {
+        "commandId": "command-dispatch-revoked-001",
+        "kind": "dispatch-action",
+        "expectedRevision": 5,
+        "expectedExecutionEpoch": 1,
+        "authorizationEnforcementId": "authenf-change-r1-001",
+        "authorizationRecordFingerprint": {
+          "algorithm": "sha256-jcs-v1",
+          "value": "sha256:341e4942fa1751a6c0c4f854c5d1735de9acdba622921fbf7eb341c27a396cc9"
+        },
+        "observedAt": "2026-08-30T09:30:30.200-03:00",
+        "actionId": "action-modify-readme-link",
+        "satisfiedControls": [
+          "checkpoint-before-mutation",
+          "verify-after-effect",
+          "reconcile-before-retry",
+          "revocation-check-before-effect"
+        ],
+        "revocationCheck": {
+          "statusRef": "omni-revocation-status-change-r1",
+          "status": "revoked",
+          "observedAt": "2026-08-30T09:30:30.200-03:00"
+        }
+      },
+      "authorizationContext": {
+        "authorizationRequest": "../../contratos/exemplos/authorization-request-change-r1.json",
+        "authorizationDecision": "../../contratos/exemplos/authorization-decision-change-r1-permit.json",
+        "authorizationEnforcement": "../autorizacao/exemplos/authorization-enforcement-change-r1.json"
+      },
+      "expectedDecision": "rejected",
+      "expectedCode": "task-state-authorization-revoked"
+    },
+    {
+      "caseId": "journaled-dispatch-with-fresh-revocation-check-is-authorized",
+      "currentStateExample": "../exemplos/task-state-running.json",
+      "command": {
+        "commandId": "command-dispatch-journaled-authorized-001",
+        "kind": "dispatch-action",
+        "expectedRevision": 5,
+        "expectedExecutionEpoch": 1,
+        "authorizationEnforcementId": "authenf-change-r1-001",
+        "authorizationRecordFingerprint": {
+          "algorithm": "sha256-jcs-v1",
+          "value": "sha256:341e4942fa1751a6c0c4f854c5d1735de9acdba622921fbf7eb341c27a396cc9"
+        },
+        "observedAt": "2026-08-30T09:30:30.200-03:00",
+        "actionId": "action-modify-readme-link",
+        "satisfiedControls": [
+          "checkpoint-before-mutation",
+          "verify-after-effect",
+          "reconcile-before-retry",
+          "revocation-check-before-effect"
+        ],
+        "revocationCheck": {
+          "statusRef": "omni-revocation-status-change-r1",
+          "status": "active",
+          "observedAt": "2026-08-30T09:30:30.200-03:00"
+        }
+      },
+      "authorizationContext": {
+        "authorizationRequest": "../../contratos/exemplos/authorization-request-change-r1.json",
+        "authorizationDecision": "../../contratos/exemplos/authorization-decision-change-r1-permit.json",
+        "authorizationEnforcement": "../autorizacao/exemplos/authorization-enforcement-change-r1.json"
+      },
+      "expectedDecision": "accepted",
+      "expectedCode": "task-state-command-admitted"
+    },
+    {
+      "caseId": "r1-authorization-cannot-start-r2-plan",
+      "currentStateExample": "../exemplos/task-state-change-retry-running.json",
+      "command": {
+        "commandId": "command-r1-authorization-on-r2-001",
+        "kind": "dispatch-action",
+        "expectedRevision": 10,
+        "expectedExecutionEpoch": 2,
+        "authorizationEnforcementId": "authenf-change-r1-001",
+        "authorizationRecordFingerprint": {
+          "algorithm": "sha256-jcs-v1",
+          "value": "sha256:341e4942fa1751a6c0c4f854c5d1735de9acdba622921fbf7eb341c27a396cc9"
+        },
+        "observedAt": "2026-08-30T09:31:11.100-03:00",
+        "actionId": "action-modify-readme-link",
+        "satisfiedControls": []
+      },
+      "expectedDecision": "rejected",
+      "expectedCode": "task-state-authorization-binding-mismatch"
+    }
+  ]
+}

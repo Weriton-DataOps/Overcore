@@ -1,0 +1,76 @@
+{
+  "contractVersion": "1.0",
+  "reportId": "readiness-invalid-missing-request",
+  "draftId": "draft-readme-contract-index",
+  "draftRevision": 2,
+  "draftFingerprint": {
+    "algorithm": "sha256-jcs-v1",
+    "value": "sha256:908f276173daf75f8c2b5ce4e364519681dfe8f9c742fd3878c71245d117fec0"
+  },
+  "generatedAt": "2026-08-30T13:10:00-03:00",
+  "status": "ready",
+  "readinessChecks": [
+    {
+      "checkId": "objective-clear",
+      "status": "passed",
+      "summary": "O objetivo está claro.",
+      "evidenceRefs": ["evidence-invalid-ready-shape"],
+      "decisionRefs": []
+    },
+    {
+      "checkId": "context-resolvable",
+      "status": "passed",
+      "summary": "O contexto está resolvido.",
+      "evidenceRefs": ["evidence-invalid-ready-shape"],
+      "decisionRefs": []
+    },
+    {
+      "checkId": "authority-sufficient",
+      "status": "passed",
+      "summary": "A autoridade foi conferida.",
+      "evidenceRefs": ["evidence-invalid-ready-shape"],
+      "decisionRefs": []
+    },
+    {
+      "checkId": "criteria-testable",
+      "status": "passed",
+      "summary": "Os critérios são verificáveis.",
+      "evidenceRefs": ["evidence-invalid-ready-shape"],
+      "decisionRefs": []
+    },
+    {
+      "checkId": "budget-feasible",
+      "status": "passed",
+      "summary": "O orçamento foi conferido.",
+      "evidenceRefs": ["evidence-invalid-ready-shape"],
+      "decisionRefs": []
+    },
+    {
+      "checkId": "output-defined",
+      "status": "passed",
+      "summary": "A saída foi definida.",
+      "evidenceRefs": ["evidence-invalid-ready-shape"],
+      "decisionRefs": []
+    },
+    {
+      "checkId": "rollback-ready",
+      "status": "passed",
+      "summary": "O rollback foi definido.",
+      "evidenceRefs": ["evidence-invalid-ready-shape"],
+      "decisionRefs": []
+    }
+  ],
+  "automaticDecisions": [],
+  "requiredDecisions": [],
+  "appliedDecisionAnswers": [],
+  "evidence": [
+    {
+      "evidenceId": "evidence-invalid-ready-shape",
+      "kind": "schema-validation",
+      "capturedAt": "2026-08-30T13:09:59-03:00",
+      "summary": "Todos os campos, exceto o request preparado, foram preenchidos para isolar a falha.",
+      "digest": "sha256:89d628f42baf7b3f066e05ad39bd38df404f27c824312586122e8194fe312a21",
+      "sourceRefs": []
+    }
+  ]
+}

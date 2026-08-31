@@ -1,0 +1,64 @@
+{
+  "contractVersion": "1.0",
+  "draftId": "draft-crossed-answer-example",
+  "revision": 2,
+  "idempotencyKey": "invalid-crossed-answer-example",
+  "executionIdempotencyKey": "execute-invalid-crossed-answer",
+  "createdAt": "2026-08-30T13:30:00-03:00",
+  "client": {
+    "id": "client-contract-test",
+    "kind": "cli"
+  },
+  "objective": "Demonstrar que uma resposta de outro draft não pode ser aplicada nesta tarefa.",
+  "context": {
+    "references": [],
+    "assumptions": []
+  },
+  "knownConstraints": [],
+  "knownAcceptanceCriteria": [],
+  "discoveryAuthority": {
+    "mode": "inspect-only",
+    "grants": []
+  },
+  "availableExecutionAuthority": {
+    "mode": "proceed-within-scope",
+    "grants": [],
+    "expansionBoundaries": []
+  },
+  "executionBudget": {
+    "source": {
+      "kind": "client-explicit",
+      "sourceId": "client-contract-test"
+    },
+    "limits": {
+      "maxDurationMs": 30000,
+      "maxAttempts": 1,
+      "maxParallelism": 1
+    }
+  },
+  "decisionAnswers": [
+    {
+      "answerId": "answer-crossed-report-example",
+      "decisionId": "decision-readme-scope",
+      "sourceReport": {
+        "reportId": "readiness-readme-decisions-001",
+        "draftRevision": 1,
+        "draftFingerprint": {
+          "algorithm": "sha256-jcs-v1",
+          "value": "sha256:9d48059c75e4892d9f8bc86d4f4aa2aacd4092e32bae11e6c440ba6a383b3eb4"
+        },
+        "reportFingerprint": {
+          "algorithm": "sha256-jcs-v1",
+          "value": "sha256:4e7a77181a56552e7f84727af864abb3dd0868f4a4d65076f88ae2a093be22cb"
+        }
+      },
+      "selectedOptionId": "option-add-contract-index",
+      "answeredAt": "2026-08-30T13:29:00-03:00",
+      "answeredBy": "owner-primary-user"
+    }
+  ],
+  "preflightBudget": {
+    "maxDurationMs": 30000,
+    "maxInspectionOperations": 2
+  }
+}

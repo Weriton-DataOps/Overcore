@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:overcore:internal-models:authorization-enforcement:v1",
+  "title": "OverCore Authorization Enforcement Record v1",
+  "description": "Registro persistente da decisão externa que habilita ou impede a ativação de uma revisão do plano.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "modelVersion",
+    "enforcementId",
+    "taskId",
+    "authorizationRequestBinding",
+    "authorizationDecisionBinding",
+    "requestBinding",
+    "planBinding",
+    "providerRef",
+    "status",
+    "evaluatedAt",
+    "expiresAt",
+    "actionGrants",
+    "activationEligible",
+    "recordFingerprint"
+  ],
+  "properties": {
+    "modelVersion": { "const": "1.0" },
+    "enforcementId": { "$ref": "#/$defs/identifier" },
+    "taskId": { "$ref": "#/$defs/identifier" },
+    "authorizationRequestBinding": { "$ref": "#/$defs/documentBinding" },
+    "authorizationDecisionBinding": { "$ref": "#/$defs/documentBinding" },
+    "requestBinding": { "$ref": "#/$defs/requestBinding" },
+    "planBinding": { "$ref": "#/$defs/planBinding" },
+    "providerRef": { "$ref": "#/$defs/identifier" },
+    "status": { "enum": ["authorized", "denied", "expired", "revoked", "superseded"] },
+    "evaluatedAt": { "$ref": "#/$defs/dateTime" },
+    "expiresAt": { "$ref": "#/$defs/dateTime" },
+    "lastRevocationCheckAt": { "$ref": "#/$defs/dateTime" },
+    "actionGrants": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": { "$ref": "#/$defs/actionGrant" }
+    },
+    "activationEligible": { "type": "boolean" },
+    "activatedAtStateRevision": { "type": "integer", "minimum": 1 },
+    "supersededByEnforcementRef": { "$ref": "#/$defs/identifier" },
+    "recordFingerprint": { "$ref": "#/$defs/fingerprint" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "status": { "const": "authorized" } },
+        "required": ["status"]
+      },
+      "then": {
+        "properties": {
+          "activationEligible": { "const": true },
+          "actionGrants": {
+            "items": {
+              "properties": { "outcome": { "const": "permit" } },
+              "required": ["outcome"]
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": { "activationEligible": { "const": false } },
+        "not": { "required": ["activatedAtStateRevision"] }
+      }
+    },
+    {
+      "if": {
+        "properties": { "status": { "const": "superseded" } },
+        "required": ["status"]
+      },
+      "then": { "required": ["supersededByEnforcementRef"] },
+      "else": { "not": { "required": ["supersededByEnforcementRef"] } }
+    }
+  ],
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$"
+    },
+    "dateTime": { "type": "string", "format": "date-time" },
+    "sha256": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "fingerprint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "value"],
+      "properties": {
+        "algorithm": { "const": "sha256-jcs-v1" },
+        "value": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "documentBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["documentId", "fingerprint"],
+      "properties": {
+        "documentId": { "$ref": "#/$defs/identifier" },
+        "fingerprint": { "$ref": "#/$defs/fingerprint" }
+      }
+    },
+    "requestBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requestId", "requestFingerprint"],
+      "properties": {
+        "requestId": { "$ref": "#/$defs/identifier" },
+        "requestFingerprint": { "$ref": "#/$defs/fingerprint" }
+      }
+    },
+    "planBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["planId", "planRevision", "planFingerprint", "strategyFingerprint"],
+      "properties": {
+        "planId": { "$ref": "#/$defs/identifier" },
+        "planRevision": { "type": "integer", "minimum": 1, "maximum": 20 },
+        "planFingerprint": { "$ref": "#/$defs/fingerprint" },
+        "strategyFingerprint": { "$ref": "#/$defs/fingerprint" }
+      }
+    },
+    "control": {
+      "enum": [
+        "checkpoint-before-mutation",
+        "verify-after-effect",
+        "reconcile-before-retry",
+        "revocation-check-before-effect",
+        "sanitize-output",
+        "no-secret-materialization"
+      ]
+    },
+    "actionGrant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actionId", "outcome", "requiredControls"],
+      "properties": {
+        "actionId": { "$ref": "#/$defs/identifier" },
+        "outcome": { "enum": ["permit", "deny"] },
+        "requiredControls": {
+          "type": "array",
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/control" }
+        }
+      }
+    }
+  }
+}

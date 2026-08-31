@@ -1,0 +1,124 @@
+{
+  "contractVersion": "1.0",
+  "draftId": "draft-readme-contract-index",
+  "revision": 1,
+  "idempotencyKey": "prepare-readme-contract-index",
+  "executionIdempotencyKey": "execute-readme-contract-index",
+  "correlationId": "corr-readme-contract-index",
+  "createdAt": "2026-08-30T12:00:00-03:00",
+  "client": {
+    "id": "client-primary-assistant",
+    "kind": "assistant"
+  },
+  "objective": "Organizar no README o acesso à documentação dos contratos do OverCore.",
+  "context": {
+    "summary": "O README já possui uma seção sobre a fundação contratual, mas o alcance da reorganização ainda não foi definido.",
+    "references": [
+      {
+        "refId": "ref-overcore-readme",
+        "uri": "file:///C:/Users/wp.santos/Documents/Overcore/README.md",
+        "kind": "file",
+        "sensitivity": "internal"
+      },
+      {
+        "refId": "ref-contract-docs-directory",
+        "uri": "file:///C:/Users/wp.santos/Documents/Overcore/docs/contratos",
+        "kind": "workspace",
+        "sensitivity": "internal"
+      }
+    ],
+    "assumptions": [
+      {
+        "id": "assumption-scope-undecided",
+        "statement": "Organizar pode significar apenas criar um índice ou também reestruturar o texto existente.",
+        "impactIfFalse": "O Preflight pode eliminar a decisão de escopo e preparar diretamente a tarefa."
+      }
+    ]
+  },
+  "knownConstraints": [
+    {
+      "id": "constraint-preserve-readme",
+      "kind": "quality",
+      "description": "O conteúdo útil já existente permanece preservado.",
+      "sourceRef": "ref-overcore-readme"
+    }
+  ],
+  "knownAcceptanceCriteria": [
+    {
+      "id": "criterion-links-resolve",
+      "description": "Os links incluídos resolvem para documentos existentes.",
+      "verificationHint": "inspection"
+    }
+  ],
+  "discoveryAuthority": {
+    "mode": "inspect-only",
+    "grants": [
+      {
+        "resourceRef": "ref-overcore-readme",
+        "operations": [
+          {
+            "name": "filesystem.read",
+            "effect": "read"
+          },
+          {
+            "name": "markdown.inspect",
+            "effect": "read"
+          }
+        ]
+      },
+      {
+        "resourceRef": "ref-contract-docs-directory",
+        "operations": [
+          {
+            "name": "filesystem.read",
+            "effect": "read"
+          }
+        ]
+      }
+    ]
+  },
+  "availableExecutionAuthority": {
+    "mode": "proceed-within-scope",
+    "grants": [
+      {
+        "resourceRef": "ref-overcore-readme",
+        "operations": ["filesystem.read", "filesystem.modify"]
+      },
+      {
+        "resourceRef": "ref-contract-docs-directory",
+        "operations": ["filesystem.read"]
+      }
+    ],
+    "expansionBoundaries": [
+      "destructive",
+      "irreversible",
+      "financial",
+      "privilege-expansion",
+      "external-publication",
+      "secret-access"
+    ],
+    "expiresAt": "2026-08-30T14:00:00-03:00"
+  },
+  "executionBudget": {
+    "source": {
+      "kind": "policy-default",
+      "sourceId": "policy-local-change-budget",
+      "sourceVersion": "1.0",
+      "sourceDigest": "sha256:65ac6b6b5ab1025f8ab9e01a26ac1d5e82706cb274a2ada5fa393e68a12a1157"
+    },
+    "limits": {
+      "maxDurationMs": 300000,
+      "maxAttempts": 2,
+      "maxParallelism": 1
+    }
+  },
+  "decisionAnswers": [],
+  "preflightBudget": {
+    "maxDurationMs": 120000,
+    "maxInspectionOperations": 20
+  },
+  "executionHints": {
+    "priority": "normal",
+    "expectedOutputKind": "repository-change"
+  }
+}

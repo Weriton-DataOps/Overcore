@@ -1,0 +1,107 @@
+{
+  "modelVersion": "1.0",
+  "taskId": "task-20260830-inspection-001",
+  "requestBinding": {
+    "requestId": "req-20260830-inspection-001",
+    "requestFingerprint": {
+      "algorithm": "sha256-jcs-v1",
+      "value": "sha256:33fcb5a04d18b6d00536ea6085bc36838b350ddd3058041ea741005069d306d6"
+    }
+  },
+  "acceptedAt": "2026-08-30T09:00:00-03:00",
+  "updatedAt": "2026-08-30T09:01:00-03:00",
+  "stateRevision": 3,
+  "executionEpoch": 1,
+  "lifecycle": {
+    "state": "blocked",
+    "enteredAt": "2026-08-30T09:01:00-03:00",
+    "lastTransitionId": "transition-blocked-001"
+  },
+  "criterionProgress": [
+    {
+      "criterionId": "criterion-json-readable",
+      "status": "not-run",
+      "evidenceRefs": []
+    },
+    {
+      "criterionId": "criterion-contract-closed",
+      "status": "not-run",
+      "evidenceRefs": []
+    }
+  ],
+  "activeBlockRef": "block-resource-unavailable-001",
+  "usage": {
+    "attemptCount": 0,
+    "maxParallelismObserved": 0,
+    "activeDurationMs": 60000
+  },
+  "ledger": {
+    "transitions": [
+      {
+        "transitionId": "transition-accepted-inspection-001",
+        "sequence": 1,
+        "stateRevision": 1,
+        "from": null,
+        "to": "accepted",
+        "at": "2026-08-30T09:00:00-03:00",
+        "triggerKind": "admission",
+        "triggerRef": "req-20260830-inspection-001",
+        "evidenceRefs": []
+      },
+      {
+        "transitionId": "transition-planning-inspection-001",
+        "sequence": 2,
+        "stateRevision": 2,
+        "from": "accepted",
+        "to": "planning",
+        "at": "2026-08-30T09:00:01-03:00",
+        "triggerKind": "planning-started",
+        "evidenceRefs": []
+      },
+      {
+        "transitionId": "transition-blocked-001",
+        "sequence": 3,
+        "stateRevision": 3,
+        "from": "planning",
+        "to": "blocked",
+        "at": "2026-08-30T09:01:00-03:00",
+        "triggerKind": "block-detected",
+        "triggerRef": "block-resource-unavailable-001",
+        "resultRef": "result-inspection-blocked-001",
+        "evidenceRefs": ["evidence-repository-unavailable"]
+      }
+    ],
+    "attempts": [],
+    "effects": [],
+    "blocks": [
+      {
+        "blockId": "block-resource-unavailable-001",
+        "blockingResultId": "result-inspection-blocked-001",
+        "blockedAtRevision": 3,
+        "blockedFrom": "planning",
+        "resumeTarget": "planning",
+        "mode": "resume-same-request",
+        "condition": "A referência original do repositório precisa voltar a ser resolvível.",
+        "evidenceRefs": ["evidence-repository-unavailable"],
+        "createdAt": "2026-08-30T09:00:59-03:00"
+      }
+    ],
+    "checkpoints": [],
+    "evidenceRefs": ["evidence-repository-unavailable"],
+    "artifactRefs": [],
+    "resultRefs": [
+      {
+        "resultId": "result-inspection-blocked-001",
+        "stateRevision": 3,
+        "transitionId": "transition-blocked-001",
+        "emissionSequence": 1,
+        "status": "blocked",
+        "resultFingerprint": {
+          "algorithm": "sha256-jcs-v1",
+          "value": "sha256:fb1205a168cb04a507e7392eb8cf35422ff28ac304ead1021ccc81a1d2036a42"
+        },
+        "emittedAt": "2026-08-30T09:01:00-03:00"
+      }
+    ]
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "contractVersion": "1.0",
+  "reportId": "readiness-invalid-incomplete-checks",
+  "draftId": "draft-readme-contract-index",
+  "draftRevision": 1,
+  "draftFingerprint": {
+    "algorithm": "sha256-jcs-v1",
+    "value": "sha256:9d48059c75e4892d9f8bc86d4f4aa2aacd4092e32bae11e6c440ba6a383b3eb4"
+  },
+  "generatedAt": "2026-08-30T13:40:00-03:00",
+  "status": "decisions-required",
+  "readinessChecks": [
+    {
+      "checkId": "objective-clear",
+      "status": "needs-decision",
+      "summary": "Somente um dos sete checks foi emitido.",
+      "evidenceRefs": ["evidence-incomplete-checks"],
+      "decisionRefs": ["decision-incomplete-checks"]
+    }
+  ],
+  "automaticDecisions": [],
+  "requiredDecisions": [
+    {
+      "decisionId": "decision-incomplete-checks",
+      "topic": "scope",
+      "question": "Qual escopo deve ser aplicado?",
+      "reason": "O exemplo precisa manter uma decisão válida para isolar a lista incompleta.",
+      "options": [
+        {
+          "optionId": "option-incomplete-small",
+          "label": "Pequeno",
+          "consequence": "Mantém o escopo pequeno."
+        },
+        {
+          "optionId": "option-incomplete-large",
+          "label": "Amplo",
+          "consequence": "Amplia o escopo."
+        }
+      ],
+      "recommendedOptionId": "option-incomplete-small",
+      "impactIfUnresolved": "A tarefa não fica pronta.",
+      "evidenceRefs": ["evidence-incomplete-checks"]
+    }
+  ],
+  "appliedDecisionAnswers": [],
+  "evidence": [
+    {
+      "evidenceId": "evidence-incomplete-checks",
+      "kind": "schema-validation",
+      "capturedAt": "2026-08-30T13:39:59-03:00",
+      "summary": "O caso contém propositalmente apenas um readiness check.",
+      "digest": "sha256:aab6abf66cd2ad7ab0310585e558b2fc8319b3b750061ff12e92b07c0842bbd8",
+      "sourceRefs": []
+    }
+  ]
+}

@@ -1,0 +1,61 @@
+{
+  "contractVersion": "1.0",
+  "resultId": "result-inspection-failed-001",
+  "requestId": "req-20260830-inspection-001",
+  "requestFingerprint": {
+    "algorithm": "sha256-jcs-v1",
+    "value": "sha256:33fcb5a04d18b6d00536ea6085bc36838b350ddd3058041ea741005069d306d6"
+  },
+  "taskId": "task-20260830-inspection-001",
+  "stateRef": {
+    "stateRevision": 14,
+    "transitionId": "transition-failed-001",
+    "emissionSequence": 1
+  },
+  "reportedAt": "2026-08-30T09:04:00-03:00",
+  "status": "failed",
+  "summary": "As duas tentativas de validar o JSON terminaram com a mesma falha verificável e o orçamento de tentativas foi consumido.",
+  "criteria": [
+    {
+      "criterionId": "criterion-json-readable",
+      "status": "failed",
+      "evidenceRefs": ["evidence-json-parse-failure"]
+    },
+    {
+      "criterionId": "criterion-contract-closed",
+      "status": "not-run",
+      "evidenceRefs": []
+    }
+  ],
+  "evidence": [
+    {
+      "evidenceId": "evidence-json-parse-failure",
+      "kind": "test-result",
+      "capturedAt": "2026-08-30T09:03:59-03:00",
+      "summary": "A segunda estratégia de parsing também terminou sem produzir JSON válido.",
+      "digest": "sha256:bf04ca2d91d363344ee7cfde69d4addbe2071d87dbd262a12142d925582b1ceb",
+      "artifactRefs": [],
+      "origin": {
+        "kind": "runtime",
+        "id": "overcore-runtime-v1"
+      }
+    }
+  ],
+  "artifacts": [],
+  "effects": [],
+  "execution": {
+    "attemptCount": 2,
+    "maxParallelismObserved": 1,
+    "durationMs": 240000,
+    "startedAt": "2026-08-30T09:00:05-03:00",
+    "finishedAt": "2026-08-30T09:04:00-03:00",
+    "lastTransitionAt": "2026-08-30T09:04:00-03:00"
+  },
+  "failure": {
+    "code": "failure-parse-exhausted",
+    "category": "verification",
+    "retryable": false,
+    "summary": "A verificação permaneceu inválida após duas estratégias distintas.",
+    "evidenceRefs": ["evidence-json-parse-failure"]
+  }
+}

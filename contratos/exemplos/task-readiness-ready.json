@@ -1,0 +1,352 @@
+{
+  "contractVersion": "1.0",
+  "reportId": "readiness-readme-ready-002",
+  "draftId": "draft-readme-contract-index",
+  "draftRevision": 2,
+  "draftFingerprint": {
+    "algorithm": "sha256-jcs-v1",
+    "value": "sha256:908f276173daf75f8c2b5ce4e364519681dfe8f9c742fd3878c71245d117fec0"
+  },
+  "generatedAt": "2026-08-30T12:07:00-03:00",
+  "status": "ready",
+  "readinessChecks": [
+    {
+      "checkId": "objective-clear",
+      "status": "passed",
+      "summary": "A resposta limitou o trabalho à criação de um índice, preservando a estrutura atual.",
+      "evidenceRefs": ["evidence-resolved-scope"],
+      "decisionRefs": []
+    },
+    {
+      "checkId": "context-resolvable",
+      "status": "passed",
+      "summary": "O README e a documentação permanecem acessíveis.",
+      "evidenceRefs": ["evidence-ready-inspection"],
+      "decisionRefs": []
+    },
+    {
+      "checkId": "authority-sufficient",
+      "status": "passed",
+      "summary": "A autoridade cobre exatamente a leitura da documentação e a modificação do README.",
+      "evidenceRefs": ["evidence-ready-inspection"],
+      "decisionRefs": []
+    },
+    {
+      "checkId": "criteria-testable",
+      "status": "passed",
+      "summary": "Links e limitação do diff possuem verificações observáveis.",
+      "evidenceRefs": ["evidence-resolved-scope"],
+      "decisionRefs": []
+    },
+    {
+      "checkId": "budget-feasible",
+      "status": "passed",
+      "summary": "A alteração limitada cabe no orçamento proposto de uma execução curta.",
+      "evidenceRefs": ["evidence-budget-policy-ready"],
+      "decisionRefs": []
+    },
+    {
+      "checkId": "output-defined",
+      "status": "passed",
+      "summary": "A entrega será uma mudança Markdown no README.",
+      "evidenceRefs": ["evidence-resolved-scope"],
+      "decisionRefs": []
+    },
+    {
+      "checkId": "rollback-ready",
+      "status": "passed",
+      "summary": "A restauração do arquivo anterior desfaz integralmente a alteração.",
+      "evidenceRefs": ["evidence-ready-inspection"],
+      "decisionRefs": []
+    }
+  ],
+  "automaticDecisions": [
+    {
+      "decisionId": "decision-relative-links-v2",
+      "topic": "behavior",
+      "decision": "Usar links Markdown relativos para documentos internos.",
+      "reason": "O padrão observado permanece portátil e compatível com o README.",
+      "reversible": true,
+      "rollback": "Remover os links acrescentados restaura o estado anterior.",
+      "evidenceRefs": ["evidence-ready-inspection"]
+    }
+  ],
+  "requiredDecisions": [],
+  "appliedDecisionAnswers": [
+    {
+      "answerId": "answer-readme-scope-index",
+      "decisionId": "decision-readme-scope",
+      "sourceReportId": "readiness-readme-decisions-001"
+    }
+  ],
+  "evidence": [
+    {
+      "evidenceId": "evidence-resolved-scope",
+      "kind": "policy-check",
+      "capturedAt": "2026-08-30T12:06:30-03:00",
+      "summary": "A revisão 2 selecionou explicitamente a opção de adicionar somente o índice.",
+      "digest": "sha256:b05ada83de1860b76b335ea18dd7f127a16afae9763861d131b17a4702512c12",
+      "sourceRefs": []
+    },
+    {
+      "evidenceId": "evidence-ready-inspection",
+      "kind": "inspection",
+      "capturedAt": "2026-08-30T12:06:40-03:00",
+      "summary": "O contexto, a autoridade e os destinos foram reinspecionados após a resposta.",
+      "digest": "sha256:f91d585ab22c2f94da617155f8d0eb5fa7cb2fe5da6ba4ad2d41a8129e14cf2f",
+      "sourceRefs": ["ref-overcore-readme", "ref-contract-docs-directory"]
+    },
+    {
+      "evidenceId": "evidence-budget-policy-ready",
+      "kind": "policy-check",
+      "capturedAt": "2026-08-30T12:06:45-03:00",
+      "summary": "O orçamento preparado preserva exatamente os limites da política registrada no draft.",
+      "digest": "sha256:65ac6b6b5ab1025f8ab9e01a26ac1d5e82706cb274a2ada5fa393e68a12a1157",
+      "sourceRefs": []
+    }
+  ],
+  "preparedRequest": {
+    "contractVersion": "1.0",
+    "requestId": "req-20260830-readme-index-001",
+    "idempotencyKey": "execute-readme-contract-index",
+    "correlationId": "corr-readme-contract-index",
+    "createdAt": "2026-08-30T12:07:00-03:00",
+    "preflight": {
+      "draftId": "draft-readme-contract-index",
+      "draftRevision": 2,
+      "draftFingerprint": {
+        "algorithm": "sha256-jcs-v1",
+        "value": "sha256:908f276173daf75f8c2b5ce4e364519681dfe8f9c742fd3878c71245d117fec0"
+      },
+      "readinessReportId": "readiness-readme-ready-002"
+    },
+    "client": {
+      "id": "client-primary-assistant",
+      "kind": "assistant"
+    },
+    "objective": "Adicionar ao README um índice de links relativos para a documentação dos contratos, preservando a estrutura e o conteúdo existentes.",
+    "priority": "normal",
+    "context": {
+      "summary": "A decisão de escopo selecionou uma alteração mínima limitada ao índice contratual.",
+      "references": [
+        {
+          "refId": "ref-overcore-readme",
+          "uri": "file:///C:/Users/wp.santos/Documents/Overcore/README.md",
+          "kind": "file",
+          "sensitivity": "internal"
+        },
+        {
+          "refId": "ref-contract-docs-directory",
+          "uri": "file:///C:/Users/wp.santos/Documents/Overcore/docs/contratos",
+          "kind": "workspace",
+          "sensitivity": "internal"
+        }
+      ],
+      "assumptions": []
+    },
+    "constraints": [
+      {
+        "id": "constraint-preserve-readme",
+        "kind": "quality",
+        "description": "O conteúdo útil já existente permanece preservado.",
+        "sourceRef": "ref-overcore-readme"
+      },
+      {
+        "id": "constraint-index-only",
+        "kind": "business",
+        "description": "A mudança fica limitada à criação do índice, sem reestruturar as seções existentes.",
+        "sourceRef": "ref-overcore-readme"
+      }
+    ],
+    "authority": {
+      "mode": "proceed-within-scope",
+      "grants": [
+        {
+          "resourceRef": "ref-overcore-readme",
+          "operations": ["filesystem.read", "filesystem.modify"]
+        },
+        {
+          "resourceRef": "ref-contract-docs-directory",
+          "operations": ["filesystem.read"]
+        }
+      ],
+      "expansionBoundaries": [
+        "destructive",
+        "irreversible",
+        "financial",
+        "privilege-expansion",
+        "external-publication",
+        "secret-access"
+      ],
+      "expiresAt": "2026-08-30T14:00:00-03:00"
+    },
+    "acceptanceCriteria": [
+      {
+        "id": "criterion-links-resolve",
+        "description": "Todos os links do novo índice resolvem para documentos existentes.",
+        "verification": {
+          "method": "inspection",
+          "expected": "Cada destino relativo existe e permanece dentro do repositório."
+        }
+      },
+      {
+        "id": "criterion-index-scope",
+        "description": "A alteração fica limitada ao índice contratado.",
+        "verification": {
+          "method": "command",
+          "expected": "A inspeção do diff mostra apenas a adição do índice no README."
+        }
+      }
+    ],
+    "budget": {
+      "maxDurationMs": 300000,
+      "maxAttempts": 2,
+      "maxParallelism": 1
+    },
+    "expectedOutput": {
+      "kind": "repository-change",
+      "mediaType": "text/markdown",
+      "destinationRef": "ref-overcore-readme"
+    }
+  },
+  "preparedRequestFingerprint": {
+    "algorithm": "sha256-jcs-v1",
+    "value": "sha256:0528d71d30b78acb859df5cebd43ff80e6227b56b4aebd2dcafffaa62bfc67ea"
+  },
+  "requestDerivations": [
+    {
+      "targetPointer": "/idempotencyKey",
+      "rationale": "A chave executável foi fornecida separadamente da chave de preparação.",
+      "sources": [
+        {
+          "kind": "draft-field",
+          "pointer": "/executionIdempotencyKey"
+        }
+      ]
+    },
+    {
+      "targetPointer": "/objective",
+      "rationale": "O objetivo foi refinado pela opção de escopo escolhida, sem trocar a intenção original.",
+      "sources": [
+        {
+          "kind": "draft-field",
+          "pointer": "/objective"
+        },
+        {
+          "kind": "decision-answer",
+          "refId": "answer-readme-scope-index"
+        }
+      ]
+    },
+    {
+      "targetPointer": "/priority",
+      "rationale": "A prioridade preserva o hint explícito do draft.",
+      "sources": [
+        {
+          "kind": "draft-field",
+          "pointer": "/executionHints/priority"
+        }
+      ]
+    },
+    {
+      "targetPointer": "/context",
+      "rationale": "O contexto preserva as referências e resume a decisão já comprovada.",
+      "sources": [
+        {
+          "kind": "draft-field",
+          "pointer": "/context"
+        },
+        {
+          "kind": "decision-answer",
+          "refId": "answer-readme-scope-index"
+        },
+        {
+          "kind": "evidence",
+          "refId": "evidence-ready-inspection"
+        }
+      ]
+    },
+    {
+      "targetPointer": "/constraints",
+      "rationale": "A constraint conhecida foi preservada e a limitação de escopo veio da resposta.",
+      "sources": [
+        {
+          "kind": "draft-field",
+          "pointer": "/knownConstraints"
+        },
+        {
+          "kind": "decision-answer",
+          "refId": "answer-readme-scope-index"
+        }
+      ]
+    },
+    {
+      "targetPointer": "/authority",
+      "rationale": "A autoridade preparada é uma projeção sem ampliação da autoridade disponível.",
+      "sources": [
+        {
+          "kind": "draft-field",
+          "pointer": "/availableExecutionAuthority"
+        }
+      ]
+    },
+    {
+      "targetPointer": "/acceptanceCriteria",
+      "rationale": "O critério conhecido foi tornado executável e o critério de escopo veio da resposta.",
+      "sources": [
+        {
+          "kind": "draft-field",
+          "pointer": "/knownAcceptanceCriteria"
+        },
+        {
+          "kind": "decision-answer",
+          "refId": "answer-readme-scope-index"
+        },
+        {
+          "kind": "automatic-decision",
+          "refId": "decision-relative-links-v2"
+        },
+        {
+          "kind": "evidence",
+          "refId": "evidence-ready-inspection"
+        }
+      ]
+    },
+    {
+      "targetPointer": "/budget",
+      "rationale": "O orçamento final preserva o envelope e a fonte registrados no draft.",
+      "sources": [
+        {
+          "kind": "draft-field",
+          "pointer": "/executionBudget"
+        },
+        {
+          "kind": "evidence",
+          "refId": "evidence-budget-policy-ready"
+        }
+      ]
+    },
+    {
+      "targetPointer": "/expectedOutput",
+      "rationale": "O tipo veio do hint e os detalhes foram resolvidos pela decisão e inspeção.",
+      "sources": [
+        {
+          "kind": "draft-field",
+          "pointer": "/executionHints/expectedOutputKind"
+        },
+        {
+          "kind": "decision-answer",
+          "refId": "answer-readme-scope-index"
+        },
+        {
+          "kind": "automatic-decision",
+          "refId": "decision-relative-links-v2"
+        },
+        {
+          "kind": "evidence",
+          "refId": "evidence-ready-inspection"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,124 @@
+{
+  "contractVersion": "1.0",
+  "reportId": "readiness-readme-decisions-001",
+  "draftId": "draft-readme-contract-index",
+  "draftRevision": 1,
+  "draftFingerprint": {
+    "algorithm": "sha256-jcs-v1",
+    "value": "sha256:9d48059c75e4892d9f8bc86d4f4aa2aacd4092e32bae11e6c440ba6a383b3eb4"
+  },
+  "generatedAt": "2026-08-30T12:02:00-03:00",
+  "status": "decisions-required",
+  "readinessChecks": [
+    {
+      "checkId": "objective-clear",
+      "status": "needs-decision",
+      "summary": "O resultado desejado está claro, mas o alcance de organizar ainda possui duas interpretações materiais.",
+      "evidenceRefs": ["evidence-readme-patterns"],
+      "decisionRefs": ["decision-readme-scope"]
+    },
+    {
+      "checkId": "context-resolvable",
+      "status": "passed",
+      "summary": "O README e a pasta de documentação foram resolvidos por leitura.",
+      "evidenceRefs": ["evidence-readme-patterns"],
+      "decisionRefs": []
+    },
+    {
+      "checkId": "authority-sufficient",
+      "status": "passed",
+      "summary": "A autoridade disponível cobre leitura da documentação e modificação limitada do README.",
+      "evidenceRefs": ["evidence-authority-scope"],
+      "decisionRefs": []
+    },
+    {
+      "checkId": "criteria-testable",
+      "status": "needs-decision",
+      "summary": "A validação dos links é conhecida; o critério de escopo depende da opção escolhida.",
+      "evidenceRefs": ["evidence-readme-patterns"],
+      "decisionRefs": ["decision-readme-scope"]
+    },
+    {
+      "checkId": "budget-feasible",
+      "status": "passed",
+      "summary": "As duas opções conhecidas cabem numa execução curta, embora possuam escopos diferentes.",
+      "evidenceRefs": ["evidence-budget-policy"],
+      "decisionRefs": []
+    },
+    {
+      "checkId": "output-defined",
+      "status": "passed",
+      "summary": "A entrega será uma alteração de repositório limitada ao README.",
+      "evidenceRefs": ["evidence-authority-scope"],
+      "decisionRefs": []
+    },
+    {
+      "checkId": "rollback-ready",
+      "status": "passed",
+      "summary": "As opções são reversíveis por restauração do arquivo anterior.",
+      "evidenceRefs": ["evidence-authority-scope"],
+      "decisionRefs": []
+    }
+  ],
+  "automaticDecisions": [
+    {
+      "decisionId": "decision-relative-links",
+      "topic": "behavior",
+      "decision": "Usar links Markdown relativos para documentos internos.",
+      "reason": "O padrão atual é portátil dentro do repositório e foi observado no README.",
+      "reversible": true,
+      "rollback": "Remover os links acrescentados restaura o estado anterior sem afetar os documentos.",
+      "evidenceRefs": ["evidence-readme-patterns"]
+    }
+  ],
+  "requiredDecisions": [
+    {
+      "decisionId": "decision-readme-scope",
+      "topic": "scope",
+      "question": "Qual deve ser o alcance da organização dos contratos no README?",
+      "reason": "O comando permite uma alteração mínima ou uma reestruturação maior, com diffs e riscos diferentes.",
+      "options": [
+        {
+          "optionId": "option-add-contract-index",
+          "label": "Adicionar somente um índice",
+          "consequence": "Mudança pequena, preserva a estrutura e apenas centraliza os links existentes."
+        },
+        {
+          "optionId": "option-restructure-contract-section",
+          "label": "Reestruturar a seção contratual",
+          "consequence": "Melhora a organização visual, mas amplia o diff e exige revisar o texto atual."
+        }
+      ],
+      "recommendedOptionId": "option-add-contract-index",
+      "impactIfUnresolved": "A execução não começa, evitando escolher silenciosamente um escopo maior que o desejado.",
+      "evidenceRefs": ["evidence-readme-patterns"]
+    }
+  ],
+  "appliedDecisionAnswers": [],
+  "evidence": [
+    {
+      "evidenceId": "evidence-readme-patterns",
+      "kind": "inspection",
+      "capturedAt": "2026-08-30T12:01:30-03:00",
+      "summary": "O README usa links relativos e já possui conteúdo contratual que pode ser preservado.",
+      "digest": "sha256:813b19ce28baded6d39e12092115a1ad60bf87066518bbbd076e87f8bfffdf5b",
+      "sourceRefs": ["ref-overcore-readme", "ref-contract-docs-directory"]
+    },
+    {
+      "evidenceId": "evidence-authority-scope",
+      "kind": "policy-check",
+      "capturedAt": "2026-08-30T12:01:40-03:00",
+      "summary": "As concessões disponíveis cobrem leitura e modificação do README, sem publicação externa.",
+      "digest": "sha256:151a02aef6f2ad07b0a67afc21ec5a73e7ca5de75599c546f9c26ec40d4507e6",
+      "sourceRefs": ["ref-overcore-readme"]
+    },
+    {
+      "evidenceId": "evidence-budget-policy",
+      "kind": "policy-check",
+      "capturedAt": "2026-08-30T12:01:45-03:00",
+      "summary": "A política imutável de orçamento limita esta execução a 300000 ms, duas tentativas e paralelismo um.",
+      "digest": "sha256:65ac6b6b5ab1025f8ab9e01a26ac1d5e82706cb274a2ada5fa393e68a12a1157",
+      "sourceRefs": []
+    }
+  ]
+}

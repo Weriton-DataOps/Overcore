@@ -1,0 +1,364 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:overcore:contracts:task-request:v1",
+  "title": "OverCore TaskRequest v1",
+  "description": "Tarefa pronta, imutável e admitida somente após o Preflight do Task Manager.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion",
+    "requestId",
+    "idempotencyKey",
+    "createdAt",
+    "preflight",
+    "client",
+    "objective",
+    "priority",
+    "context",
+    "constraints",
+    "authority",
+    "acceptanceCriteria",
+    "budget",
+    "expectedOutput"
+  ],
+  "properties": {
+    "contractVersion": {
+      "const": "1.0"
+    },
+    "requestId": {
+      "$ref": "#/$defs/identifier"
+    },
+    "idempotencyKey": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 256
+    },
+    "correlationId": {
+      "$ref": "#/$defs/identifier"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "preflight": {
+      "$ref": "#/$defs/preflightOrigin"
+    },
+    "client": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "kind": {
+          "enum": ["assistant", "cli", "api", "automation", "service", "other"]
+        }
+      }
+    },
+    "objective": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 4000
+    },
+    "priority": {
+      "enum": ["low", "normal", "high", "urgent"]
+    },
+    "deadline": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["references", "assumptions"],
+      "properties": {
+        "summary": {
+          "type": "string",
+          "maxLength": 8000
+        },
+        "references": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/contextReference"
+          }
+        },
+        "assumptions": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/assumption"
+          }
+        }
+      }
+    },
+    "constraints": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "$ref": "#/$defs/constraint"
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "grants", "expansionBoundaries"],
+      "properties": {
+        "mode": {
+          "const": "proceed-within-scope"
+        },
+        "grants": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/authorityGrant"
+          }
+        },
+        "expansionBoundaries": {
+          "type": "array",
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "destructive",
+              "irreversible",
+              "financial",
+              "privilege-expansion",
+              "external-publication",
+              "secret-access"
+            ]
+          }
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "acceptanceCriteria": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {
+        "$ref": "#/$defs/acceptanceCriterion"
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxDurationMs", "maxAttempts", "maxParallelism"],
+      "properties": {
+        "maxDurationMs": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 604800000
+        },
+        "maxAttempts": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20
+        },
+        "maxParallelism": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32
+        },
+        "maxTokens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxCostUsd": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "expectedOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "enum": ["text", "json", "report", "file", "repository-change", "artifact-set", "no-artifact"]
+        },
+        "mediaType": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 200
+        },
+        "schemaRef": {
+          "type": "string",
+          "format": "uri-reference",
+          "maxLength": 2000
+        },
+        "destinationRef": {
+          "$ref": "#/$defs/identifier"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "preflightOrigin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["draftId", "draftRevision", "draftFingerprint", "readinessReportId"],
+      "properties": {
+        "draftId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "draftRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "draftFingerprint": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["algorithm", "value"],
+          "properties": {
+            "algorithm": {
+              "const": "sha256-jcs-v1"
+            },
+            "value": {
+              "$ref": "#/$defs/sha256"
+            }
+          }
+        },
+        "readinessReportId": {
+          "$ref": "#/$defs/identifier"
+        }
+      }
+    },
+    "operationToken": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z][a-z0-9]*)+$",
+      "maxLength": 100
+    },
+    "contextReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["refId", "uri", "kind", "sensitivity"],
+      "properties": {
+        "refId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "uri": {
+          "type": "string",
+          "format": "uri",
+          "maxLength": 2000
+        },
+        "kind": {
+          "enum": ["repository", "workspace", "file", "document", "artifact", "url", "service", "other"]
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "sensitivity": {
+          "enum": ["public", "internal", "restricted"]
+        }
+      }
+    },
+    "assumption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "statement", "impactIfFalse"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "statement": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 1000
+        },
+        "impactIfFalse": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 1000
+        }
+      }
+    },
+    "constraint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "description"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "kind": {
+          "enum": ["technical", "quality", "temporal", "policy", "compatibility", "business", "other"]
+        },
+        "description": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 1000
+        },
+        "sourceRef": {
+          "$ref": "#/$defs/identifier"
+        }
+      }
+    },
+    "authorityGrant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resourceRef", "operations"],
+      "properties": {
+        "resourceRef": {
+          "$ref": "#/$defs/identifier"
+        },
+        "operations": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/operationToken"
+          }
+        }
+      }
+    },
+    "acceptanceCriterion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "description", "verification"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 1000
+        },
+        "verification": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["method", "expected"],
+          "properties": {
+            "method": {
+              "enum": ["command", "test", "inspection", "schema", "external", "human"]
+            },
+            "expected": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "procedureRef": {
+              "$ref": "#/$defs/identifier"
+            }
+          }
+        }
+      }
+    }
+  }
+}

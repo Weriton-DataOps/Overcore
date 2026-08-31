@@ -1,0 +1,502 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:overcore:internal-models:execution-plan:v1",
+  "title": "OverCore Execution Plan v1",
+  "description": "Plano interno, linear, imutável e verificável derivado de um TaskRequest admitido.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "modelVersion",
+    "planId",
+    "planRevision",
+    "taskBinding",
+    "contextBindings",
+    "createdAt",
+    "mode",
+    "planFingerprint",
+    "strategyFingerprint",
+    "steps",
+    "criterionCoverage",
+    "outputBinding"
+  ],
+  "properties": {
+    "modelVersion": {
+      "const": "1.0"
+    },
+    "planId": {
+      "$ref": "#/$defs/identifier"
+    },
+    "planRevision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 20
+    },
+    "supersedesPlanRef": {
+      "$ref": "#/$defs/supersedesPlanRef"
+    },
+    "taskBinding": {
+      "$ref": "#/$defs/taskBinding"
+    },
+    "contextBindings": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "$ref": "#/$defs/contextBinding"
+      }
+    },
+    "createdAt": {
+      "$ref": "#/$defs/dateTime"
+    },
+    "mode": {
+      "const": "sequential"
+    },
+    "planFingerprint": {
+      "$ref": "#/$defs/fingerprint"
+    },
+    "strategyFingerprint": {
+      "$ref": "#/$defs/fingerprint"
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {
+        "$ref": "#/$defs/step"
+      }
+    },
+    "criterionCoverage": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {
+        "$ref": "#/$defs/criterionCoverage"
+      }
+    },
+    "outputBinding": {
+      "$ref": "#/$defs/outputBinding"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "planRevision": {
+            "const": 1
+          }
+        },
+        "required": ["planRevision"]
+      },
+      "then": {
+        "not": {
+          "required": ["supersedesPlanRef"]
+        }
+      },
+      "else": {
+        "required": ["supersedesPlanRef"]
+      }
+    }
+  ],
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$"
+    },
+    "dateTime": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "fingerprint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "value"],
+      "properties": {
+        "algorithm": {
+          "const": "sha256-jcs-v1"
+        },
+        "value": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "operationToken": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z][a-z0-9]*)+$",
+      "maxLength": 100
+    },
+    "taskBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["taskId", "requestId", "requestFingerprint", "basisStateRevision"],
+      "properties": {
+        "taskId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "requestId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "requestFingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "basisStateRevision": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "supersedesPlanRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["planId", "planRevision", "planFingerprint", "strategyFingerprint"],
+      "properties": {
+        "planId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "planRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "planFingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "strategyFingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        }
+      }
+    },
+    "contextBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["refId", "digest", "capturedAt", "source"],
+      "properties": {
+        "refId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "capturedAt": {
+          "$ref": "#/$defs/dateTime"
+        },
+        "source": {
+          "enum": ["request-digest", "admission-snapshot"]
+        },
+        "captureEvidenceRef": {
+          "$ref": "#/$defs/identifier"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "source": { "const": "admission-snapshot" } },
+            "required": ["source"]
+          },
+          "then": {
+            "required": ["captureEvidenceRef"]
+          },
+          "else": {
+            "not": { "required": ["captureEvidenceRef"] }
+          }
+        }
+      ]
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stepId",
+        "sequence",
+        "kind",
+        "objective",
+        "dependsOnStepRefs",
+        "inputs",
+        "actions",
+        "outputs",
+        "constraintRefs",
+        "assumptionRefs",
+        "criterionRefs",
+        "timeoutMs",
+        "checkpointPolicy"
+      ],
+      "properties": {
+        "stepId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32
+        },
+        "kind": {
+          "enum": ["prepare", "execute", "verify", "deliver"]
+        },
+        "objective": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 2000
+        },
+        "dependsOnStepRefs": {
+          "type": "array",
+          "maxItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "inputs": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/input"
+          }
+        },
+        "actions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {
+            "$ref": "#/$defs/action"
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/plannedOutput"
+          }
+        },
+        "constraintRefs": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "assumptionRefs": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "criterionRefs": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 604800000
+        },
+        "checkpointPolicy": {
+          "enum": ["none", "before-mutation"]
+        }
+      }
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "ref"],
+      "properties": {
+        "kind": {
+          "enum": ["context-reference", "step-output", "assumption", "constraint"]
+        },
+        "ref": {
+          "$ref": "#/$defs/identifier"
+        }
+      }
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actionId", "scope", "operation", "effectPolicy"],
+      "properties": {
+        "actionId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "scope": {
+          "enum": ["request-resource", "runtime-internal"]
+        },
+        "resourceRef": {
+          "$ref": "#/$defs/identifier"
+        },
+        "operation": {
+          "$ref": "#/$defs/operationToken"
+        },
+        "effectPolicy": {
+          "$ref": "#/$defs/effectPolicy"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "scope": {
+                "const": "request-resource"
+              }
+            },
+            "required": ["scope"]
+          },
+          "then": {
+            "required": ["resourceRef"]
+          },
+          "else": {
+            "not": {
+              "required": ["resourceRef"]
+            },
+            "properties": {
+              "effectPolicy": {
+                "properties": {
+                  "mode": {
+                    "const": "none"
+                  }
+                },
+                "required": ["mode"]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "effectPolicy": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode"],
+          "properties": {
+            "mode": {
+              "const": "none"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "effectKey", "uncertaintyHandling", "recovery"],
+          "properties": {
+            "mode": {
+              "const": "journaled"
+            },
+            "effectKey": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{7,255}$"
+            },
+            "uncertaintyHandling": {
+              "const": "reconcile-before-retry"
+            },
+            "recovery": {
+              "$ref": "#/$defs/recovery"
+            }
+          }
+        }
+      ]
+    },
+    "recovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "description"],
+      "properties": {
+        "mode": {
+          "enum": ["restore-checkpoint", "retain-and-report"]
+        },
+        "description": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 2000
+        }
+      }
+    },
+    "plannedOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outputId", "kind"],
+      "properties": {
+        "outputId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "kind": {
+          "enum": ["observation", "evidence", "artifact", "effect-receipt", "checkpoint", "delivery"]
+        },
+        "mediaType": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 200
+        }
+      }
+    },
+    "criterionCoverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["criterionId", "verificationStepRefs", "evidenceOutputRefs"],
+      "properties": {
+        "criterionId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "verificationStepRefs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "evidenceOutputRefs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        }
+      }
+    },
+    "outputBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "producerStepRef", "outputRefs"],
+      "properties": {
+        "kind": {
+          "enum": ["text", "json", "report", "file", "repository-change", "artifact-set", "no-artifact"]
+        },
+        "mediaType": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 200
+        },
+        "destinationRef": {
+          "$ref": "#/$defs/identifier"
+        },
+        "schemaRef": {
+          "type": "string",
+          "format": "uri-reference",
+          "maxLength": 2000
+        },
+        "producerStepRef": {
+          "$ref": "#/$defs/identifier"
+        },
+        "outputRefs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        }
+      }
+    }
+  }
+}

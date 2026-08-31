@@ -1,0 +1,34 @@
+{
+  "contractVersion": "1.0",
+  "resultId": "result-invalid-blocked-input",
+  "requestId": "req-20260830-inspection-001",
+  "requestFingerprint": {
+    "algorithm": "sha256-jcs-v1",
+    "value": "sha256:33fcb5a04d18b6d00536ea6085bc36838b350ddd3058041ea741005069d306d6"
+  },
+  "taskId": "task-invalid-blocked-input",
+  "stateRef": {
+    "stateRevision": 3,
+    "transitionId": "transition-invalid-blocked",
+    "emissionSequence": 1
+  },
+  "reportedAt": "2026-08-30T11:10:00-03:00",
+  "status": "blocked",
+  "summary": "Este resultado é inválido porque não informa o que falta.",
+  "criteria": [
+    {
+      "criterionId": "criterion-json-readable",
+      "status": "not-run",
+      "evidenceRefs": []
+    }
+  ],
+  "evidence": [],
+  "artifacts": [],
+  "effects": [],
+  "execution": {
+    "attemptCount": 0,
+    "maxParallelismObserved": 0,
+    "durationMs": 0,
+    "lastTransitionAt": "2026-08-30T11:10:00-03:00"
+  }
+}

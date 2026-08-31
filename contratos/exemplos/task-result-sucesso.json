@@ -1,0 +1,114 @@
+{
+  "contractVersion": "1.0",
+  "resultId": "result-change-success-001",
+  "requestId": "req-20260830-change-001",
+  "requestFingerprint": {
+    "algorithm": "sha256-jcs-v1",
+    "value": "sha256:44340c327366e5c0c78780634343b74720dfff72be25e70a4cfff87b23bbb6e7"
+  },
+  "taskId": "task-20260830-change-001",
+  "stateRef": {
+    "stateRevision": 15,
+    "transitionId": "transition-success-001",
+    "emissionSequence": 2,
+    "supersedesResultId": "result-change-blocked-001"
+  },
+  "reportedAt": "2026-08-30T09:32:02-03:00",
+  "status": "succeeded",
+  "summary": "A referência foi adicionada ao README e a leitura posterior confirmou o destino e o escopo da mudança.",
+  "criteria": [
+    {
+      "criterionId": "criterion-link-present",
+      "status": "passed",
+      "evidenceRefs": ["evidence-link-readback"]
+    },
+    {
+      "criterionId": "criterion-scope-preserved",
+      "status": "passed",
+      "evidenceRefs": ["evidence-scope-diff"]
+    }
+  ],
+  "evidence": [
+    {
+      "evidenceId": "evidence-readme-lock-cleared",
+      "kind": "state-readback",
+      "capturedAt": "2026-08-30T09:31:10-03:00",
+      "summary": "A leitura de reconciliação confirmou que o bloqueio do README foi liberado antes da retomada.",
+      "digest": "sha256:b411845007eae547e1aac41f6f4e7a6039908fc5c205add2147e444212c854d0",
+      "artifactRefs": [],
+      "origin": {
+        "kind": "runtime",
+        "id": "overcore-runtime-v1"
+      }
+    },
+    {
+      "evidenceId": "evidence-link-readback",
+      "kind": "state-readback",
+      "capturedAt": "2026-08-30T09:32:00-03:00",
+      "summary": "A leitura do README encontrou o link relativo contratado.",
+      "digest": "sha256:9291b1a7cae935cba9cf904f1f95414ff51c68e1f73eaab8de8caa5fb54bc0ab",
+      "artifactRefs": ["artifact-readme-updated"],
+      "origin": {
+        "kind": "runtime",
+        "id": "overcore-runtime-v1"
+      }
+    },
+    {
+      "evidenceId": "evidence-effect-confirmed",
+      "kind": "state-readback",
+      "capturedAt": "2026-08-30T09:31:59-03:00",
+      "summary": "A leitura imediata após a escrita confirmou que o efeito contratado foi aplicado.",
+      "digest": "sha256:f86f9689e314d8c1bec819e2ed381b13f2c6fd9e0e5dd1e78b591e4ebfa2a72a",
+      "artifactRefs": ["artifact-readme-updated"],
+      "origin": {
+        "kind": "runtime",
+        "id": "overcore-runtime-v1"
+      }
+    },
+    {
+      "evidenceId": "evidence-scope-diff",
+      "kind": "inspection",
+      "capturedAt": "2026-08-30T09:32:01-03:00",
+      "summary": "A inspeção da mudança mostrou somente o README autorizado.",
+      "digest": "sha256:207c205c06266db8404639e20ec75cbaddd9f95ac06ff07218a9ac58ddca689f",
+      "artifactRefs": [],
+      "origin": {
+        "kind": "runtime",
+        "id": "overcore-runtime-v1"
+      }
+    }
+  ],
+  "artifacts": [
+    {
+      "artifactId": "artifact-readme-updated",
+      "kind": "file",
+      "uri": "file:///C:/Users/wp.santos/Documents/Overcore/README.md",
+      "digest": "sha256:6341f42119927ad6152e48e33016e66ec3492276d739a00a4ea6b12ec154e3bd",
+      "mediaType": "text/markdown",
+      "sensitivity": "internal",
+      "createdAt": "2026-08-30T09:31:59-03:00"
+    }
+  ],
+  "effects": [
+    {
+      "effectId": "effect-readme-modified",
+      "effectKey": "task-20260830-change-001/readme-reference",
+      "intentFingerprint": {
+        "algorithm": "sha256-jcs-v1",
+        "value": "sha256:090dd346688c358f935953437ce63ae20a33e2347cb88eb633c27d043d2c90b0"
+      },
+      "resourceRef": "ref-overcore-readme",
+      "operation": "filesystem.modify",
+      "status": "confirmed",
+      "evidenceRefs": ["evidence-effect-confirmed"]
+    }
+  ],
+  "execution": {
+    "attemptCount": 1,
+    "maxParallelismObserved": 1,
+    "durationMs": 112000,
+    "startedAt": "2026-08-30T09:30:05-03:00",
+    "finishedAt": "2026-08-30T09:32:02-03:00",
+    "lastTransitionAt": "2026-08-30T09:32:02-03:00"
+  }
+}

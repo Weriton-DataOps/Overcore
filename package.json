@@ -1,0 +1,35 @@
+{
+  "name": "overcore",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Ambiente local de coordenação e execução verificável de tarefas de desenvolvimento.",
+  "engines": {
+    "node": ">=24.17.0",
+    "npm": ">=11"
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "tsc -p tsconfig.test.json && node --test .test-dist/test/*.test.js",
+    "test:postgres": "tsc -p tsconfig.test.json && node --test .test-dist/integration/postgres.test.js",
+    "test:sdk-live": "tsc -p tsconfig.test.json && node --test .test-dist/integration/anthropic-login.test.js",
+    "test:e2e-live": "tsc -p tsconfig.test.json && node --test .test-dist/integration/omni-postgres-claude.test.js",
+    "verify": "npm run check && npm test && npm run build",
+    "start": "node dist/main.js serve",
+    "migrate": "node dist/main.js migrate",
+    "demo:preflight": "node dist/main.js demo-preflight contratos/exemplos/task-draft-incompleto.json",
+    "demo:inspection": "node dist/main.js demo-inspection"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.224",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/pg": "^8.23.1",
+    "typescript": "^7.0.2"
+  }
+}

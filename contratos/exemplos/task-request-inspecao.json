@@ -1,0 +1,86 @@
+{
+  "contractVersion": "1.0",
+  "requestId": "req-20260830-inspection-001",
+  "idempotencyKey": "inspect-overcore-foundation-20260830",
+  "correlationId": "corr-overcore-foundation",
+  "createdAt": "2026-08-30T09:00:00-03:00",
+  "preflight": {
+    "draftId": "draft-contract-inspection-example",
+    "draftRevision": 1,
+    "draftFingerprint": {
+      "algorithm": "sha256-jcs-v1",
+      "value": "sha256:edd2094d861e59bb1733c080d031b39fcfdd4d7b4069a7ef7c99bb17a52f17f4"
+    },
+    "readinessReportId": "readiness-contract-inspection-example"
+  },
+  "client": {
+    "id": "client-primary-assistant",
+    "kind": "assistant"
+  },
+  "objective": "Verificar a integridade dos contratos JSON da fundação do OverCore e entregar um relatório verificável.",
+  "priority": "normal",
+  "context": {
+    "summary": "A fundação contém quatro contratos JSON Schema que precisam permanecer legíveis e fechados para propriedades desconhecidas.",
+    "references": [
+      {
+        "refId": "ref-overcore-repository",
+        "uri": "file:///C:/Users/wp.santos/Documents/Overcore",
+        "kind": "repository",
+        "sensitivity": "internal"
+      }
+    ],
+    "assumptions": []
+  },
+  "constraints": [
+    {
+      "id": "constraint-read-only",
+      "kind": "technical",
+      "description": "A rodada opera somente por leitura e preserva integralmente os arquivos existentes.",
+      "sourceRef": "ref-overcore-repository"
+    }
+  ],
+  "authority": {
+    "mode": "proceed-within-scope",
+    "grants": [
+      {
+        "resourceRef": "ref-overcore-repository",
+        "operations": ["filesystem.read", "git.inspect"]
+      }
+    ],
+    "expansionBoundaries": [
+      "destructive",
+      "irreversible",
+      "financial",
+      "privilege-expansion",
+      "external-publication",
+      "secret-access"
+    ]
+  },
+  "acceptanceCriteria": [
+    {
+      "id": "criterion-json-readable",
+      "description": "Os contratos JSON são parseados sem erro.",
+      "verification": {
+        "method": "test",
+        "expected": "Os quatro arquivos terminam a validação sintática com status aprovado."
+      }
+    },
+    {
+      "id": "criterion-contract-closed",
+      "description": "Os contratos rejeitam propriedades de topo não declaradas.",
+      "verification": {
+        "method": "schema",
+        "expected": "Cada schema declara additionalProperties igual a false no objeto raiz."
+      }
+    }
+  ],
+  "budget": {
+    "maxDurationMs": 300000,
+    "maxAttempts": 2,
+    "maxParallelism": 1
+  },
+  "expectedOutput": {
+    "kind": "report",
+    "mediaType": "application/json"
+  }
+}

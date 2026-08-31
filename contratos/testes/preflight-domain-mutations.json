@@ -1,0 +1,173 @@
+{
+  "fixtureVersion": "1.0",
+  "baseExample": "../exemplos/task-readiness-ready.json",
+  "mutationFormat": "rfc6902",
+  "cases": [
+    {
+      "caseId": "authority-operation-expanded",
+      "patch": [
+        {
+          "op": "add",
+          "path": "/preparedRequest/authority/grants/0/operations/-",
+          "value": "filesystem.delete"
+        }
+      ],
+      "expectedDomainCode": "preflight-authority-operation-expanded"
+    },
+    {
+      "caseId": "client-swapped",
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/preparedRequest/client",
+          "value": {
+            "id": "client-contract-test",
+            "kind": "cli"
+          }
+        }
+      ],
+      "expectedDomainCode": "preflight-client-mismatch"
+    },
+    {
+      "caseId": "context-reference-added",
+      "patch": [
+        {
+          "op": "add",
+          "path": "/preparedRequest/context/references/-",
+          "value": {
+            "refId": "ref-ungranted-external-file",
+            "uri": "file:///C:/outside/example.txt",
+            "kind": "file",
+            "sensitivity": "internal"
+          }
+        }
+      ],
+      "expectedDomainCode": "preflight-context-expanded"
+    },
+    {
+      "caseId": "expansion-boundary-removed",
+      "patch": [
+        {
+          "op": "remove",
+          "path": "/preparedRequest/authority/expansionBoundaries/0"
+        }
+      ],
+      "expectedDomainCode": "preflight-boundary-removed"
+    },
+    {
+      "caseId": "budget-expanded",
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/preparedRequest/budget/maxDurationMs",
+          "value": 600000
+        }
+      ],
+      "expectedDomainCode": "preflight-budget-expanded"
+    },
+    {
+      "caseId": "provenance-report-mismatch",
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/preparedRequest/preflight/readinessReportId",
+          "value": "readiness-other-report"
+        }
+      ],
+      "expectedDomainCode": "preflight-report-mismatch"
+    },
+    {
+      "caseId": "execution-idempotency-changed",
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/preparedRequest/idempotencyKey",
+          "value": "execute-different-intention"
+        }
+      ],
+      "expectedDomainCode": "preflight-execution-idempotency-mismatch"
+    },
+    {
+      "caseId": "objective-changed-without-material-source",
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/preparedRequest/objective",
+          "value": "Executar uma intenção materialmente diferente."
+        },
+        {
+          "op": "remove",
+          "path": "/requestDerivations/1/sources/1"
+        }
+      ],
+      "expectedDomainCode": "preflight-objective-untraced"
+    },
+    {
+      "caseId": "known-constraint-removed",
+      "patch": [
+        {
+          "op": "remove",
+          "path": "/preparedRequest/constraints/0"
+        }
+      ],
+      "expectedDomainCode": "preflight-known-constraint-removed"
+    },
+    {
+      "caseId": "known-criterion-removed",
+      "patch": [
+        {
+          "op": "remove",
+          "path": "/preparedRequest/acceptanceCriteria/0"
+        }
+      ],
+      "expectedDomainCode": "preflight-known-criterion-removed"
+    },
+    {
+      "caseId": "priority-expanded",
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/preparedRequest/priority",
+          "value": "urgent"
+        }
+      ],
+      "expectedDomainCode": "preflight-priority-mismatch"
+    },
+    {
+      "caseId": "output-kind-changed",
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/preparedRequest/expectedOutput/kind",
+          "value": "text"
+        }
+      ],
+      "expectedDomainCode": "preflight-output-kind-mismatch"
+    },
+    {
+      "caseId": "automatic-decision-orphaned",
+      "patch": [
+        {
+          "op": "remove",
+          "path": "/requestDerivations/6/sources/2"
+        },
+        {
+          "op": "remove",
+          "path": "/requestDerivations/8/sources/2"
+        }
+      ],
+      "expectedDomainCode": "preflight-automatic-decision-orphaned"
+    },
+    {
+      "caseId": "prepared-request-fingerprint-changed",
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/preparedRequestFingerprint/value",
+          "value": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ],
+      "expectedDomainCode": "preflight-request-fingerprint-mismatch"
+    }
+  ]
+}

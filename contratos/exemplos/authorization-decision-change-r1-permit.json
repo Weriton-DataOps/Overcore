@@ -1,0 +1,100 @@
+{
+  "contractVersion": "1.0",
+  "decisionId": "authdec-change-r1-001",
+  "authorizationRequestId": "authreq-change-r1-001",
+  "issuedAt": "2026-08-30T09:30:02.500-03:00",
+  "issuer": {
+    "providerId": "omni-authority-provider",
+    "providerKind": "assistant",
+    "authorityBasisRef": "omni-badge-user-primary"
+  },
+  "audience": {
+    "executionEnvironmentId": "overcore-execution-environment",
+    "kind": "execution-environment"
+  },
+  "requestBinding": {
+    "requestId": "req-20260830-change-001",
+    "requestFingerprint": {
+      "algorithm": "sha256-jcs-v1",
+      "value": "sha256:44340c327366e5c0c78780634343b74720dfff72be25e70a4cfff87b23bbb6e7"
+    },
+    "clientId": "client-primary-assistant"
+  },
+  "planBinding": {
+    "planId": "plan-change-001",
+    "planRevision": 1,
+    "planFingerprint": {
+      "algorithm": "sha256-jcs-v1",
+      "value": "sha256:753e28d45a8b113e6229aafdba6ad8d4ffc27403de44896f3cb159d6a4822366"
+    },
+    "strategyFingerprint": {
+      "algorithm": "sha256-jcs-v1",
+      "value": "sha256:4cacdebff2d82278d6592b865a80090e4d30ebbeda74758c4fec1517d999e3dd"
+    }
+  },
+  "outcome": "permit-with-constraints",
+  "actionDecisions": [
+    {
+      "actionId": "action-read-readme",
+      "outcome": "permit",
+      "reasonCode": "within-delegated-authority",
+      "requiredControls": ["sanitize-output"]
+    },
+    {
+      "actionId": "action-read-task-request-doc",
+      "outcome": "permit",
+      "reasonCode": "within-delegated-authority",
+      "requiredControls": ["sanitize-output"]
+    },
+    {
+      "actionId": "action-modify-readme-link",
+      "outcome": "permit",
+      "reasonCode": "within-delegated-authority",
+      "requiredControls": [
+        "checkpoint-before-mutation",
+        "verify-after-effect",
+        "reconcile-before-retry",
+        "revocation-check-before-effect"
+      ]
+    },
+    {
+      "actionId": "action-read-link-result",
+      "outcome": "permit",
+      "reasonCode": "within-delegated-authority",
+      "requiredControls": ["sanitize-output"]
+    },
+    {
+      "actionId": "action-read-link-target",
+      "outcome": "permit",
+      "reasonCode": "within-delegated-authority",
+      "requiredControls": ["sanitize-output"]
+    },
+    {
+      "actionId": "action-verify-journal-scope",
+      "outcome": "permit",
+      "reasonCode": "within-delegated-authority",
+      "requiredControls": []
+    },
+    {
+      "actionId": "action-assemble-change-delivery",
+      "outcome": "permit",
+      "reasonCode": "within-delegated-authority",
+      "requiredControls": ["sanitize-output"]
+    }
+  ],
+  "limits": {
+    "notBefore": "2026-08-30T09:30:02.500-03:00",
+    "expiresAt": "2026-08-30T09:35:00-03:00",
+    "maxDurationMs": 300000
+  },
+  "revocation": {
+    "mode": "check-before-journaled-effect",
+    "statusRef": "omni-revocation-status-change-r1",
+    "failMode": "fail-closed"
+  },
+  "attestationRef": "attestation-omni-channel-change-r1",
+  "decisionFingerprint": {
+    "algorithm": "sha256-jcs-v1",
+    "value": "sha256:3a56c55561e3d0edfc821ec93740e2cd8caee9ad67b471f1b5690e3f8ec4d416"
+  }
+}

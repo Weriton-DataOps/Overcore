@@ -1,0 +1,546 @@
+{
+  "modelVersion": "1.0",
+  "taskId": "task-20260830-change-001",
+  "requestBinding": {
+    "requestId": "req-20260830-change-001",
+    "requestFingerprint": {
+      "algorithm": "sha256-jcs-v1",
+      "value": "sha256:44340c327366e5c0c78780634343b74720dfff72be25e70a4cfff87b23bbb6e7"
+    }
+  },
+  "acceptedAt": "2026-08-30T09:30:00-03:00",
+  "updatedAt": "2026-08-30T09:32:02-03:00",
+  "stateRevision": 15,
+  "executionEpoch": 1,
+  "lifecycle": {
+    "state": "succeeded",
+    "enteredAt": "2026-08-30T09:32:02-03:00",
+    "lastTransitionId": "transition-success-001"
+  },
+  "criterionProgress": [
+    {
+      "criterionId": "criterion-link-present",
+      "status": "passed",
+      "evidenceRefs": [
+        "evidence-link-readback"
+      ]
+    },
+    {
+      "criterionId": "criterion-scope-preserved",
+      "status": "passed",
+      "evidenceRefs": [
+        "evidence-scope-diff"
+      ]
+    }
+  ],
+  "activePlanBinding": {
+    "planId": "plan-change-001",
+    "planRevision": 1,
+    "planFingerprint": {
+      "algorithm": "sha256-jcs-v1",
+      "value": "sha256:753e28d45a8b113e6229aafdba6ad8d4ffc27403de44896f3cb159d6a4822366"
+    },
+    "strategyFingerprint": {
+      "algorithm": "sha256-jcs-v1",
+      "value": "sha256:4cacdebff2d82278d6592b865a80090e4d30ebbeda74758c4fec1517d999e3dd"
+    },
+    "activatedAtRevision": 3,
+    "authorizationBinding": {
+      "enforcementId": "authenf-change-r1-001",
+      "enforcementFingerprint": {
+        "algorithm": "sha256-jcs-v1",
+        "value": "sha256:341e4942fa1751a6c0c4f854c5d1735de9acdba622921fbf7eb341c27a396cc9"
+      },
+      "decisionId": "authdec-change-r1-001",
+      "decisionFingerprint": {
+        "algorithm": "sha256-jcs-v1",
+        "value": "sha256:3a56c55561e3d0edfc821ec93740e2cd8caee9ad67b471f1b5690e3f8ec4d416"
+      },
+      "expiresAt": "2026-08-30T09:35:00-03:00",
+      "activatedAtRevision": 3
+    }
+  },
+  "terminalResultRef": "result-change-success-001",
+  "latestCheckpointRef": "artifact-change-block-checkpoint",
+  "usage": {
+    "attemptCount": 1,
+    "maxParallelismObserved": 1,
+    "activeDurationMs": 112000
+  },
+  "ledger": {
+    "transitions": [
+      {
+        "transitionId": "transition-accepted-001",
+        "sequence": 1,
+        "stateRevision": 1,
+        "from": null,
+        "to": "accepted",
+        "at": "2026-08-30T09:30:00-03:00",
+        "triggerKind": "admission",
+        "triggerRef": "req-20260830-change-001",
+        "evidenceRefs": []
+      },
+      {
+        "transitionId": "transition-planning-001",
+        "sequence": 2,
+        "stateRevision": 2,
+        "from": "accepted",
+        "to": "planning",
+        "at": "2026-08-30T09:30:01-03:00",
+        "triggerKind": "planning-started",
+        "evidenceRefs": []
+      },
+      {
+        "transitionId": "transition-ready-001",
+        "sequence": 3,
+        "stateRevision": 3,
+        "from": "planning",
+        "to": "ready",
+        "at": "2026-08-30T09:30:03-03:00",
+        "triggerKind": "planning-completed",
+        "triggerRef": "plan-change-001",
+        "evidenceRefs": []
+      },
+      {
+        "transitionId": "transition-running-001",
+        "sequence": 4,
+        "stateRevision": 4,
+        "from": "ready",
+        "to": "running",
+        "at": "2026-08-30T09:30:05-03:00",
+        "triggerKind": "execution-started",
+        "triggerRef": "attempt-change-001-01",
+        "evidenceRefs": []
+      },
+      {
+        "transitionId": "transition-change-blocked-001",
+        "sequence": 5,
+        "stateRevision": 7,
+        "from": "running",
+        "to": "blocked",
+        "at": "2026-08-30T09:31:00-03:00",
+        "triggerKind": "block-detected",
+        "triggerRef": "block-readme-lock-001",
+        "resultRef": "result-change-blocked-001",
+        "evidenceRefs": [
+          "evidence-readme-lock",
+          "evidence-effect-not-applied"
+        ]
+      },
+      {
+        "transitionId": "transition-change-resumed-001",
+        "sequence": 6,
+        "stateRevision": 8,
+        "from": "blocked",
+        "to": "ready",
+        "at": "2026-08-30T09:31:10-03:00",
+        "triggerKind": "condition-restored",
+        "triggerRef": "block-readme-lock-001",
+        "evidenceRefs": [
+          "evidence-readme-lock-cleared"
+        ]
+      },
+      {
+        "transitionId": "transition-running-resumed-001",
+        "sequence": 7,
+        "stateRevision": 9,
+        "from": "ready",
+        "to": "running",
+        "at": "2026-08-30T09:31:11-03:00",
+        "triggerKind": "execution-started",
+        "triggerRef": "attempt-change-001-01",
+        "evidenceRefs": [
+          "evidence-readme-lock-cleared"
+        ]
+      },
+      {
+        "transitionId": "transition-verifying-001",
+        "sequence": 8,
+        "stateRevision": 13,
+        "from": "running",
+        "to": "verifying",
+        "at": "2026-08-30T09:32:00-03:00",
+        "triggerKind": "verification-started",
+        "triggerRef": "attempt-change-001-01",
+        "evidenceRefs": [
+          "evidence-link-readback"
+        ]
+      },
+      {
+        "transitionId": "transition-success-001",
+        "sequence": 9,
+        "stateRevision": 15,
+        "from": "verifying",
+        "to": "succeeded",
+        "at": "2026-08-30T09:32:02-03:00",
+        "triggerKind": "verification-passed",
+        "triggerRef": "attempt-change-001-01",
+        "resultRef": "result-change-success-001",
+        "evidenceRefs": [
+          "evidence-link-readback",
+          "evidence-scope-diff"
+        ]
+      }
+    ],
+    "planRefs": [
+      {
+        "planId": "plan-change-001",
+        "planRevision": 1,
+        "planFingerprint": {
+          "algorithm": "sha256-jcs-v1",
+          "value": "sha256:753e28d45a8b113e6229aafdba6ad8d4ffc27403de44896f3cb159d6a4822366"
+        },
+        "strategyFingerprint": {
+          "algorithm": "sha256-jcs-v1",
+          "value": "sha256:4cacdebff2d82278d6592b865a80090e4d30ebbeda74758c4fec1517d999e3dd"
+        },
+        "basisStateRevision": 2,
+        "activatedAtRevision": 3,
+        "activationTransitionId": "transition-ready-001",
+        "activatedAt": "2026-08-30T09:30:03-03:00",
+        "authorizationBinding": {
+          "enforcementId": "authenf-change-r1-001",
+          "enforcementFingerprint": {
+            "algorithm": "sha256-jcs-v1",
+            "value": "sha256:341e4942fa1751a6c0c4f854c5d1735de9acdba622921fbf7eb341c27a396cc9"
+          },
+          "decisionId": "authdec-change-r1-001",
+          "decisionFingerprint": {
+            "algorithm": "sha256-jcs-v1",
+            "value": "sha256:3a56c55561e3d0edfc821ec93740e2cd8caee9ad67b471f1b5690e3f8ec4d416"
+          },
+          "expiresAt": "2026-08-30T09:35:00-03:00",
+          "activatedAtRevision": 3
+        }
+      }
+    ],
+    "attempts": [
+      {
+        "attemptId": "attempt-change-001-01",
+        "ordinal": 1,
+        "status": "completed",
+        "planRef": {
+          "planId": "plan-change-001",
+          "planRevision": 1
+        },
+        "strategyFingerprint": {
+          "algorithm": "sha256-jcs-v1",
+          "value": "sha256:4cacdebff2d82278d6592b865a80090e4d30ebbeda74758c4fec1517d999e3dd"
+        },
+        "executionEpoch": 1,
+        "startedAt": "2026-08-30T09:30:05-03:00",
+        "endedAt": "2026-08-30T09:32:02-03:00",
+        "lastUpdatedRevision": 15,
+        "checkpointRef": "artifact-change-block-checkpoint",
+        "effectRefs": [
+          "effect-readme-modified"
+        ],
+        "evidenceRefs": [
+          "evidence-link-readback",
+          "evidence-scope-diff"
+        ]
+      }
+    ],
+    "stepRuns": [
+      {
+        "stepRunId": "step-run-change-inspect-01",
+        "planRef": {
+          "planId": "plan-change-001",
+          "planRevision": 1
+        },
+        "stepRef": "step-change-inspect",
+        "attemptId": "attempt-change-001-01",
+        "executionEpoch": 1,
+        "status": "completed",
+        "startedAt": "2026-08-30T09:30:05-03:00",
+        "endedAt": "2026-08-30T09:30:29-03:00",
+        "lastUpdatedRevision": 5,
+        "outputRefs": [
+          "output-markdown-context"
+        ],
+        "evidenceRefs": []
+      },
+      {
+        "stepRunId": "step-run-change-apply-01",
+        "planRef": {
+          "planId": "plan-change-001",
+          "planRevision": 1
+        },
+        "stepRef": "step-change-apply",
+        "attemptId": "attempt-change-001-01",
+        "executionEpoch": 1,
+        "status": "completed",
+        "startedAt": "2026-08-30T09:30:30-03:00",
+        "endedAt": "2026-08-30T09:31:59-03:00",
+        "lastUpdatedRevision": 12,
+        "outputRefs": [
+          "output-readme-checkpoint",
+          "output-readme-effect-receipt"
+        ],
+        "evidenceRefs": [
+          "evidence-effect-not-applied",
+          "evidence-readme-lock-cleared",
+          "evidence-effect-confirmed"
+        ]
+      },
+      {
+        "stepRunId": "step-run-change-verify-link-01",
+        "planRef": {
+          "planId": "plan-change-001",
+          "planRevision": 1
+        },
+        "stepRef": "step-change-verify-link",
+        "attemptId": "attempt-change-001-01",
+        "executionEpoch": 1,
+        "status": "completed",
+        "startedAt": "2026-08-30T09:31:59-03:00",
+        "endedAt": "2026-08-30T09:32:00-03:00",
+        "lastUpdatedRevision": 13,
+        "outputRefs": [
+          "evidence-link-readback"
+        ],
+        "evidenceRefs": [
+          "evidence-link-readback"
+        ]
+      },
+      {
+        "stepRunId": "step-run-change-verify-scope-01",
+        "planRef": {
+          "planId": "plan-change-001",
+          "planRevision": 1
+        },
+        "stepRef": "step-change-verify-scope",
+        "attemptId": "attempt-change-001-01",
+        "executionEpoch": 1,
+        "status": "completed",
+        "startedAt": "2026-08-30T09:32:00-03:00",
+        "endedAt": "2026-08-30T09:32:01-03:00",
+        "lastUpdatedRevision": 14,
+        "outputRefs": [
+          "evidence-scope-diff"
+        ],
+        "evidenceRefs": [
+          "evidence-scope-diff"
+        ]
+      },
+      {
+        "stepRunId": "step-run-change-deliver-01",
+        "planRef": {
+          "planId": "plan-change-001",
+          "planRevision": 1
+        },
+        "stepRef": "step-change-deliver",
+        "attemptId": "attempt-change-001-01",
+        "executionEpoch": 1,
+        "status": "completed",
+        "startedAt": "2026-08-30T09:32:01-03:00",
+        "endedAt": "2026-08-30T09:32:02-03:00",
+        "lastUpdatedRevision": 15,
+        "outputRefs": [
+          "output-readme-delivery"
+        ],
+        "deliveryBindings": [
+          {
+            "outputRef": "output-readme-delivery",
+            "resultRef": "result-change-success-001",
+            "kind": "repository-change",
+            "mediaType": "text/markdown",
+            "destinationRef": "ref-overcore-readme",
+            "artifactRefs": [
+              "artifact-readme-updated"
+            ]
+          }
+        ],
+        "evidenceRefs": [
+          "evidence-link-readback",
+          "evidence-scope-diff"
+        ]
+      }
+    ],
+    "effects": [
+      {
+        "effectId": "effect-readme-modified",
+        "effectKey": "task-20260830-change-001/readme-reference",
+        "intentFingerprint": {
+          "algorithm": "sha256-jcs-v1",
+          "value": "sha256:090dd346688c358f935953437ce63ae20a33e2347cb88eb633c27d043d2c90b0"
+        },
+        "attemptRefs": [
+          "attempt-change-001-01"
+        ],
+        "executionOrigins": [
+          {
+            "originId": "origin-effect-readme-modified-01",
+            "ordinal": 1,
+            "attemptRef": "attempt-change-001-01",
+            "planRef": {
+              "planId": "plan-change-001",
+              "planRevision": 1
+            },
+            "stepRunRef": "step-run-change-apply-01",
+            "actionRef": "action-modify-readme-link",
+            "executionEpoch": 1,
+            "state": "not-applied",
+            "recordedAt": "2026-08-30T09:30:30-03:00",
+            "recordedAtRevision": 5,
+            "updatedAt": "2026-08-30T09:30:59-03:00",
+            "lastUpdatedRevision": 7,
+            "evidenceRefs": [
+              "evidence-effect-not-applied"
+            ]
+          },
+          {
+            "originId": "origin-effect-readme-modified-02",
+            "ordinal": 2,
+            "attemptRef": "attempt-change-001-01",
+            "planRef": {
+              "planId": "plan-change-001",
+              "planRevision": 1
+            },
+            "stepRunRef": "step-run-change-apply-01",
+            "actionRef": "action-modify-readme-link",
+            "executionEpoch": 1,
+            "state": "confirmed",
+            "recordedAt": "2026-08-30T09:31:12-03:00",
+            "recordedAtRevision": 10,
+            "updatedAt": "2026-08-30T09:31:59-03:00",
+            "lastUpdatedRevision": 12,
+            "evidenceRefs": [
+              "evidence-effect-confirmed"
+            ]
+          }
+        ],
+        "planRef": {
+          "planId": "plan-change-001",
+          "planRevision": 1
+        },
+        "stepRunRef": "step-run-change-apply-01",
+        "actionRef": "action-modify-readme-link",
+        "resourceRef": "ref-overcore-readme",
+        "operation": "filesystem.modify",
+        "state": "confirmed",
+        "executionEpoch": 1,
+        "recordedAt": "2026-08-30T09:30:30-03:00",
+        "updatedAt": "2026-08-30T09:31:59-03:00",
+        "lastUpdatedRevision": 12,
+        "evidenceRefs": [
+          "evidence-effect-confirmed"
+        ]
+      }
+    ],
+    "blocks": [
+      {
+        "blockId": "block-readme-lock-001",
+        "blockingResultId": "result-change-blocked-001",
+        "blockedAtRevision": 7,
+        "blockedFrom": "running",
+        "resumeTarget": "ready",
+        "mode": "resume-same-request",
+        "condition": "O bloqueio temporário do README precisa ser liberado antes da retomada.",
+        "checkpointRef": "artifact-change-block-checkpoint",
+        "suspendedAttemptId": "attempt-change-001-01",
+        "evidenceRefs": [
+          "evidence-readme-lock",
+          "evidence-effect-not-applied"
+        ],
+        "createdAt": "2026-08-30T09:31:00-03:00"
+      }
+    ],
+    "checkpoints": [
+      {
+        "checkpointRef": "artifact-change-pre-mutation-checkpoint",
+        "digest": "sha256:27bf5a4ae4fd55b395befd7029d3811ea7375348b8dfd167793855e87bb9be14",
+        "requestFingerprint": {
+          "algorithm": "sha256-jcs-v1",
+          "value": "sha256:44340c327366e5c0c78780634343b74720dfff72be25e70a4cfff87b23bbb6e7"
+        },
+        "stateRevision": 5,
+        "attemptId": "attempt-change-001-01",
+        "planRef": {
+          "planId": "plan-change-001",
+          "planRevision": 1
+        },
+        "resumeStepRef": "step-change-apply",
+        "resumeTarget": "ready",
+        "createdAt": "2026-08-30T09:30:29-03:00"
+      },
+      {
+        "checkpointRef": "artifact-change-block-checkpoint",
+        "digest": "sha256:06ad9e600256092f49875b545309b9e3f5d08850422cc7c159b4ccaf30801252",
+        "requestFingerprint": {
+          "algorithm": "sha256-jcs-v1",
+          "value": "sha256:44340c327366e5c0c78780634343b74720dfff72be25e70a4cfff87b23bbb6e7"
+        },
+        "stateRevision": 7,
+        "attemptId": "attempt-change-001-01",
+        "planRef": {
+          "planId": "plan-change-001",
+          "planRevision": 1
+        },
+        "resumeStepRef": "step-change-apply",
+        "resumeTarget": "ready",
+        "createdAt": "2026-08-30T09:31:00-03:00"
+      }
+    ],
+    "contextCaptureRecords": [
+      {
+        "evidenceRef": "evidence-snapshot-ref-overcore-readme",
+        "refId": "ref-overcore-readme",
+        "digest": "sha256:5dff3f8b50fda9bffae5414ae21bd896f5f8fd9f24d063711e625718e3dd8458",
+        "capturedAt": "2026-08-30T09:30:02-03:00",
+        "recordedAt": "2026-08-30T09:30:03-03:00",
+        "recordedAtRevision": 3
+      },
+      {
+        "evidenceRef": "evidence-snapshot-ref-task-request-doc",
+        "refId": "ref-task-request-doc",
+        "digest": "sha256:b380465a49e5d926f43447c632dfa04fdf549f23c4ddc0055754acc9fccfc4d1",
+        "capturedAt": "2026-08-30T09:30:02-03:00",
+        "recordedAt": "2026-08-30T09:30:03-03:00",
+        "recordedAtRevision": 3
+      }
+    ],
+    "evidenceRefs": [
+      "evidence-snapshot-ref-overcore-readme",
+      "evidence-snapshot-ref-task-request-doc",
+      "evidence-readme-lock",
+      "evidence-effect-not-applied",
+      "evidence-readme-lock-cleared",
+      "evidence-effect-confirmed",
+      "evidence-link-readback",
+      "evidence-scope-diff"
+    ],
+    "artifactRefs": [
+      "artifact-change-pre-mutation-checkpoint",
+      "artifact-change-block-checkpoint",
+      "artifact-readme-updated"
+    ],
+    "resultRefs": [
+      {
+        "resultId": "result-change-blocked-001",
+        "stateRevision": 7,
+        "transitionId": "transition-change-blocked-001",
+        "emissionSequence": 1,
+        "status": "blocked",
+        "resultFingerprint": {
+          "algorithm": "sha256-jcs-v1",
+          "value": "sha256:2f97d9cfe6f2472e1fcf8380649cfd6a72ffc8ba3d778b6adfc21f81324db8dd"
+        },
+        "emittedAt": "2026-08-30T09:31:00-03:00"
+      },
+      {
+        "resultId": "result-change-success-001",
+        "stateRevision": 15,
+        "transitionId": "transition-success-001",
+        "emissionSequence": 2,
+        "supersedesResultId": "result-change-blocked-001",
+        "status": "succeeded",
+        "resultFingerprint": {
+          "algorithm": "sha256-jcs-v1",
+          "value": "sha256:daeee050e2f5eda7dfefc0bf04da48c7c215cae788efe2c279eaf2757e20eb8f"
+        },
+        "emittedAt": "2026-08-30T09:32:02-03:00"
+      }
+    ]
+  }
+}

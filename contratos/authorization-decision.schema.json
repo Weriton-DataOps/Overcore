@@ -1,0 +1,215 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:overcore:contracts:authorization-decision:v1",
+  "title": "OverCore AuthorizationDecision v1",
+  "description": "Crachá temporário e mínimo emitido pelo provedor de autoridade para uma revisão exata do plano.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion",
+    "decisionId",
+    "authorizationRequestId",
+    "issuedAt",
+    "issuer",
+    "audience",
+    "requestBinding",
+    "planBinding",
+    "outcome",
+    "actionDecisions",
+    "limits",
+    "revocation",
+    "attestationRef",
+    "decisionFingerprint"
+  ],
+  "properties": {
+    "contractVersion": { "const": "1.0" },
+    "decisionId": { "$ref": "#/$defs/identifier" },
+    "authorizationRequestId": { "$ref": "#/$defs/identifier" },
+    "issuedAt": { "$ref": "#/$defs/dateTime" },
+    "issuer": { "$ref": "#/$defs/issuer" },
+    "audience": { "$ref": "#/$defs/audience" },
+    "requestBinding": { "$ref": "#/$defs/requestBinding" },
+    "planBinding": { "$ref": "#/$defs/planBinding" },
+    "outcome": { "enum": ["permit", "permit-with-constraints", "deny"] },
+    "actionDecisions": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": { "$ref": "#/$defs/actionDecision" }
+    },
+    "limits": { "$ref": "#/$defs/limits" },
+    "revocation": { "$ref": "#/$defs/revocation" },
+    "attestationRef": { "$ref": "#/$defs/identifier" },
+    "decisionFingerprint": { "$ref": "#/$defs/fingerprint" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "outcome": { "const": "permit" } },
+        "required": ["outcome"]
+      },
+      "then": {
+        "properties": {
+          "actionDecisions": {
+            "items": {
+              "properties": { "outcome": { "const": "permit" } },
+              "required": ["outcome"]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "outcome": { "const": "permit-with-constraints" } },
+        "required": ["outcome"]
+      },
+      "then": {
+        "properties": {
+          "actionDecisions": {
+            "items": {
+              "properties": { "outcome": { "const": "permit" } },
+              "required": ["outcome"]
+            },
+            "contains": {
+              "properties": { "requiredControls": { "minItems": 1 } },
+              "required": ["requiredControls"]
+            },
+            "minContains": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "outcome": { "const": "deny" } },
+        "required": ["outcome"]
+      },
+      "then": {
+        "properties": {
+          "actionDecisions": {
+            "contains": {
+              "properties": { "outcome": { "const": "deny" } },
+              "required": ["outcome"]
+            },
+            "minContains": 1
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$"
+    },
+    "dateTime": { "type": "string", "format": "date-time" },
+    "sha256": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "fingerprint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "value"],
+      "properties": {
+        "algorithm": { "const": "sha256-jcs-v1" },
+        "value": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "requestBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requestId", "requestFingerprint", "clientId"],
+      "properties": {
+        "requestId": { "$ref": "#/$defs/identifier" },
+        "requestFingerprint": { "$ref": "#/$defs/fingerprint" },
+        "clientId": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "planBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["planId", "planRevision", "planFingerprint", "strategyFingerprint"],
+      "properties": {
+        "planId": { "$ref": "#/$defs/identifier" },
+        "planRevision": { "type": "integer", "minimum": 1, "maximum": 20 },
+        "planFingerprint": { "$ref": "#/$defs/fingerprint" },
+        "strategyFingerprint": { "$ref": "#/$defs/fingerprint" }
+      }
+    },
+    "issuer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["providerId", "providerKind", "authorityBasisRef"],
+      "properties": {
+        "providerId": { "$ref": "#/$defs/identifier" },
+        "providerKind": { "enum": ["assistant", "service"] },
+        "authorityBasisRef": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "audience": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["executionEnvironmentId", "kind"],
+      "properties": {
+        "executionEnvironmentId": { "$ref": "#/$defs/identifier" },
+        "kind": { "const": "execution-environment" }
+      }
+    },
+    "control": {
+      "enum": [
+        "checkpoint-before-mutation",
+        "verify-after-effect",
+        "reconcile-before-retry",
+        "revocation-check-before-effect",
+        "sanitize-output",
+        "no-secret-materialization"
+      ]
+    },
+    "actionDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actionId", "outcome", "reasonCode", "requiredControls"],
+      "properties": {
+        "actionId": { "$ref": "#/$defs/identifier" },
+        "outcome": { "enum": ["permit", "deny"] },
+        "reasonCode": {
+          "enum": [
+            "within-delegated-authority",
+            "outside-delegated-authority",
+            "risk-policy",
+            "authority-expired",
+            "plan-mismatch",
+            "user-policy",
+            "other"
+          ]
+        },
+        "requiredControls": {
+          "type": "array",
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/control" }
+        }
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["notBefore", "expiresAt", "maxDurationMs"],
+      "properties": {
+        "notBefore": { "$ref": "#/$defs/dateTime" },
+        "expiresAt": { "$ref": "#/$defs/dateTime" },
+        "maxDurationMs": { "type": "integer", "minimum": 1, "maximum": 604800000 },
+        "maxCostUsd": { "type": "number", "minimum": 0, "maximum": 1000000 }
+      }
+    },
+    "revocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "statusRef", "failMode"],
+      "properties": {
+        "mode": { "const": "check-before-journaled-effect" },
+        "statusRef": { "$ref": "#/$defs/identifier" },
+        "failMode": { "const": "fail-closed" }
+      }
+    }
+  }
+}

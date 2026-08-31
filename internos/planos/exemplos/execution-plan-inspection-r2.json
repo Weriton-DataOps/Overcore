@@ -1,0 +1,187 @@
+{
+  "modelVersion": "1.0",
+  "planId": "plan-inspection-001",
+  "planRevision": 2,
+  "supersedesPlanRef": {
+    "planId": "plan-inspection-001",
+    "planRevision": 1,
+    "planFingerprint": {
+      "algorithm": "sha256-jcs-v1",
+      "value": "sha256:780639b5bd1a8459ca788695222bc47f061ae563ff01ccac441c0207539c7e8b"
+    },
+    "strategyFingerprint": {
+      "algorithm": "sha256-jcs-v1",
+      "value": "sha256:c0ecef0ba89aa8b630c2c8d8aa96c0652e8c13d6143a40f02f6711300db3d456"
+    }
+  },
+  "taskBinding": {
+    "taskId": "task-20260830-inspection-001",
+    "requestId": "req-20260830-inspection-001",
+    "requestFingerprint": {
+      "algorithm": "sha256-jcs-v1",
+      "value": "sha256:33fcb5a04d18b6d00536ea6085bc36838b350ddd3058041ea741005069d306d6"
+    },
+    "basisStateRevision": 7
+  },
+  "contextBindings": [
+    {
+      "refId": "ref-overcore-repository",
+      "digest": "sha256:ec09eb185fde0673a66f99856d12087cf7ebc129ada504675b33acaf071b611e",
+      "capturedAt": "2026-08-30T09:01:02-03:00",
+      "source": "admission-snapshot",
+      "captureEvidenceRef": "evidence-snapshot-ref-overcore-repository-r2"
+    }
+  ],
+  "createdAt": "2026-08-30T09:01:03-03:00",
+  "mode": "sequential",
+  "planFingerprint": {
+    "algorithm": "sha256-jcs-v1",
+    "value": "sha256:d5faa4eca3d64700b85a602b75c5128e929e7ea8d33333c67aaf581ca6bedb6c"
+  },
+  "strategyFingerprint": {
+    "algorithm": "sha256-jcs-v1",
+    "value": "sha256:61e794c396b5fbfa0e30b7b94314a047056c9eb3b8363ae003b5c8598c69f58e"
+  },
+  "steps": [
+    {
+      "stepId": "step-inspection-r2-enumerate",
+      "sequence": 1,
+      "kind": "prepare",
+      "objective": "Reenumerar os contratos após a falha e congelar a lista exata usada nesta tentativa.",
+      "dependsOnStepRefs": [],
+      "inputs": [{ "kind": "context-reference", "ref": "ref-overcore-repository" }],
+      "actions": [
+        {
+          "actionId": "action-r2-enumerate-contracts",
+          "scope": "request-resource",
+          "resourceRef": "ref-overcore-repository",
+          "operation": "git.inspect",
+          "effectPolicy": { "mode": "none" }
+        }
+      ],
+      "outputs": [{ "outputId": "output-r2-contract-list", "kind": "observation", "mediaType": "application/json" }],
+      "constraintRefs": ["constraint-read-only"],
+      "assumptionRefs": [],
+      "criterionRefs": [],
+      "timeoutMs": 30000,
+      "checkpointPolicy": "none"
+    },
+    {
+      "stepId": "step-inspection-r2-capture",
+      "sequence": 2,
+      "kind": "prepare",
+      "objective": "Capturar bytes e digests dos contratos antes de analisá-los, separando leitura de parsing.",
+      "dependsOnStepRefs": ["step-inspection-r2-enumerate"],
+      "inputs": [
+        { "kind": "step-output", "ref": "output-r2-contract-list" },
+        { "kind": "context-reference", "ref": "ref-overcore-repository" }
+      ],
+      "actions": [
+        {
+          "actionId": "action-r2-read-contracts",
+          "scope": "request-resource",
+          "resourceRef": "ref-overcore-repository",
+          "operation": "filesystem.read",
+          "effectPolicy": { "mode": "none" }
+        }
+      ],
+      "outputs": [{ "outputId": "output-r2-contract-snapshot", "kind": "artifact", "mediaType": "application/json" }],
+      "constraintRefs": ["constraint-read-only"],
+      "assumptionRefs": [],
+      "criterionRefs": [],
+      "timeoutMs": 30000,
+      "checkpointPolicy": "none"
+    },
+    {
+      "stepId": "step-inspection-r2-parse",
+      "sequence": 3,
+      "kind": "verify",
+      "objective": "Analisar o snapshot congelado com o validador interno e identificar o arquivo exato em caso de erro.",
+      "dependsOnStepRefs": ["step-inspection-r2-capture"],
+      "inputs": [{ "kind": "step-output", "ref": "output-r2-contract-snapshot" }],
+      "actions": [
+        {
+          "actionId": "action-r2-parse-snapshot",
+          "scope": "runtime-internal",
+          "operation": "runtime.parse-json",
+          "effectPolicy": { "mode": "none" }
+        }
+      ],
+      "outputs": [{ "outputId": "evidence-r2-json-readable", "kind": "evidence", "mediaType": "application/json" }],
+      "constraintRefs": ["constraint-read-only"],
+      "assumptionRefs": [],
+      "criterionRefs": ["criterion-json-readable"],
+      "timeoutMs": 60000,
+      "checkpointPolicy": "none"
+    },
+    {
+      "stepId": "step-inspection-r2-closed",
+      "sequence": 4,
+      "kind": "verify",
+      "objective": "Comprovar no mesmo snapshot que cada schema fecha o objeto raiz.",
+      "dependsOnStepRefs": ["step-inspection-r2-parse"],
+      "inputs": [
+        { "kind": "step-output", "ref": "output-r2-contract-snapshot" },
+        { "kind": "step-output", "ref": "evidence-r2-json-readable" }
+      ],
+      "actions": [
+        {
+          "actionId": "action-r2-inspect-schema-closure",
+          "scope": "runtime-internal",
+          "operation": "runtime.inspect-schema-closure",
+          "effectPolicy": { "mode": "none" }
+        }
+      ],
+      "outputs": [{ "outputId": "evidence-r2-contract-closed", "kind": "evidence", "mediaType": "application/json" }],
+      "constraintRefs": ["constraint-read-only"],
+      "assumptionRefs": [],
+      "criterionRefs": ["criterion-contract-closed"],
+      "timeoutMs": 60000,
+      "checkpointPolicy": "none"
+    },
+    {
+      "stepId": "step-inspection-r2-deliver",
+      "sequence": 5,
+      "kind": "deliver",
+      "objective": "Montar o relatório verificável e citar o digest do snapshot examinado.",
+      "dependsOnStepRefs": ["step-inspection-r2-closed"],
+      "inputs": [
+        { "kind": "step-output", "ref": "output-r2-contract-snapshot" },
+        { "kind": "step-output", "ref": "evidence-r2-json-readable" },
+        { "kind": "step-output", "ref": "evidence-r2-contract-closed" }
+      ],
+      "actions": [
+        {
+          "actionId": "action-r2-assemble-inspection-report",
+          "scope": "runtime-internal",
+          "operation": "runtime.assemble-report",
+          "effectPolicy": { "mode": "none" }
+        }
+      ],
+      "outputs": [{ "outputId": "output-r2-inspection-report", "kind": "delivery", "mediaType": "application/json" }],
+      "constraintRefs": ["constraint-read-only"],
+      "assumptionRefs": [],
+      "criterionRefs": [],
+      "timeoutMs": 30000,
+      "checkpointPolicy": "none"
+    }
+  ],
+  "criterionCoverage": [
+    {
+      "criterionId": "criterion-json-readable",
+      "verificationStepRefs": ["step-inspection-r2-parse"],
+      "evidenceOutputRefs": ["evidence-r2-json-readable"]
+    },
+    {
+      "criterionId": "criterion-contract-closed",
+      "verificationStepRefs": ["step-inspection-r2-closed"],
+      "evidenceOutputRefs": ["evidence-r2-contract-closed"]
+    }
+  ],
+  "outputBinding": {
+    "kind": "report",
+    "mediaType": "application/json",
+    "producerStepRef": "step-inspection-r2-deliver",
+    "outputRefs": ["output-r2-inspection-report"]
+  }
+}

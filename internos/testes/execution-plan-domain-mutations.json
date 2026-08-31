@@ -1,0 +1,439 @@
+{
+  "fixtureVersion": "1.0",
+  "cases": [
+    {
+      "caseId": "plan-rejects-unknown-top-level-field",
+      "baseExample": "execution-plan-change-r1.json",
+      "patch": [{ "op": "add", "path": "/executor", "value": "agent-arbitrary" }],
+      "expectedSchemaValid": false
+    },
+    {
+      "caseId": "plan-revision-one-rejects-supersedes",
+      "baseExample": "execution-plan-inspection-r1.json",
+      "patch": [{
+        "op": "add",
+        "path": "/supersedesPlanRef",
+        "value": {
+          "planId": "plan-old-inspection",
+          "planRevision": 1,
+          "planFingerprint": { "algorithm": "sha256-jcs-v1", "value": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+          "strategyFingerprint": { "algorithm": "sha256-jcs-v1", "value": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
+        }
+      }],
+      "expectedSchemaValid": false
+    },
+    {
+      "caseId": "plan-mutation-structurally-requires-recovery",
+      "baseExample": "execution-plan-change-r1.json",
+      "patch": [{ "op": "remove", "path": "/steps/1/actions/0/effectPolicy/recovery" }],
+      "expectedSchemaValid": false
+    },
+    {
+      "caseId": "plan-request-binding-cannot-change",
+      "baseExample": "execution-plan-change-r1.json",
+      "patch": [{ "op": "replace", "path": "/taskBinding/requestId", "value": "req-20260830-inspection-001" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-request-binding-mismatch"
+    },
+    {
+      "caseId": "plan-basis-must-be-planning-revision",
+      "baseExample": "execution-plan-change-r1.json",
+      "patch": [{ "op": "replace", "path": "/taskBinding/basisStateRevision", "value": 5 }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-basis-not-planning"
+    },
+    {
+      "caseId": "plan-context-binding-covers-every-used-resource",
+      "baseExample": "execution-plan-change-r1.json",
+      "patch": [{ "op": "remove", "path": "/contextBindings/1" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-context-binding-incomplete"
+    },
+    {
+      "caseId": "plan-context-binding-source-must-match-request",
+      "baseExample": "execution-plan-change-r1.json",
+      "patch": [
+        { "op": "replace", "path": "/contextBindings/0/source", "value": "request-digest" },
+        { "op": "remove", "path": "/contextBindings/0/captureEvidenceRef" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-context-binding-mismatch"
+    },
+    {
+      "caseId": "plan-action-cannot-invent-resource",
+      "baseExample": "execution-plan-change-r1.json",
+      "patch": [{ "op": "replace", "path": "/steps/0/actions/0/resourceRef", "value": "ref-resource-not-granted" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-action-outside-authority"
+    },
+    {
+      "caseId": "plan-action-cannot-invent-operation",
+      "baseExample": "execution-plan-change-r1.json",
+      "patch": [{ "op": "replace", "path": "/steps/0/actions/0/operation", "value": "filesystem.delete" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-action-outside-authority"
+    },
+    {
+      "caseId": "plan-operation-must-have-known-classification",
+      "baseExample": "execution-plan-change-r1.json",
+      "patch": [{ "op": "replace", "path": "/steps/0/actions/0/operation", "value": "filesystem.scan" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-operation-unclassified"
+    },
+    {
+      "caseId": "plan-mutation-must-be-journaled",
+      "baseExample": "execution-plan-change-r1.json",
+      "patch": [{ "op": "replace", "path": "/steps/1/actions/0/effectPolicy", "value": { "mode": "none" } }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-mutation-not-journaled"
+    },
+    {
+      "caseId": "plan-read-cannot-masquerade-as-effect",
+      "baseExample": "execution-plan-change-r1.json",
+      "patch": [{
+        "op": "replace",
+        "path": "/steps/0/actions/0/effectPolicy",
+        "value": {
+          "mode": "journaled",
+          "effectKey": "task-20260830-change-001/fake-read-effect",
+          "uncertaintyHandling": "reconcile-before-retry",
+          "recovery": { "mode": "retain-and-report", "description": "Registrar o resultado sem repetir a leitura." }
+        }
+      }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-effect-classification-mismatch"
+    },
+    {
+      "caseId": "plan-mutation-requires-pre-effect-checkpoint",
+      "baseExample": "execution-plan-change-r1.json",
+      "patch": [{ "op": "replace", "path": "/steps/1/checkpointPolicy", "value": "none" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-mutation-without-checkpoint"
+    },
+    {
+      "caseId": "plan-effect-key-is-unique",
+      "baseExample": "execution-plan-change-r1.json",
+      "patch": [{
+        "op": "add",
+        "path": "/steps/1/actions/-",
+        "value": {
+          "actionId": "action-modify-readme-again",
+          "scope": "request-resource",
+          "resourceRef": "ref-overcore-readme",
+          "operation": "filesystem.modify",
+          "effectPolicy": {
+            "mode": "journaled",
+            "effectKey": "task-20260830-change-001/readme-reference",
+            "uncertaintyHandling": "reconcile-before-retry",
+            "recovery": { "mode": "restore-checkpoint", "description": "Restaurar o checkpoint anterior." }
+          }
+        }
+      }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-effect-key-duplicate"
+    },
+    {
+      "caseId": "plan-sequence-cannot-skip",
+      "baseExample": "execution-plan-inspection-r1.json",
+      "patch": [{ "op": "replace", "path": "/steps/2/sequence", "value": 4 }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-sequence-invalid"
+    },
+    {
+      "caseId": "plan-dependency-cannot-jump-back",
+      "baseExample": "execution-plan-inspection-r1.json",
+      "patch": [{ "op": "replace", "path": "/steps/2/dependsOnStepRefs/0", "value": "step-inspection-enumerate" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-linear-dependency-invalid"
+    },
+    {
+      "caseId": "plan-input-cannot-reference-future-output",
+      "baseExample": "execution-plan-inspection-r1.json",
+      "patch": [{ "op": "add", "path": "/steps/0/inputs/-", "value": { "kind": "step-output", "ref": "output-inspection-report" } }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-input-not-available"
+    },
+    {
+      "caseId": "plan-input-reference-must-exist",
+      "baseExample": "execution-plan-inspection-r1.json",
+      "patch": [{ "op": "replace", "path": "/steps/0/inputs/0/ref", "value": "ref-context-does-not-exist" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-input-reference-unknown"
+    },
+    {
+      "caseId": "plan-step-id-is-unique",
+      "baseExample": "execution-plan-inspection-r1.json",
+      "patch": [{ "op": "replace", "path": "/steps/1/stepId", "value": "step-inspection-enumerate" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-identity-duplicate"
+    },
+    {
+      "caseId": "plan-action-id-is-unique",
+      "baseExample": "execution-plan-inspection-r1.json",
+      "patch": [{ "op": "replace", "path": "/steps/1/actions/0/actionId", "value": "action-enumerate-contracts" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-identity-duplicate"
+    },
+    {
+      "caseId": "plan-output-id-is-unique",
+      "baseExample": "execution-plan-inspection-r1.json",
+      "patch": [{ "op": "replace", "path": "/steps/1/outputs/0/outputId", "value": "output-contract-list" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-identity-duplicate"
+    },
+    {
+      "caseId": "plan-assumption-cannot-disappear",
+      "baseExample": "execution-plan-change-r1.json",
+      "patch": [{ "op": "replace", "path": "/steps/0/assumptionRefs", "value": [] }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-assumption-not-covered"
+    },
+    {
+      "caseId": "plan-constraint-reference-must-exist",
+      "baseExample": "execution-plan-inspection-r1.json",
+      "patch": [{ "op": "replace", "path": "/steps/0/constraintRefs/0", "value": "constraint-not-in-request" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-constraint-unknown"
+    },
+    {
+      "caseId": "plan-criterion-coverage-is-total",
+      "baseExample": "execution-plan-inspection-r1.json",
+      "patch": [{ "op": "remove", "path": "/criterionCoverage/1" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-criterion-coverage-incomplete"
+    },
+    {
+      "caseId": "plan-criterion-must-use-verification-step",
+      "baseExample": "execution-plan-inspection-r1.json",
+      "patch": [{ "op": "replace", "path": "/criterionCoverage/0/verificationStepRefs/0", "value": "step-inspection-deliver" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-verification-step-invalid"
+    },
+    {
+      "caseId": "plan-criterion-needs-evidence-output",
+      "baseExample": "execution-plan-inspection-r1.json",
+      "patch": [{ "op": "replace", "path": "/criterionCoverage/0/evidenceOutputRefs/0", "value": "output-inspection-report" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-evidence-specification-missing"
+    },
+    {
+      "caseId": "plan-timeouts-must-fit-request-budget",
+      "baseExample": "execution-plan-inspection-r1.json",
+      "patch": [{ "op": "replace", "path": "/steps/1/timeoutMs", "value": 300000 }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-timeout-budget-exceeded"
+    },
+    {
+      "caseId": "plan-output-kind-must-match-request",
+      "baseExample": "execution-plan-inspection-r1.json",
+      "patch": [{ "op": "replace", "path": "/outputBinding/kind", "value": "text" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-output-binding-mismatch"
+    },
+    {
+      "caseId": "plan-output-must-come-from-departure-step",
+      "baseExample": "execution-plan-inspection-r1.json",
+      "patch": [{ "op": "replace", "path": "/outputBinding/producerStepRef", "value": "step-inspection-parse" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-output-binding-mismatch"
+    },
+    {
+      "caseId": "plan-fingerprint-protects-document",
+      "baseExample": "execution-plan-inspection-r1.json",
+      "patch": [{ "op": "replace", "path": "/planFingerprint/value", "value": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-fingerprint-mismatch"
+    },
+    {
+      "caseId": "strategy-fingerprint-protects-semantics",
+      "baseExample": "execution-plan-inspection-r1.json",
+      "patch": [{ "op": "replace", "path": "/strategyFingerprint/value", "value": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-strategy-fingerprint-mismatch"
+    },
+    {
+      "caseId": "plan-revision-must-supersede-exact-previous",
+      "baseExample": "execution-plan-inspection-r2.json",
+      "patch": [{ "op": "replace", "path": "/supersedesPlanRef/planRevision", "value": 9 }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-supersedes-mismatch"
+    },
+    {
+      "caseId": "plan-retry-cannot-disguise-same-strategy",
+      "baseExample": "execution-plan-inspection-r2.json",
+      "patch": [{ "op": "replace", "path": "/strategyFingerprint/value", "value": "sha256:c0ecef0ba89aa8b630c2c8d8aa96c0652e8c13d6143a40f02f6711300db3d456" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-retry-strategy-unchanged"
+    },
+    {
+      "caseId": "plan-runtime-operation-is-fail-closed",
+      "baseExample": "execution-plan-inspection-r1.json",
+      "patch": [{ "op": "replace", "path": "/steps/3/actions/0/operation", "value": "runtime.do-anything" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-runtime-action-invalid"
+    },
+    {
+      "caseId": "plan-phases-cannot-move-backward",
+      "baseExample": "execution-plan-inspection-r1.json",
+      "patch": [{ "op": "replace", "path": "/steps/2/kind", "value": "prepare" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-phase-order-invalid"
+    },
+    {
+      "caseId": "plan-mutation-belongs-only-to-execute",
+      "baseExample": "execution-plan-change-r1.json",
+      "patch": [
+        { "op": "replace", "path": "/steps/2/actions/0/operation", "value": "filesystem.modify" },
+        {
+          "op": "replace",
+          "path": "/steps/2/actions/0/effectPolicy",
+          "value": {
+            "mode": "journaled",
+            "effectKey": "task-20260830-change-001/invalid-verify-mutation",
+            "uncertaintyHandling": "reconcile-before-retry",
+            "recovery": {
+              "mode": "retain-and-report",
+              "description": "Caso adversarial: a mutação não pode existir em verify."
+            }
+          }
+        }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-effect-step-kind-invalid"
+    },
+    {
+      "caseId": "plan-bound-output-must-be-delivery",
+      "baseExample": "execution-plan-inspection-r1.json",
+      "patch": [{ "op": "replace", "path": "/steps/3/outputs/0/kind", "value": "checkpoint" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-output-binding-mismatch"
+    },
+    {
+      "caseId": "plan-output-destination-matches-request",
+      "baseExample": "execution-plan-change-r1.json",
+      "patch": [{ "op": "replace", "path": "/outputBinding/destinationRef", "value": "ref-task-request-doc" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-output-binding-mismatch"
+    },
+    {
+      "caseId": "plan-admission-snapshot-needs-persisted-evidence",
+      "baseExample": "execution-plan-change-r1.json",
+      "patch": [{ "op": "replace", "path": "/contextBindings/0/captureEvidenceRef", "value": "evidence-not-persisted" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-context-capture-evidence-missing"
+    },
+    {
+      "caseId": "plan-context-capture-cannot-come-from-future",
+      "baseExample": "execution-plan-change-r1.json",
+      "patch": [{ "op": "replace", "path": "/contextBindings/0/capturedAt", "value": "2099-01-01T00:00:00Z" }],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-context-capture-time-invalid"
+    },
+    {
+      "caseId": "plan-effect-key-cannot-disguise-same-retry",
+      "baseExample": "execution-plan-change-r1.json",
+      "patch": [
+        { "op": "replace", "path": "/planRevision", "value": 2 },
+        {
+          "op": "add",
+          "path": "/supersedesPlanRef",
+          "value": {
+            "planId": "plan-change-001",
+            "planRevision": 1,
+            "planFingerprint": { "algorithm": "sha256-jcs-v1", "value": "sha256:753e28d45a8b113e6229aafdba6ad8d4ffc27403de44896f3cb159d6a4822366" },
+            "strategyFingerprint": { "algorithm": "sha256-jcs-v1", "value": "sha256:4cacdebff2d82278d6592b865a80090e4d30ebbeda74758c4fec1517d999e3dd" }
+          }
+        },
+        { "op": "replace", "path": "/steps/1/actions/0/effectPolicy/effectKey", "value": "task-20260830-change-001/disguised-retry" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-retry-strategy-unchanged"
+    },
+    {
+      "caseId": "plan-effect-key-stays-stable-when-strategy-changes",
+      "baseExample": "execution-plan-change-r1.json",
+      "patch": [
+        { "op": "replace", "path": "/planRevision", "value": 2 },
+        {
+          "op": "add",
+          "path": "/supersedesPlanRef",
+          "value": {
+            "planId": "plan-change-001",
+            "planRevision": 1,
+            "planFingerprint": { "algorithm": "sha256-jcs-v1", "value": "sha256:753e28d45a8b113e6229aafdba6ad8d4ffc27403de44896f3cb159d6a4822366" },
+            "strategyFingerprint": { "algorithm": "sha256-jcs-v1", "value": "sha256:4cacdebff2d82278d6592b865a80090e4d30ebbeda74758c4fec1517d999e3dd" }
+          }
+        },
+        { "op": "replace", "path": "/steps/1/kind", "value": "prepare" },
+        { "op": "replace", "path": "/steps/1/actions/0/operation", "value": "filesystem.read" },
+        { "op": "replace", "path": "/steps/1/actions/0/effectPolicy", "value": { "mode": "none" } },
+        { "op": "replace", "path": "/steps/2/kind", "value": "execute" },
+        { "op": "replace", "path": "/steps/2/actions/0/operation", "value": "filesystem.modify" },
+        {
+          "op": "replace",
+          "path": "/steps/2/actions/0/effectPolicy",
+          "value": {
+            "mode": "journaled",
+            "effectKey": "task-20260830-change-001/unstable-key",
+            "uncertaintyHandling": "reconcile-before-retry",
+            "recovery": {
+              "mode": "retain-and-report",
+              "description": "Caso adversarial: a mesma intenção foi deslocada para outro passo."
+            }
+          }
+        },
+        { "op": "replace", "path": "/steps/2/checkpointPolicy", "value": "before-mutation" },
+        { "op": "replace", "path": "/strategyFingerprint/value", "value": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+        { "op": "replace", "path": "/steps/0/timeoutMs", "value": 25000 }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-effect-key-unstable"
+    },
+    {
+      "caseId": "plan-cannot-predate-basis-state-revision",
+      "baseExample": "execution-plan-inspection-r2.json",
+      "patch": [
+        { "op": "replace", "path": "/contextBindings/0/capturedAt", "value": "2026-08-30T09:00:59-03:00" },
+        { "op": "replace", "path": "/createdAt", "value": "2026-08-30T09:00:59-03:00" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-created-before-basis"
+    },
+    {
+      "caseId": "plan-cannot-be-created-after-activation",
+      "baseExample": "execution-plan-inspection-r2.json",
+      "patch": [
+        { "op": "replace", "path": "/createdAt", "value": "2026-08-30T09:01:06-03:00" },
+        { "op": "replace", "path": "/contextBindings/0/capturedAt", "value": "2026-08-30T09:01:06-03:00" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-created-after-activation"
+    },
+    {
+      "caseId": "plan-schema-ref-accepts-request-uri-reference-shape",
+      "baseExample": "execution-plan-inspection-r1.json",
+      "patch": [
+        { "op": "add", "path": "/outputBinding/schemaRef", "value": "schemas/report-v1.json#/result" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-output-binding-mismatch"
+    },
+    {
+      "caseId": "unsupported-checkpoint-policy-is-rejected-in-v1",
+      "baseExample": "execution-plan-inspection-r1.json",
+      "patch": [
+        { "op": "replace", "path": "/steps/0/checkpointPolicy", "value": "after-step" }
+      ],
+      "expectedSchemaValid": false
+    },
+    {
+      "caseId": "plan-capture-evidence-cannot-point-to-future-runtime-evidence",
+      "baseExample": "execution-plan-change-r1.json",
+      "patch": [
+        { "op": "replace", "path": "/contextBindings/0/captureEvidenceRef", "value": "evidence-scope-diff" }
+      ],
+      "expectedSchemaValid": true,
+      "expectedDomainCode": "execution-plan-context-capture-evidence-missing"
+    }
+  ]
+}

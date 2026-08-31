@@ -1,0 +1,238 @@
+{
+  "modelVersion": "1.0",
+  "planId": "plan-change-001",
+  "planRevision": 2,
+  "supersedesPlanRef": {
+    "planId": "plan-change-001",
+    "planRevision": 1,
+    "planFingerprint": {
+      "algorithm": "sha256-jcs-v1",
+      "value": "sha256:753e28d45a8b113e6229aafdba6ad8d4ffc27403de44896f3cb159d6a4822366"
+    },
+    "strategyFingerprint": {
+      "algorithm": "sha256-jcs-v1",
+      "value": "sha256:4cacdebff2d82278d6592b865a80090e4d30ebbeda74758c4fec1517d999e3dd"
+    }
+  },
+  "taskBinding": {
+    "taskId": "task-20260830-change-001",
+    "requestId": "req-20260830-change-001",
+    "requestFingerprint": {
+      "algorithm": "sha256-jcs-v1",
+      "value": "sha256:44340c327366e5c0c78780634343b74720dfff72be25e70a4cfff87b23bbb6e7"
+    },
+    "basisStateRevision": 7
+  },
+  "contextBindings": [
+    {
+      "refId": "ref-overcore-readme",
+      "digest": "sha256:5dff3f8b50fda9bffae5414ae21bd896f5f8fd9f24d063711e625718e3dd8458",
+      "capturedAt": "2026-08-30T09:30:02-03:00",
+      "source": "admission-snapshot",
+      "captureEvidenceRef": "evidence-snapshot-ref-overcore-readme"
+    },
+    {
+      "refId": "ref-task-request-doc",
+      "digest": "sha256:b380465a49e5d926f43447c632dfa04fdf549f23c4ddc0055754acc9fccfc4d1",
+      "capturedAt": "2026-08-30T09:30:02-03:00",
+      "source": "admission-snapshot",
+      "captureEvidenceRef": "evidence-snapshot-ref-task-request-doc"
+    }
+  ],
+  "createdAt": "2026-08-30T09:30:47-03:00",
+  "mode": "sequential",
+  "planFingerprint": {
+    "algorithm": "sha256-jcs-v1",
+    "value": "sha256:633fb15423921e61f1c1d06c327998ec9c0e443480415434707afa5c0d66a8ae"
+  },
+  "strategyFingerprint": {
+    "algorithm": "sha256-jcs-v1",
+    "value": "sha256:c100ae151e05aabafaaa47f07022fe6ba4e405e0b2a497936d818f564ec0d4cc"
+  },
+  "steps": [
+    {
+      "stepId": "step-change-inspect",
+      "sequence": 1,
+      "kind": "prepare",
+      "objective": "Confirmar o formato atual do README, o destino do link e a suposição sobre Markdown antes de modificar.",
+      "dependsOnStepRefs": [],
+      "inputs": [
+        { "kind": "context-reference", "ref": "ref-overcore-readme" },
+        { "kind": "context-reference", "ref": "ref-task-request-doc" },
+        { "kind": "assumption", "ref": "assumption-markdown-links" }
+      ],
+      "actions": [
+        {
+          "actionId": "action-read-readme",
+          "scope": "request-resource",
+          "resourceRef": "ref-overcore-readme",
+          "operation": "filesystem.read",
+          "effectPolicy": { "mode": "none" }
+        },
+        {
+          "actionId": "action-read-task-request-doc",
+          "scope": "request-resource",
+          "resourceRef": "ref-task-request-doc",
+          "operation": "filesystem.read",
+          "effectPolicy": { "mode": "none" }
+        }
+      ],
+      "outputs": [
+        { "outputId": "output-markdown-context", "kind": "observation", "mediaType": "application/json" }
+      ],
+      "constraintRefs": ["constraint-preserve-content"],
+      "assumptionRefs": ["assumption-markdown-links"],
+      "criterionRefs": [],
+      "timeoutMs": 30000,
+      "checkpointPolicy": "none"
+    },
+    {
+      "stepId": "step-change-apply",
+      "sequence": 2,
+      "kind": "execute",
+      "objective": "Adicionar somente a referência relativa contratada ao README.",
+      "dependsOnStepRefs": ["step-change-inspect"],
+      "inputs": [
+        { "kind": "step-output", "ref": "output-markdown-context" },
+        { "kind": "context-reference", "ref": "ref-overcore-readme" },
+        { "kind": "constraint", "ref": "constraint-preserve-content" }
+      ],
+      "actions": [
+        {
+          "actionId": "action-modify-readme-link",
+          "scope": "request-resource",
+          "resourceRef": "ref-overcore-readme",
+          "operation": "filesystem.modify",
+          "effectPolicy": {
+            "mode": "journaled",
+            "effectKey": "task-20260830-change-001/readme-reference",
+            "uncertaintyHandling": "reconcile-before-retry",
+            "recovery": {
+              "mode": "retain-and-report",
+              "description": "Preservar o estado comprovado e relatar o desfecho se a segunda execução não puder ser confirmada."
+            }
+          }
+        }
+      ],
+      "outputs": [
+        { "outputId": "output-readme-checkpoint", "kind": "checkpoint", "mediaType": "application/json" },
+        { "outputId": "output-readme-effect-receipt", "kind": "effect-receipt", "mediaType": "application/json" }
+      ],
+      "constraintRefs": ["constraint-preserve-content"],
+      "assumptionRefs": [],
+      "criterionRefs": [],
+      "timeoutMs": 90000,
+      "checkpointPolicy": "before-mutation"
+    },
+    {
+      "stepId": "step-change-verify-link",
+      "sequence": 3,
+      "kind": "verify",
+      "objective": "Comprovar que o link relativo existe e resolve para a documentação esperada.",
+      "dependsOnStepRefs": ["step-change-apply"],
+      "inputs": [
+        { "kind": "step-output", "ref": "output-readme-effect-receipt" },
+        { "kind": "context-reference", "ref": "ref-overcore-readme" },
+        { "kind": "context-reference", "ref": "ref-task-request-doc" }
+      ],
+      "actions": [
+        {
+          "actionId": "action-read-link-result",
+          "scope": "request-resource",
+          "resourceRef": "ref-overcore-readme",
+          "operation": "filesystem.read",
+          "effectPolicy": { "mode": "none" }
+        },
+        {
+          "actionId": "action-read-link-target",
+          "scope": "request-resource",
+          "resourceRef": "ref-task-request-doc",
+          "operation": "filesystem.read",
+          "effectPolicy": { "mode": "none" }
+        }
+      ],
+      "outputs": [
+        { "outputId": "evidence-link-readback", "kind": "evidence", "mediaType": "application/json" }
+      ],
+      "constraintRefs": ["constraint-preserve-content"],
+      "assumptionRefs": [],
+      "criterionRefs": ["criterion-link-present"],
+      "timeoutMs": 30000,
+      "checkpointPolicy": "none"
+    },
+    {
+      "stepId": "step-change-verify-scope",
+      "sequence": 4,
+      "kind": "verify",
+      "objective": "Comparar o journal da tarefa com a autoridade recebida e comprovar que nenhum outro recurso foi alterado.",
+      "dependsOnStepRefs": ["step-change-verify-link"],
+      "inputs": [
+        { "kind": "step-output", "ref": "output-readme-effect-receipt" },
+        { "kind": "constraint", "ref": "constraint-preserve-content" }
+      ],
+      "actions": [
+        {
+          "actionId": "action-verify-journal-scope",
+          "scope": "runtime-internal",
+          "operation": "runtime.verify-journal-scope",
+          "effectPolicy": { "mode": "none" }
+        }
+      ],
+      "outputs": [
+        { "outputId": "evidence-scope-diff", "kind": "evidence", "mediaType": "application/json" }
+      ],
+      "constraintRefs": ["constraint-preserve-content"],
+      "assumptionRefs": [],
+      "criterionRefs": ["criterion-scope-preserved"],
+      "timeoutMs": 30000,
+      "checkpointPolicy": "none"
+    },
+    {
+      "stepId": "step-change-deliver",
+      "sequence": 5,
+      "kind": "deliver",
+      "objective": "Produzir a referência final da mudança e das evidências verificadas.",
+      "dependsOnStepRefs": ["step-change-verify-scope"],
+      "inputs": [
+        { "kind": "step-output", "ref": "output-readme-effect-receipt" },
+        { "kind": "step-output", "ref": "evidence-link-readback" },
+        { "kind": "step-output", "ref": "evidence-scope-diff" }
+      ],
+      "actions": [
+        {
+          "actionId": "action-assemble-change-delivery",
+          "scope": "runtime-internal",
+          "operation": "runtime.assemble-delivery",
+          "effectPolicy": { "mode": "none" }
+        }
+      ],
+      "outputs": [
+        { "outputId": "output-readme-delivery", "kind": "delivery", "mediaType": "text/markdown" }
+      ],
+      "constraintRefs": ["constraint-preserve-content"],
+      "assumptionRefs": [],
+      "criterionRefs": [],
+      "timeoutMs": 30000,
+      "checkpointPolicy": "none"
+    }
+  ],
+  "criterionCoverage": [
+    {
+      "criterionId": "criterion-link-present",
+      "verificationStepRefs": ["step-change-verify-link"],
+      "evidenceOutputRefs": ["evidence-link-readback"]
+    },
+    {
+      "criterionId": "criterion-scope-preserved",
+      "verificationStepRefs": ["step-change-verify-scope"],
+      "evidenceOutputRefs": ["evidence-scope-diff"]
+    }
+  ],
+  "outputBinding": {
+    "kind": "repository-change",
+    "mediaType": "text/markdown",
+    "destinationRef": "ref-overcore-readme",
+    "producerStepRef": "step-change-deliver",
+    "outputRefs": ["output-readme-delivery"]
+  }
+}

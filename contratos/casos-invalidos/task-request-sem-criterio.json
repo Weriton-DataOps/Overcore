@@ -1,0 +1,40 @@
+{
+  "contractVersion": "1.0",
+  "requestId": "req-invalid-no-criterion",
+  "idempotencyKey": "invalid-no-criterion",
+  "createdAt": "2026-08-30T10:00:00-03:00",
+  "preflight": {
+    "draftId": "draft-invalid-no-criterion",
+    "draftRevision": 1,
+    "draftFingerprint": {
+      "algorithm": "sha256-jcs-v1",
+      "value": "sha256:1e533eb0c7316855686b2067d09699dd9db543d058f1e862ec39083bc826be94"
+    },
+    "readinessReportId": "readiness-invalid-no-criterion"
+  },
+  "client": {
+    "id": "client-contract-test",
+    "kind": "cli"
+  },
+  "objective": "Executar uma tarefa sem explicar como verificar o resultado.",
+  "priority": "normal",
+  "context": {
+    "references": [],
+    "assumptions": []
+  },
+  "constraints": [],
+  "authority": {
+    "mode": "proceed-within-scope",
+    "grants": [],
+    "expansionBoundaries": []
+  },
+  "acceptanceCriteria": [],
+  "budget": {
+    "maxDurationMs": 60000,
+    "maxAttempts": 1,
+    "maxParallelism": 1
+  },
+  "expectedOutput": {
+    "kind": "text"
+  }
+}

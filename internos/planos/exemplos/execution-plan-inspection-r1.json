@@ -1,0 +1,153 @@
+{
+  "modelVersion": "1.0",
+  "planId": "plan-inspection-001",
+  "planRevision": 1,
+  "taskBinding": {
+    "taskId": "task-20260830-inspection-001",
+    "requestId": "req-20260830-inspection-001",
+    "requestFingerprint": {
+      "algorithm": "sha256-jcs-v1",
+      "value": "sha256:33fcb5a04d18b6d00536ea6085bc36838b350ddd3058041ea741005069d306d6"
+    },
+    "basisStateRevision": 2
+  },
+  "contextBindings": [
+    {
+      "refId": "ref-overcore-repository",
+      "digest": "sha256:ec09eb185fde0673a66f99856d12087cf7ebc129ada504675b33acaf071b611e",
+      "capturedAt": "2026-08-30T09:00:02-03:00",
+      "source": "admission-snapshot",
+      "captureEvidenceRef": "evidence-snapshot-ref-overcore-repository-r1"
+    }
+  ],
+  "createdAt": "2026-08-30T09:00:02-03:00",
+  "mode": "sequential",
+  "planFingerprint": {
+    "algorithm": "sha256-jcs-v1",
+    "value": "sha256:780639b5bd1a8459ca788695222bc47f061ae563ff01ccac441c0207539c7e8b"
+  },
+  "strategyFingerprint": {
+    "algorithm": "sha256-jcs-v1",
+    "value": "sha256:c0ecef0ba89aa8b630c2c8d8aa96c0652e8c13d6143a40f02f6711300db3d456"
+  },
+  "steps": [
+    {
+      "stepId": "step-inspection-enumerate",
+      "sequence": 1,
+      "kind": "prepare",
+      "objective": "Enumerar os contratos JSON da fundação sem alterar o repositório.",
+      "dependsOnStepRefs": [],
+      "inputs": [{ "kind": "context-reference", "ref": "ref-overcore-repository" }],
+      "actions": [
+        {
+          "actionId": "action-enumerate-contracts",
+          "scope": "request-resource",
+          "resourceRef": "ref-overcore-repository",
+          "operation": "git.inspect",
+          "effectPolicy": { "mode": "none" }
+        }
+      ],
+      "outputs": [{ "outputId": "output-contract-list", "kind": "observation", "mediaType": "application/json" }],
+      "constraintRefs": ["constraint-read-only"],
+      "assumptionRefs": [],
+      "criterionRefs": [],
+      "timeoutMs": 30000,
+      "checkpointPolicy": "none"
+    },
+    {
+      "stepId": "step-inspection-parse",
+      "sequence": 2,
+      "kind": "verify",
+      "objective": "Ler e analisar sintaticamente cada contrato enumerado.",
+      "dependsOnStepRefs": ["step-inspection-enumerate"],
+      "inputs": [
+        { "kind": "step-output", "ref": "output-contract-list" },
+        { "kind": "context-reference", "ref": "ref-overcore-repository" }
+      ],
+      "actions": [
+        {
+          "actionId": "action-read-contracts",
+          "scope": "request-resource",
+          "resourceRef": "ref-overcore-repository",
+          "operation": "filesystem.read",
+          "effectPolicy": { "mode": "none" }
+        }
+      ],
+      "outputs": [{ "outputId": "evidence-json-readable", "kind": "evidence", "mediaType": "application/json" }],
+      "constraintRefs": ["constraint-read-only"],
+      "assumptionRefs": [],
+      "criterionRefs": ["criterion-json-readable"],
+      "timeoutMs": 60000,
+      "checkpointPolicy": "none"
+    },
+    {
+      "stepId": "step-inspection-closed",
+      "sequence": 3,
+      "kind": "verify",
+      "objective": "Comprovar que cada schema fecha o objeto raiz para propriedades desconhecidas.",
+      "dependsOnStepRefs": ["step-inspection-parse"],
+      "inputs": [
+        { "kind": "step-output", "ref": "evidence-json-readable" },
+        { "kind": "context-reference", "ref": "ref-overcore-repository" }
+      ],
+      "actions": [
+        {
+          "actionId": "action-inspect-schema-closure",
+          "scope": "request-resource",
+          "resourceRef": "ref-overcore-repository",
+          "operation": "filesystem.read",
+          "effectPolicy": { "mode": "none" }
+        }
+      ],
+      "outputs": [{ "outputId": "evidence-contract-closed", "kind": "evidence", "mediaType": "application/json" }],
+      "constraintRefs": ["constraint-read-only"],
+      "assumptionRefs": [],
+      "criterionRefs": ["criterion-contract-closed"],
+      "timeoutMs": 60000,
+      "checkpointPolicy": "none"
+    },
+    {
+      "stepId": "step-inspection-deliver",
+      "sequence": 4,
+      "kind": "deliver",
+      "objective": "Montar o relatório verificável a partir das duas evidências.",
+      "dependsOnStepRefs": ["step-inspection-closed"],
+      "inputs": [
+        { "kind": "step-output", "ref": "evidence-json-readable" },
+        { "kind": "step-output", "ref": "evidence-contract-closed" }
+      ],
+      "actions": [
+        {
+          "actionId": "action-assemble-inspection-report",
+          "scope": "runtime-internal",
+          "operation": "runtime.assemble-report",
+          "effectPolicy": { "mode": "none" }
+        }
+      ],
+      "outputs": [{ "outputId": "output-inspection-report", "kind": "delivery", "mediaType": "application/json" }],
+      "constraintRefs": ["constraint-read-only"],
+      "assumptionRefs": [],
+      "criterionRefs": [],
+      "timeoutMs": 30000,
+      "checkpointPolicy": "none"
+    }
+  ],
+  "criterionCoverage": [
+    {
+      "criterionId": "criterion-json-readable",
+      "verificationStepRefs": ["step-inspection-parse"],
+      "evidenceOutputRefs": ["evidence-json-readable"]
+    },
+    {
+      "criterionId": "criterion-contract-closed",
+      "verificationStepRefs": ["step-inspection-closed"],
+      "evidenceOutputRefs": ["evidence-contract-closed"]
+    }
+  ],
+  "outputBinding": {
+    "kind": "report",
+    "mediaType": "application/json",
+    "producerStepRef": "step-inspection-deliver",
+    "outputRefs": ["output-inspection-report"]
+  }
+}

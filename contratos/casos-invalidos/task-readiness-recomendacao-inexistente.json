@@ -1,0 +1,98 @@
+{
+  "contractVersion": "1.0",
+  "reportId": "readiness-invalid-recommendation",
+  "draftId": "draft-readme-contract-index",
+  "draftRevision": 1,
+  "draftFingerprint": {
+    "algorithm": "sha256-jcs-v1",
+    "value": "sha256:9d48059c75e4892d9f8bc86d4f4aa2aacd4092e32bae11e6c440ba6a383b3eb4"
+  },
+  "generatedAt": "2026-08-30T13:20:00-03:00",
+  "status": "decisions-required",
+  "readinessChecks": [
+    {
+      "checkId": "objective-clear",
+      "status": "needs-decision",
+      "summary": "O escopo precisa ser escolhido.",
+      "evidenceRefs": ["evidence-invalid-recommendation"],
+      "decisionRefs": ["decision-invalid-recommendation"]
+    },
+    {
+      "checkId": "context-resolvable",
+      "status": "passed",
+      "summary": "O contexto foi resolvido.",
+      "evidenceRefs": ["evidence-invalid-recommendation"],
+      "decisionRefs": []
+    },
+    {
+      "checkId": "authority-sufficient",
+      "status": "passed",
+      "summary": "A autoridade foi conferida.",
+      "evidenceRefs": ["evidence-invalid-recommendation"],
+      "decisionRefs": []
+    },
+    {
+      "checkId": "criteria-testable",
+      "status": "needs-decision",
+      "summary": "O critério depende do escopo selecionado.",
+      "evidenceRefs": ["evidence-invalid-recommendation"],
+      "decisionRefs": ["decision-invalid-recommendation"]
+    },
+    {
+      "checkId": "budget-feasible",
+      "status": "passed",
+      "summary": "O orçamento comporta as opções.",
+      "evidenceRefs": ["evidence-invalid-recommendation"],
+      "decisionRefs": []
+    },
+    {
+      "checkId": "output-defined",
+      "status": "passed",
+      "summary": "A saída foi definida.",
+      "evidenceRefs": ["evidence-invalid-recommendation"],
+      "decisionRefs": []
+    },
+    {
+      "checkId": "rollback-ready",
+      "status": "passed",
+      "summary": "As opções são reversíveis.",
+      "evidenceRefs": ["evidence-invalid-recommendation"],
+      "decisionRefs": []
+    }
+  ],
+  "automaticDecisions": [],
+  "requiredDecisions": [
+    {
+      "decisionId": "decision-invalid-recommendation",
+      "topic": "scope",
+      "question": "Qual escopo deve ser aplicado?",
+      "reason": "Existem duas alternativas materiais.",
+      "options": [
+        {
+          "optionId": "option-valid-small",
+          "label": "Escopo pequeno",
+          "consequence": "Produz uma alteração limitada."
+        },
+        {
+          "optionId": "option-valid-large",
+          "label": "Escopo amplo",
+          "consequence": "Produz uma alteração maior."
+        }
+      ],
+      "recommendedOptionId": "option-does-not-exist",
+      "impactIfUnresolved": "A execução permanece sem escopo definido.",
+      "evidenceRefs": ["evidence-invalid-recommendation"]
+    }
+  ],
+  "appliedDecisionAnswers": [],
+  "evidence": [
+    {
+      "evidenceId": "evidence-invalid-recommendation",
+      "kind": "schema-validation",
+      "capturedAt": "2026-08-30T13:19:59-03:00",
+      "summary": "O caso isola uma recomendação que não pertence à lista de opções.",
+      "digest": "sha256:a832807ab4f7cbc2a8b32fe605519997d2a2d14a6fb8304c970b023e470d874e",
+      "sourceRefs": []
+    }
+  ]
+}

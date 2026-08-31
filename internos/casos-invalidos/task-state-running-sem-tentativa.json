@@ -1,0 +1,53 @@
+{
+  "modelVersion": "1.0",
+  "taskId": "task-invalid-running-without-attempt",
+  "requestBinding": {
+    "requestId": "req-20260830-inspection-001",
+    "requestFingerprint": {
+      "algorithm": "sha256-jcs-v1",
+      "value": "sha256:33fcb5a04d18b6d00536ea6085bc36838b350ddd3058041ea741005069d306d6"
+    }
+  },
+  "acceptedAt": "2026-08-30T12:00:00-03:00",
+  "updatedAt": "2026-08-30T12:00:01-03:00",
+  "stateRevision": 2,
+  "executionEpoch": 1,
+  "lifecycle": {
+    "state": "running",
+    "enteredAt": "2026-08-30T12:00:01-03:00",
+    "lastTransitionId": "transition-invalid-running"
+  },
+  "criterionProgress": [
+    {
+      "criterionId": "criterion-json-readable",
+      "status": "not-run",
+      "evidenceRefs": []
+    }
+  ],
+  "usage": {
+    "attemptCount": 0,
+    "maxParallelismObserved": 0,
+    "activeDurationMs": 1000
+  },
+  "ledger": {
+    "transitions": [
+      {
+        "transitionId": "transition-invalid-running",
+        "sequence": 1,
+        "stateRevision": 2,
+        "from": "ready",
+        "to": "running",
+        "at": "2026-08-30T12:00:01-03:00",
+        "triggerKind": "execution-started",
+        "evidenceRefs": []
+      }
+    ],
+    "attempts": [],
+    "effects": [],
+    "blocks": [],
+    "checkpoints": [],
+    "evidenceRefs": [],
+    "artifactRefs": [],
+    "resultRefs": []
+  }
+}

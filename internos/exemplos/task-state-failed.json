@@ -1,0 +1,418 @@
+{
+  "modelVersion": "1.0",
+  "taskId": "task-20260830-inspection-001",
+  "requestBinding": {
+    "requestId": "req-20260830-inspection-001",
+    "requestFingerprint": {
+      "algorithm": "sha256-jcs-v1",
+      "value": "sha256:33fcb5a04d18b6d00536ea6085bc36838b350ddd3058041ea741005069d306d6"
+    }
+  },
+  "acceptedAt": "2026-08-30T09:00:00-03:00",
+  "updatedAt": "2026-08-30T09:04:00-03:00",
+  "stateRevision": 14,
+  "executionEpoch": 2,
+  "lifecycle": {
+    "state": "failed",
+    "enteredAt": "2026-08-30T09:04:00-03:00",
+    "lastTransitionId": "transition-failed-001"
+  },
+  "criterionProgress": [
+    {
+      "criterionId": "criterion-json-readable",
+      "status": "failed",
+      "evidenceRefs": [
+        "evidence-json-parse-failure"
+      ]
+    },
+    {
+      "criterionId": "criterion-contract-closed",
+      "status": "not-run",
+      "evidenceRefs": []
+    }
+  ],
+  "activePlanBinding": {
+    "planId": "plan-inspection-001",
+    "planRevision": 2,
+    "planFingerprint": {
+      "algorithm": "sha256-jcs-v1",
+      "value": "sha256:d5faa4eca3d64700b85a602b75c5128e929e7ea8d33333c67aaf581ca6bedb6c"
+    },
+    "strategyFingerprint": {
+      "algorithm": "sha256-jcs-v1",
+      "value": "sha256:61e794c396b5fbfa0e30b7b94314a047056c9eb3b8363ae003b5c8598c69f58e"
+    },
+    "activatedAtRevision": 8,
+    "authorizationBinding": {
+      "enforcementId": "authenf-plan-inspection-001-r2",
+      "enforcementFingerprint": {
+        "algorithm": "sha256-jcs-v1",
+        "value": "sha256:a1891c00917cb520151d2b833a07af1cb108c61a358b2961c6e12678ec53fb0f"
+      },
+      "decisionId": "authdec-plan-inspection-001-r2",
+      "decisionFingerprint": {
+        "algorithm": "sha256-jcs-v1",
+        "value": "sha256:d02d02a972fcd5ca1f343a16f8226a255a2a54ea062c120d3703ea483823f720"
+      },
+      "expiresAt": "2026-08-30T09:10:00-03:00",
+      "activatedAtRevision": 8
+    }
+  },
+  "terminalResultRef": "result-inspection-failed-001",
+  "usage": {
+    "attemptCount": 2,
+    "maxParallelismObserved": 1,
+    "activeDurationMs": 240000
+  },
+  "ledger": {
+    "transitions": [
+      {
+        "transitionId": "transition-retry-accepted-001",
+        "sequence": 1,
+        "stateRevision": 1,
+        "from": null,
+        "to": "accepted",
+        "at": "2026-08-30T09:00:00-03:00",
+        "triggerKind": "admission",
+        "triggerRef": "req-20260830-inspection-001",
+        "evidenceRefs": []
+      },
+      {
+        "transitionId": "transition-retry-planning-001",
+        "sequence": 2,
+        "stateRevision": 2,
+        "from": "accepted",
+        "to": "planning",
+        "at": "2026-08-30T09:00:01-03:00",
+        "triggerKind": "planning-started",
+        "evidenceRefs": []
+      },
+      {
+        "transitionId": "transition-retry-ready-001",
+        "sequence": 3,
+        "stateRevision": 3,
+        "from": "planning",
+        "to": "ready",
+        "at": "2026-08-30T09:00:03-03:00",
+        "triggerKind": "planning-completed",
+        "triggerRef": "plan-inspection-001",
+        "evidenceRefs": []
+      },
+      {
+        "transitionId": "transition-retry-running-first-001",
+        "sequence": 4,
+        "stateRevision": 4,
+        "from": "ready",
+        "to": "running",
+        "at": "2026-08-30T09:00:05-03:00",
+        "triggerKind": "execution-started",
+        "triggerRef": "attempt-inspection-001-01",
+        "evidenceRefs": []
+      },
+      {
+        "transitionId": "transition-retry-verifying-001",
+        "sequence": 5,
+        "stateRevision": 5,
+        "from": "running",
+        "to": "verifying",
+        "at": "2026-08-30T09:00:50-03:00",
+        "triggerKind": "verification-started",
+        "triggerRef": "attempt-inspection-001-01",
+        "evidenceRefs": []
+      },
+      {
+        "transitionId": "transition-retry-scheduled-001",
+        "sequence": 6,
+        "stateRevision": 7,
+        "from": "verifying",
+        "to": "planning",
+        "at": "2026-08-30T09:01:00-03:00",
+        "triggerKind": "retry-scheduled",
+        "triggerRef": "attempt-inspection-001-01",
+        "evidenceRefs": [
+          "evidence-first-parse-failed"
+        ]
+      },
+      {
+        "transitionId": "transition-retry-ready-second-001",
+        "sequence": 7,
+        "stateRevision": 8,
+        "from": "planning",
+        "to": "ready",
+        "at": "2026-08-30T09:01:05-03:00",
+        "triggerKind": "planning-completed",
+        "triggerRef": "plan-inspection-001",
+        "evidenceRefs": [
+          "evidence-first-parse-failed"
+        ]
+      },
+      {
+        "transitionId": "transition-retry-running-001",
+        "sequence": 8,
+        "stateRevision": 9,
+        "from": "ready",
+        "to": "running",
+        "at": "2026-08-30T09:01:10-03:00",
+        "triggerKind": "execution-started",
+        "triggerRef": "attempt-inspection-001-02",
+        "evidenceRefs": [
+          "evidence-first-parse-failed"
+        ]
+      },
+      {
+        "transitionId": "transition-failed-001",
+        "sequence": 9,
+        "stateRevision": 14,
+        "from": "running",
+        "to": "failed",
+        "at": "2026-08-30T09:04:00-03:00",
+        "triggerKind": "recovery-exhausted",
+        "triggerRef": "attempt-inspection-001-02",
+        "resultRef": "result-inspection-failed-001",
+        "evidenceRefs": [
+          "evidence-json-parse-failure"
+        ]
+      }
+    ],
+    "planRefs": [
+      {
+        "planId": "plan-inspection-001",
+        "planRevision": 1,
+        "planFingerprint": {
+          "algorithm": "sha256-jcs-v1",
+          "value": "sha256:780639b5bd1a8459ca788695222bc47f061ae563ff01ccac441c0207539c7e8b"
+        },
+        "strategyFingerprint": {
+          "algorithm": "sha256-jcs-v1",
+          "value": "sha256:c0ecef0ba89aa8b630c2c8d8aa96c0652e8c13d6143a40f02f6711300db3d456"
+        },
+        "basisStateRevision": 2,
+        "activatedAtRevision": 3,
+        "activationTransitionId": "transition-retry-ready-001",
+        "activatedAt": "2026-08-30T09:00:03-03:00",
+        "authorizationBinding": {
+          "enforcementId": "authenf-plan-inspection-001-r1",
+          "enforcementFingerprint": {
+            "algorithm": "sha256-jcs-v1",
+            "value": "sha256:0dd7e573ca97579fc5d3d837e9a05a6dd042c20c2364851bf03bd1292180264f"
+          },
+          "decisionId": "authdec-plan-inspection-001-r1",
+          "decisionFingerprint": {
+            "algorithm": "sha256-jcs-v1",
+            "value": "sha256:4f7d01cd83642eb2806a325c3ca21624a27d8e0f10a5f898028947caf9163b34"
+          },
+          "expiresAt": "2026-08-30T09:10:00-03:00",
+          "activatedAtRevision": 3
+        }
+      },
+      {
+        "planId": "plan-inspection-001",
+        "planRevision": 2,
+        "planFingerprint": {
+          "algorithm": "sha256-jcs-v1",
+          "value": "sha256:d5faa4eca3d64700b85a602b75c5128e929e7ea8d33333c67aaf581ca6bedb6c"
+        },
+        "strategyFingerprint": {
+          "algorithm": "sha256-jcs-v1",
+          "value": "sha256:61e794c396b5fbfa0e30b7b94314a047056c9eb3b8363ae003b5c8598c69f58e"
+        },
+        "basisStateRevision": 7,
+        "activatedAtRevision": 8,
+        "activationTransitionId": "transition-retry-ready-second-001",
+        "activatedAt": "2026-08-30T09:01:05-03:00",
+        "authorizationBinding": {
+          "enforcementId": "authenf-plan-inspection-001-r2",
+          "enforcementFingerprint": {
+            "algorithm": "sha256-jcs-v1",
+            "value": "sha256:a1891c00917cb520151d2b833a07af1cb108c61a358b2961c6e12678ec53fb0f"
+          },
+          "decisionId": "authdec-plan-inspection-001-r2",
+          "decisionFingerprint": {
+            "algorithm": "sha256-jcs-v1",
+            "value": "sha256:d02d02a972fcd5ca1f343a16f8226a255a2a54ea062c120d3703ea483823f720"
+          },
+          "expiresAt": "2026-08-30T09:10:00-03:00",
+          "activatedAtRevision": 8
+        }
+      }
+    ],
+    "attempts": [
+      {
+        "attemptId": "attempt-inspection-001-01",
+        "ordinal": 1,
+        "status": "failed",
+        "planRef": {
+          "planId": "plan-inspection-001",
+          "planRevision": 1
+        },
+        "strategyFingerprint": {
+          "algorithm": "sha256-jcs-v1",
+          "value": "sha256:c0ecef0ba89aa8b630c2c8d8aa96c0652e8c13d6143a40f02f6711300db3d456"
+        },
+        "executionEpoch": 1,
+        "startedAt": "2026-08-30T09:00:05-03:00",
+        "endedAt": "2026-08-30T09:01:00-03:00",
+        "lastUpdatedRevision": 6,
+        "effectRefs": [],
+        "evidenceRefs": [
+          "evidence-first-parse-failed"
+        ]
+      },
+      {
+        "attemptId": "attempt-inspection-001-02",
+        "ordinal": 2,
+        "status": "failed",
+        "planRef": {
+          "planId": "plan-inspection-001",
+          "planRevision": 2
+        },
+        "strategyFingerprint": {
+          "algorithm": "sha256-jcs-v1",
+          "value": "sha256:61e794c396b5fbfa0e30b7b94314a047056c9eb3b8363ae003b5c8598c69f58e"
+        },
+        "executionEpoch": 2,
+        "startedAt": "2026-08-30T09:01:10-03:00",
+        "endedAt": "2026-08-30T09:04:00-03:00",
+        "lastUpdatedRevision": 13,
+        "effectRefs": [],
+        "evidenceRefs": [
+          "evidence-json-parse-failure"
+        ]
+      }
+    ],
+    "stepRuns": [
+      {
+        "stepRunId": "step-run-inspection-enumerate-01",
+        "planRef": {
+          "planId": "plan-inspection-001",
+          "planRevision": 1
+        },
+        "stepRef": "step-inspection-enumerate",
+        "attemptId": "attempt-inspection-001-01",
+        "executionEpoch": 1,
+        "status": "completed",
+        "startedAt": "2026-08-30T09:00:05-03:00",
+        "endedAt": "2026-08-30T09:00:20-03:00",
+        "lastUpdatedRevision": 4,
+        "outputRefs": [
+          "output-contract-list"
+        ],
+        "evidenceRefs": []
+      },
+      {
+        "stepRunId": "step-run-inspection-parse-01",
+        "planRef": {
+          "planId": "plan-inspection-001",
+          "planRevision": 1
+        },
+        "stepRef": "step-inspection-parse",
+        "attemptId": "attempt-inspection-001-01",
+        "executionEpoch": 1,
+        "status": "failed",
+        "startedAt": "2026-08-30T09:00:20-03:00",
+        "endedAt": "2026-08-30T09:01:00-03:00",
+        "lastUpdatedRevision": 6,
+        "outputRefs": [],
+        "evidenceRefs": [
+          "evidence-first-parse-failed"
+        ]
+      },
+      {
+        "stepRunId": "step-run-inspection-r2-enumerate-02",
+        "planRef": {
+          "planId": "plan-inspection-001",
+          "planRevision": 2
+        },
+        "stepRef": "step-inspection-r2-enumerate",
+        "attemptId": "attempt-inspection-001-02",
+        "executionEpoch": 2,
+        "status": "completed",
+        "startedAt": "2026-08-30T09:01:10-03:00",
+        "endedAt": "2026-08-30T09:01:30-03:00",
+        "lastUpdatedRevision": 10,
+        "outputRefs": [
+          "output-r2-contract-list"
+        ],
+        "evidenceRefs": []
+      },
+      {
+        "stepRunId": "step-run-inspection-r2-capture-02",
+        "planRef": {
+          "planId": "plan-inspection-001",
+          "planRevision": 2
+        },
+        "stepRef": "step-inspection-r2-capture",
+        "attemptId": "attempt-inspection-001-02",
+        "executionEpoch": 2,
+        "status": "completed",
+        "startedAt": "2026-08-30T09:01:30-03:00",
+        "endedAt": "2026-08-30T09:02:00-03:00",
+        "lastUpdatedRevision": 11,
+        "outputRefs": [
+          "output-r2-contract-snapshot"
+        ],
+        "evidenceRefs": []
+      },
+      {
+        "stepRunId": "step-run-inspection-r2-parse-02",
+        "planRef": {
+          "planId": "plan-inspection-001",
+          "planRevision": 2
+        },
+        "stepRef": "step-inspection-r2-parse",
+        "attemptId": "attempt-inspection-001-02",
+        "executionEpoch": 2,
+        "status": "failed",
+        "startedAt": "2026-08-30T09:02:00-03:00",
+        "endedAt": "2026-08-30T09:03:59-03:00",
+        "lastUpdatedRevision": 12,
+        "outputRefs": [],
+        "evidenceRefs": [
+          "evidence-json-parse-failure"
+        ]
+      }
+    ],
+    "effects": [],
+    "blocks": [],
+    "checkpoints": [],
+    "contextCaptureRecords": [
+      {
+        "evidenceRef": "evidence-snapshot-ref-overcore-repository-r1",
+        "refId": "ref-overcore-repository",
+        "digest": "sha256:ec09eb185fde0673a66f99856d12087cf7ebc129ada504675b33acaf071b611e",
+        "capturedAt": "2026-08-30T09:00:02-03:00",
+        "recordedAt": "2026-08-30T09:00:03-03:00",
+        "recordedAtRevision": 3
+      },
+      {
+        "evidenceRef": "evidence-snapshot-ref-overcore-repository-r2",
+        "refId": "ref-overcore-repository",
+        "digest": "sha256:ec09eb185fde0673a66f99856d12087cf7ebc129ada504675b33acaf071b611e",
+        "capturedAt": "2026-08-30T09:01:02-03:00",
+        "recordedAt": "2026-08-30T09:01:05-03:00",
+        "recordedAtRevision": 8
+      }
+    ],
+    "evidenceRefs": [
+      "evidence-snapshot-ref-overcore-repository-r1",
+      "evidence-first-parse-failed",
+      "evidence-snapshot-ref-overcore-repository-r2",
+      "evidence-json-parse-failure"
+    ],
+    "artifactRefs": [],
+    "resultRefs": [
+      {
+        "resultId": "result-inspection-failed-001",
+        "stateRevision": 14,
+        "transitionId": "transition-failed-001",
+        "emissionSequence": 1,
+        "status": "failed",
+        "resultFingerprint": {
+          "algorithm": "sha256-jcs-v1",
+          "value": "sha256:2a8b64db9164b33bfaf3c8712974821930afd41e398f427d1839a8f8e715377e"
+        },
+        "emittedAt": "2026-08-30T09:04:00-03:00"
+      }
+    ]
+  }
+}

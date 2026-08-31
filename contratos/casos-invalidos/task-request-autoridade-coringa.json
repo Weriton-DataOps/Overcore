@@ -1,0 +1,61 @@
+{
+  "contractVersion": "1.0",
+  "requestId": "req-invalid-wildcard-grant",
+  "idempotencyKey": "invalid-wildcard-grant",
+  "createdAt": "2026-08-30T10:15:00-03:00",
+  "preflight": {
+    "draftId": "draft-invalid-wildcard-grant",
+    "draftRevision": 1,
+    "draftFingerprint": {
+      "algorithm": "sha256-jcs-v1",
+      "value": "sha256:4c3991eac0ec289bdf83b46c299f85eabf0832f81e3e541cabe24087379ed19d"
+    },
+    "readinessReportId": "readiness-invalid-wildcard-grant"
+  },
+  "client": {
+    "id": "client-contract-test",
+    "kind": "cli"
+  },
+  "objective": "Demonstrar que autoridade sem operação identificável é recusada.",
+  "priority": "normal",
+  "context": {
+    "references": [
+      {
+        "refId": "ref-invalid-resource",
+        "uri": "file:///C:/invalid-example",
+        "kind": "workspace",
+        "sensitivity": "internal"
+      }
+    ],
+    "assumptions": []
+  },
+  "constraints": [],
+  "authority": {
+    "mode": "proceed-within-scope",
+    "grants": [
+      {
+        "resourceRef": "ref-invalid-resource",
+        "operations": ["*"]
+      }
+    ],
+    "expansionBoundaries": []
+  },
+  "acceptanceCriteria": [
+    {
+      "id": "criterion-invalid-example",
+      "description": "O caso é recusado pelo validador.",
+      "verification": {
+        "method": "schema",
+        "expected": "A operação coringa falha no padrão do operationToken."
+      }
+    }
+  ],
+  "budget": {
+    "maxDurationMs": 60000,
+    "maxAttempts": 1,
+    "maxParallelism": 1
+  },
+  "expectedOutput": {
+    "kind": "no-artifact"
+  }
+}

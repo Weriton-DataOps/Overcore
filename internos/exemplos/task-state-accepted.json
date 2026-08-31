@@ -1,0 +1,59 @@
+{
+  "modelVersion": "1.0",
+  "taskId": "task-20260830-inspection-001",
+  "requestBinding": {
+    "requestId": "req-20260830-inspection-001",
+    "requestFingerprint": {
+      "algorithm": "sha256-jcs-v1",
+      "value": "sha256:33fcb5a04d18b6d00536ea6085bc36838b350ddd3058041ea741005069d306d6"
+    }
+  },
+  "acceptedAt": "2026-08-30T12:00:00-03:00",
+  "updatedAt": "2026-08-30T12:00:00-03:00",
+  "stateRevision": 1,
+  "executionEpoch": 1,
+  "lifecycle": {
+    "state": "accepted",
+    "enteredAt": "2026-08-30T12:00:00-03:00",
+    "lastTransitionId": "transition-accepted-003"
+  },
+  "criterionProgress": [
+    {
+      "criterionId": "criterion-json-readable",
+      "status": "not-run",
+      "evidenceRefs": []
+    },
+    {
+      "criterionId": "criterion-contract-closed",
+      "status": "not-run",
+      "evidenceRefs": []
+    }
+  ],
+  "usage": {
+    "attemptCount": 0,
+    "maxParallelismObserved": 0,
+    "activeDurationMs": 0
+  },
+  "ledger": {
+    "transitions": [
+      {
+        "transitionId": "transition-accepted-003",
+        "sequence": 1,
+        "stateRevision": 1,
+        "from": null,
+        "to": "accepted",
+        "at": "2026-08-30T12:00:00-03:00",
+        "triggerKind": "admission",
+        "triggerRef": "req-20260830-inspection-001",
+        "evidenceRefs": []
+      }
+    ],
+    "attempts": [],
+    "effects": [],
+    "blocks": [],
+    "checkpoints": [],
+    "evidenceRefs": [],
+    "artifactRefs": [],
+    "resultRefs": []
+  }
+}

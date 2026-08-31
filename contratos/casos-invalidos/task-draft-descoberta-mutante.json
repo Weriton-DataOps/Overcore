@@ -1,0 +1,61 @@
+{
+  "contractVersion": "1.0",
+  "draftId": "draft-invalid-mutating-discovery",
+  "revision": 1,
+  "idempotencyKey": "invalid-mutating-discovery",
+  "executionIdempotencyKey": "execute-invalid-mutating-discovery",
+  "createdAt": "2026-08-30T13:00:00-03:00",
+  "client": {
+    "id": "client-contract-test",
+    "kind": "cli"
+  },
+  "objective": "Demonstrar que uma operação mutável não pode ser disfarçada como descoberta.",
+  "context": {
+    "references": [
+      {
+        "refId": "ref-invalid-workspace",
+        "uri": "file:///C:/invalid-example",
+        "kind": "workspace",
+        "sensitivity": "internal"
+      }
+    ],
+    "assumptions": []
+  },
+  "knownConstraints": [],
+  "knownAcceptanceCriteria": [],
+  "discoveryAuthority": {
+    "mode": "inspect-only",
+    "grants": [
+      {
+        "resourceRef": "ref-invalid-workspace",
+        "operations": [
+          {
+            "name": "filesystem.modify",
+            "effect": "read"
+          }
+        ]
+      }
+    ]
+  },
+  "availableExecutionAuthority": {
+    "mode": "proceed-within-scope",
+    "grants": [],
+    "expansionBoundaries": []
+  },
+  "executionBudget": {
+    "source": {
+      "kind": "client-explicit",
+      "sourceId": "client-contract-test"
+    },
+    "limits": {
+      "maxDurationMs": 30000,
+      "maxAttempts": 1,
+      "maxParallelism": 1
+    }
+  },
+  "decisionAnswers": [],
+  "preflightBudget": {
+    "maxDurationMs": 30000,
+    "maxInspectionOperations": 2
+  }
+}

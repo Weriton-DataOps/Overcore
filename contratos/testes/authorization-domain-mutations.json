@@ -1,0 +1,191 @@
+{
+  "suiteVersion": "1.0",
+  "description": "Ataques reproduzíveis à fronteira Omni decide / Overcore faz enforcement.",
+  "bases": {
+    "authorization-request": "../exemplos/authorization-request-change-r1.json",
+    "authorization-decision": "../exemplos/authorization-decision-change-r1-permit.json",
+    "authorization-enforcement": "../../internos/autorizacao/exemplos/authorization-enforcement-change-r1.json"
+  },
+  "cases": [
+    {
+      "caseId": "auth-request-expands-ceiling",
+      "target": "authorization-request",
+      "patch": [{ "op": "add", "path": "/authorityCeiling/grants/0/operations/-", "value": "process.execute" }],
+      "expectedLayer": "domain",
+      "expectedCode": "AUTHORITY_CEILING_MISMATCH"
+    },
+    {
+      "caseId": "auth-request-binds-other-plan-fingerprint",
+      "target": "authorization-request",
+      "patch": [{ "op": "replace", "path": "/planBinding/planFingerprint/value", "value": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }],
+      "expectedLayer": "domain",
+      "expectedCode": "PLAN_BINDING_MISMATCH"
+    },
+    {
+      "caseId": "auth-request-omits-plan-action",
+      "target": "authorization-request",
+      "patch": [{ "op": "remove", "path": "/actions/6" }],
+      "expectedLayer": "domain",
+      "expectedCode": "ACTION_MANIFEST_MISMATCH"
+    },
+    {
+      "caseId": "auth-request-changes-action-operation",
+      "target": "authorization-request",
+      "patch": [{ "op": "replace", "path": "/actions/0/operation", "value": "filesystem.modify" }],
+      "expectedLayer": "domain",
+      "expectedCode": "ACTION_MANIFEST_MISMATCH"
+    },
+    {
+      "caseId": "auth-request-duplicates-action-id",
+      "target": "authorization-request",
+      "patch": [{ "op": "replace", "path": "/actions/1/actionId", "value": "action-read-readme" }],
+      "expectedLayer": "domain",
+      "expectedCode": "ACTION_ID_DUPLICATE"
+    },
+    {
+      "caseId": "auth-request-breaks-position-sequence",
+      "target": "authorization-request",
+      "patch": [{ "op": "replace", "path": "/actions/1/position", "value": 7 }],
+      "expectedLayer": "domain",
+      "expectedCode": "ACTION_POSITION_INVALID"
+    },
+    {
+      "caseId": "auth-request-risk-count-is-false",
+      "target": "authorization-request",
+      "patch": [{ "op": "replace", "path": "/riskSummary/journaledEffectCount", "value": 0 }],
+      "expectedLayer": "domain",
+      "expectedCode": "RISK_SUMMARY_MISMATCH"
+    },
+    {
+      "caseId": "auth-request-self-fingerprint-is-false",
+      "target": "authorization-request",
+      "patch": [{ "op": "replace", "path": "/authorizationRequestFingerprint/value", "value": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }],
+      "expectedLayer": "domain",
+      "expectedCode": "AUTHORIZATION_REQUEST_FINGERPRINT_MISMATCH"
+    },
+    {
+      "caseId": "auth-request-runtime-action-gains-resource",
+      "target": "authorization-request",
+      "patch": [{ "op": "add", "path": "/actions/5/resourceRef", "value": "ref-overcore-readme" }],
+      "expectedLayer": "schema"
+    },
+    {
+      "caseId": "decision-binds-other-authorization-request",
+      "target": "authorization-decision",
+      "patch": [{ "op": "replace", "path": "/authorizationRequestId", "value": "authreq-other-plan-001" }],
+      "expectedLayer": "domain",
+      "expectedCode": "AUTHORIZATION_REQUEST_BINDING_MISMATCH"
+    },
+    {
+      "caseId": "decision-reuses-r1-for-r2",
+      "target": "authorization-decision",
+      "patch": [{ "op": "replace", "path": "/planBinding/planRevision", "value": 2 }],
+      "expectedLayer": "domain",
+      "expectedCode": "DECISION_PLAN_BINDING_MISMATCH"
+    },
+    {
+      "caseId": "decision-omits-action",
+      "target": "authorization-decision",
+      "patch": [{ "op": "remove", "path": "/actionDecisions/6" }],
+      "expectedLayer": "domain",
+      "expectedCode": "ACTION_DECISIONS_MISMATCH"
+    },
+    {
+      "caseId": "decision-drops-requested-control",
+      "target": "authorization-decision",
+      "patch": [{ "op": "remove", "path": "/actionDecisions/2/requiredControls/3" }],
+      "expectedLayer": "domain",
+      "expectedCode": "REQUIRED_CONTROL_DROPPED"
+    },
+    {
+      "caseId": "decision-exceeds-request-duration",
+      "target": "authorization-decision",
+      "patch": [{ "op": "replace", "path": "/limits/maxDurationMs", "value": 300001 }],
+      "expectedLayer": "domain",
+      "expectedCode": "DECISION_LIMIT_EXCEEDS_REQUEST"
+    },
+    {
+      "caseId": "decision-expires-before-start",
+      "target": "authorization-decision",
+      "patch": [{ "op": "replace", "path": "/limits/expiresAt", "value": "2026-08-30T09:30:02.400-03:00" }],
+      "expectedLayer": "domain",
+      "expectedCode": "DECISION_TIME_WINDOW_INVALID"
+    },
+    {
+      "caseId": "decision-addressed-to-other-environment",
+      "target": "authorization-decision",
+      "patch": [{ "op": "replace", "path": "/audience/executionEnvironmentId", "value": "other-execution-environment" }],
+      "expectedLayer": "domain",
+      "expectedCode": "DECISION_AUDIENCE_MISMATCH"
+    },
+    {
+      "caseId": "decision-issued-by-other-provider",
+      "target": "authorization-decision",
+      "patch": [{ "op": "replace", "path": "/issuer/providerId", "value": "unknown-authority-provider" }],
+      "expectedLayer": "domain",
+      "expectedCode": "DECISION_PROVIDER_MISMATCH"
+    },
+    {
+      "caseId": "decision-permit-contains-denied-action",
+      "target": "authorization-decision",
+      "patch": [
+        { "op": "replace", "path": "/outcome", "value": "permit" },
+        { "op": "replace", "path": "/actionDecisions/2/outcome", "value": "deny" }
+      ],
+      "expectedLayer": "schema"
+    },
+    {
+      "caseId": "decision-removes-attestation",
+      "target": "authorization-decision",
+      "patch": [{ "op": "replace", "path": "/attestationRef", "value": "" }],
+      "expectedLayer": "schema"
+    },
+    {
+      "caseId": "decision-opens-revocation-failure",
+      "target": "authorization-decision",
+      "patch": [{ "op": "replace", "path": "/revocation/failMode", "value": "fail-open" }],
+      "expectedLayer": "schema"
+    },
+    {
+      "caseId": "enforcement-binds-other-decision-fingerprint",
+      "target": "authorization-enforcement",
+      "patch": [{ "op": "replace", "path": "/authorizationDecisionBinding/fingerprint/value", "value": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" }],
+      "expectedLayer": "domain",
+      "expectedCode": "ENFORCEMENT_DECISION_BINDING_MISMATCH"
+    },
+    {
+      "caseId": "enforcement-diverges-from-action-decision",
+      "target": "authorization-enforcement",
+      "patch": [{ "op": "remove", "path": "/actionGrants/2/requiredControls/3" }],
+      "expectedLayer": "domain",
+      "expectedCode": "ENFORCEMENT_ACTION_GRANTS_MISMATCH"
+    },
+    {
+      "caseId": "enforcement-expired-at-evaluation",
+      "target": "authorization-enforcement",
+      "patch": [{ "op": "replace", "path": "/evaluatedAt", "value": "2026-08-30T09:35:01-03:00" }],
+      "expectedLayer": "domain",
+      "expectedCode": "ENFORCEMENT_EXPIRED"
+    },
+    {
+      "caseId": "enforcement-denied-but-activation-eligible",
+      "target": "authorization-enforcement",
+      "patch": [{ "op": "replace", "path": "/status", "value": "denied" }],
+      "expectedLayer": "schema"
+    },
+    {
+      "caseId": "enforcement-uses-other-provider",
+      "target": "authorization-enforcement",
+      "patch": [{ "op": "replace", "path": "/providerRef", "value": "unknown-authority-provider" }],
+      "expectedLayer": "domain",
+      "expectedCode": "ENFORCEMENT_PROVIDER_MISMATCH"
+    },
+    {
+      "caseId": "enforcement-self-fingerprint-is-false",
+      "target": "authorization-enforcement",
+      "patch": [{ "op": "replace", "path": "/recordFingerprint/value", "value": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" }],
+      "expectedLayer": "domain",
+      "expectedCode": "ENFORCEMENT_FINGERPRINT_MISMATCH"
+    }
+  ]
+}

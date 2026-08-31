@@ -1,0 +1,323 @@
+{
+  "modelVersion": "1.0",
+  "taskId": "task-20260830-change-001",
+  "requestBinding": {
+    "requestId": "req-20260830-change-001",
+    "requestFingerprint": {
+      "algorithm": "sha256-jcs-v1",
+      "value": "sha256:44340c327366e5c0c78780634343b74720dfff72be25e70a4cfff87b23bbb6e7"
+    }
+  },
+  "acceptedAt": "2026-08-30T09:30:00-03:00",
+  "updatedAt": "2026-08-30T09:30:31-03:00",
+  "stateRevision": 6,
+  "executionEpoch": 2,
+  "lifecycle": {
+    "state": "cancelling",
+    "enteredAt": "2026-08-30T09:30:31-03:00",
+    "lastTransitionId": "transition-cancelling-active-001"
+  },
+  "criterionProgress": [
+    {
+      "criterionId": "criterion-link-present",
+      "status": "not-run",
+      "evidenceRefs": []
+    },
+    {
+      "criterionId": "criterion-scope-preserved",
+      "status": "not-run",
+      "evidenceRefs": []
+    }
+  ],
+  "activePlanBinding": {
+    "planId": "plan-change-001",
+    "planRevision": 1,
+    "planFingerprint": {
+      "algorithm": "sha256-jcs-v1",
+      "value": "sha256:753e28d45a8b113e6229aafdba6ad8d4ffc27403de44896f3cb159d6a4822366"
+    },
+    "strategyFingerprint": {
+      "algorithm": "sha256-jcs-v1",
+      "value": "sha256:4cacdebff2d82278d6592b865a80090e4d30ebbeda74758c4fec1517d999e3dd"
+    },
+    "activatedAtRevision": 3,
+    "authorizationBinding": {
+      "enforcementId": "authenf-change-r1-001",
+      "enforcementFingerprint": {
+        "algorithm": "sha256-jcs-v1",
+        "value": "sha256:341e4942fa1751a6c0c4f854c5d1735de9acdba622921fbf7eb341c27a396cc9"
+      },
+      "decisionId": "authdec-change-r1-001",
+      "decisionFingerprint": {
+        "algorithm": "sha256-jcs-v1",
+        "value": "sha256:3a56c55561e3d0edfc821ec93740e2cd8caee9ad67b471f1b5690e3f8ec4d416"
+      },
+      "expiresAt": "2026-08-30T09:35:00-03:00",
+      "activatedAtRevision": 3
+    }
+  },
+  "activeAttemptId": "attempt-change-001-01",
+  "activeStepRunRef": "step-run-change-apply-01",
+  "latestCheckpointRef": "artifact-change-pre-mutation-checkpoint",
+  "cancellation": {
+    "cancellationId": "cancellation-client-active-001",
+    "initiatedBy": "client",
+    "requestedAt": "2026-08-30T09:30:31-03:00",
+    "status": "requested",
+    "lastUpdatedRevision": 6,
+    "evidenceRefs": [
+      "evidence-client-cancellation-active"
+    ]
+  },
+  "usage": {
+    "attemptCount": 1,
+    "maxParallelismObserved": 1,
+    "activeDurationMs": 31000
+  },
+  "ledger": {
+    "transitions": [
+      {
+        "transitionId": "transition-accepted-001",
+        "sequence": 1,
+        "stateRevision": 1,
+        "from": null,
+        "to": "accepted",
+        "at": "2026-08-30T09:30:00-03:00",
+        "triggerKind": "admission",
+        "triggerRef": "req-20260830-change-001",
+        "evidenceRefs": []
+      },
+      {
+        "transitionId": "transition-planning-001",
+        "sequence": 2,
+        "stateRevision": 2,
+        "from": "accepted",
+        "to": "planning",
+        "at": "2026-08-30T09:30:01-03:00",
+        "triggerKind": "planning-started",
+        "evidenceRefs": []
+      },
+      {
+        "transitionId": "transition-ready-001",
+        "sequence": 3,
+        "stateRevision": 3,
+        "from": "planning",
+        "to": "ready",
+        "at": "2026-08-30T09:30:03-03:00",
+        "triggerKind": "planning-completed",
+        "triggerRef": "plan-change-001",
+        "evidenceRefs": []
+      },
+      {
+        "transitionId": "transition-running-001",
+        "sequence": 4,
+        "stateRevision": 4,
+        "from": "ready",
+        "to": "running",
+        "at": "2026-08-30T09:30:05-03:00",
+        "triggerKind": "execution-started",
+        "triggerRef": "attempt-change-001-01",
+        "evidenceRefs": []
+      },
+      {
+        "transitionId": "transition-cancelling-active-001",
+        "sequence": 5,
+        "stateRevision": 6,
+        "from": "running",
+        "to": "cancelling",
+        "at": "2026-08-30T09:30:31-03:00",
+        "triggerKind": "cancellation-requested",
+        "triggerRef": "cancellation-client-active-001",
+        "evidenceRefs": [
+          "evidence-client-cancellation-active"
+        ]
+      }
+    ],
+    "planRefs": [
+      {
+        "planId": "plan-change-001",
+        "planRevision": 1,
+        "planFingerprint": {
+          "algorithm": "sha256-jcs-v1",
+          "value": "sha256:753e28d45a8b113e6229aafdba6ad8d4ffc27403de44896f3cb159d6a4822366"
+        },
+        "strategyFingerprint": {
+          "algorithm": "sha256-jcs-v1",
+          "value": "sha256:4cacdebff2d82278d6592b865a80090e4d30ebbeda74758c4fec1517d999e3dd"
+        },
+        "basisStateRevision": 2,
+        "activatedAtRevision": 3,
+        "activationTransitionId": "transition-ready-001",
+        "activatedAt": "2026-08-30T09:30:03-03:00",
+        "authorizationBinding": {
+          "enforcementId": "authenf-change-r1-001",
+          "enforcementFingerprint": {
+            "algorithm": "sha256-jcs-v1",
+            "value": "sha256:341e4942fa1751a6c0c4f854c5d1735de9acdba622921fbf7eb341c27a396cc9"
+          },
+          "decisionId": "authdec-change-r1-001",
+          "decisionFingerprint": {
+            "algorithm": "sha256-jcs-v1",
+            "value": "sha256:3a56c55561e3d0edfc821ec93740e2cd8caee9ad67b471f1b5690e3f8ec4d416"
+          },
+          "expiresAt": "2026-08-30T09:35:00-03:00",
+          "activatedAtRevision": 3
+        }
+      }
+    ],
+    "attempts": [
+      {
+        "attemptId": "attempt-change-001-01",
+        "ordinal": 1,
+        "status": "active",
+        "planRef": {
+          "planId": "plan-change-001",
+          "planRevision": 1
+        },
+        "strategyFingerprint": {
+          "algorithm": "sha256-jcs-v1",
+          "value": "sha256:4cacdebff2d82278d6592b865a80090e4d30ebbeda74758c4fec1517d999e3dd"
+        },
+        "executionEpoch": 1,
+        "startedAt": "2026-08-30T09:30:05-03:00",
+        "lastUpdatedRevision": 5,
+        "checkpointRef": "artifact-change-pre-mutation-checkpoint",
+        "effectRefs": [
+          "effect-readme-modified"
+        ],
+        "evidenceRefs": []
+      }
+    ],
+    "stepRuns": [
+      {
+        "stepRunId": "step-run-change-inspect-01",
+        "planRef": {
+          "planId": "plan-change-001",
+          "planRevision": 1
+        },
+        "stepRef": "step-change-inspect",
+        "attemptId": "attempt-change-001-01",
+        "executionEpoch": 1,
+        "status": "completed",
+        "startedAt": "2026-08-30T09:30:05-03:00",
+        "endedAt": "2026-08-30T09:30:29-03:00",
+        "lastUpdatedRevision": 5,
+        "outputRefs": [
+          "output-markdown-context"
+        ],
+        "evidenceRefs": []
+      },
+      {
+        "stepRunId": "step-run-change-apply-01",
+        "planRef": {
+          "planId": "plan-change-001",
+          "planRevision": 1
+        },
+        "stepRef": "step-change-apply",
+        "attemptId": "attempt-change-001-01",
+        "executionEpoch": 1,
+        "status": "active",
+        "startedAt": "2026-08-30T09:30:30-03:00",
+        "lastUpdatedRevision": 5,
+        "outputRefs": [
+          "output-readme-checkpoint"
+        ],
+        "evidenceRefs": []
+      }
+    ],
+    "effects": [
+      {
+        "effectId": "effect-readme-modified",
+        "effectKey": "task-20260830-change-001/readme-reference",
+        "intentFingerprint": {
+          "algorithm": "sha256-jcs-v1",
+          "value": "sha256:090dd346688c358f935953437ce63ae20a33e2347cb88eb633c27d043d2c90b0"
+        },
+        "attemptRefs": [
+          "attempt-change-001-01"
+        ],
+        "executionOrigins": [
+          {
+            "originId": "origin-effect-readme-modified-01",
+            "ordinal": 1,
+            "attemptRef": "attempt-change-001-01",
+            "planRef": {
+              "planId": "plan-change-001",
+              "planRevision": 1
+            },
+            "stepRunRef": "step-run-change-apply-01",
+            "actionRef": "action-modify-readme-link",
+            "executionEpoch": 1,
+            "state": "reserved",
+            "recordedAt": "2026-08-30T09:30:30-03:00",
+            "recordedAtRevision": 5,
+            "updatedAt": "2026-08-30T09:30:30-03:00",
+            "lastUpdatedRevision": 5,
+            "evidenceRefs": []
+          }
+        ],
+        "planRef": {
+          "planId": "plan-change-001",
+          "planRevision": 1
+        },
+        "stepRunRef": "step-run-change-apply-01",
+        "actionRef": "action-modify-readme-link",
+        "resourceRef": "ref-overcore-readme",
+        "operation": "filesystem.modify",
+        "state": "reserved",
+        "executionEpoch": 1,
+        "recordedAt": "2026-08-30T09:30:30-03:00",
+        "updatedAt": "2026-08-30T09:30:30-03:00",
+        "lastUpdatedRevision": 5,
+        "evidenceRefs": []
+      }
+    ],
+    "blocks": [],
+    "checkpoints": [
+      {
+        "checkpointRef": "artifact-change-pre-mutation-checkpoint",
+        "digest": "sha256:27bf5a4ae4fd55b395befd7029d3811ea7375348b8dfd167793855e87bb9be14",
+        "requestFingerprint": {
+          "algorithm": "sha256-jcs-v1",
+          "value": "sha256:44340c327366e5c0c78780634343b74720dfff72be25e70a4cfff87b23bbb6e7"
+        },
+        "stateRevision": 5,
+        "attemptId": "attempt-change-001-01",
+        "planRef": {
+          "planId": "plan-change-001",
+          "planRevision": 1
+        },
+        "resumeStepRef": "step-change-apply",
+        "resumeTarget": "ready",
+        "createdAt": "2026-08-30T09:30:29-03:00"
+      }
+    ],
+    "contextCaptureRecords": [
+      {
+        "evidenceRef": "evidence-snapshot-ref-overcore-readme",
+        "refId": "ref-overcore-readme",
+        "digest": "sha256:5dff3f8b50fda9bffae5414ae21bd896f5f8fd9f24d063711e625718e3dd8458",
+        "capturedAt": "2026-08-30T09:30:02-03:00",
+        "recordedAt": "2026-08-30T09:30:03-03:00",
+        "recordedAtRevision": 3
+      },
+      {
+        "evidenceRef": "evidence-snapshot-ref-task-request-doc",
+        "refId": "ref-task-request-doc",
+        "digest": "sha256:b380465a49e5d926f43447c632dfa04fdf549f23c4ddc0055754acc9fccfc4d1",
+        "capturedAt": "2026-08-30T09:30:02-03:00",
+        "recordedAt": "2026-08-30T09:30:03-03:00",
+        "recordedAtRevision": 3
+      }
+    ],
+    "evidenceRefs": [
+      "evidence-snapshot-ref-overcore-readme",
+      "evidence-snapshot-ref-task-request-doc",
+      "evidence-client-cancellation-active"
+    ],
+    "artifactRefs": [
+      "artifact-change-pre-mutation-checkpoint"
+    ],
+    "resultRefs": []
+  }
+}

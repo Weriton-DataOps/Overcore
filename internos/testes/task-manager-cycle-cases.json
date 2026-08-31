@@ -1,0 +1,191 @@
+{
+  "fixtureVersion": "1.0",
+  "description": "Decisões do Task Manager sem criar estado paralelo ao Task State.",
+  "cases": [
+    {
+      "caseId": "preflight-returns-all-decisions-at-once",
+      "inputKind": "readiness-report",
+      "reportExample": "../../contratos/exemplos/task-readiness-decisions-required.json",
+      "expectedAction": "emit-readiness-report",
+      "expectedReason": "preflight-decisions-required"
+    },
+    {
+      "caseId": "infeasible-draft-never-creates-task",
+      "inputKind": "readiness-report",
+      "reportExample": "../../contratos/exemplos/task-readiness-not-feasible.json",
+      "expectedAction": "emit-readiness-report",
+      "expectedReason": "preflight-not-feasible"
+    },
+    {
+      "caseId": "ready-report-admits-prepared-request",
+      "inputKind": "readiness-report",
+      "reportExample": "../../contratos/exemplos/task-readiness-ready.json",
+      "expectedAction": "admit-task-request",
+      "expectedReason": "preflight-ready"
+    },
+    {
+      "caseId": "accepted-task-enters-planning",
+      "inputKind": "task-state",
+      "stateExample": "../exemplos/task-state-accepted.json",
+      "observedAt": "2026-08-30T12:00:00.100-03:00",
+      "expectedAction": "begin-planning",
+      "expectedReason": "task-accepted"
+    },
+    {
+      "caseId": "planning-without-plan-invokes-planner",
+      "inputKind": "task-state",
+      "stateExample": "../exemplos/task-state-planning.json",
+      "observedAt": "2026-08-30T09:30:01.100-03:00",
+      "availableDocuments": {},
+      "expectedAction": "create-plan",
+      "expectedReason": "plan-missing"
+    },
+    {
+      "caseId": "candidate-plan-builds-one-batch-authorization-request",
+      "inputKind": "task-state",
+      "stateExample": "../exemplos/task-state-planning.json",
+      "observedAt": "2026-08-30T09:30:02.100-03:00",
+      "availableDocuments": {
+        "plan": "../planos/exemplos/execution-plan-change-r1.json"
+      },
+      "expectedAction": "create-authorization-request",
+      "expectedReason": "authorization-request-missing"
+    },
+    {
+      "caseId": "authorization-request-waits-for-omni-decision",
+      "inputKind": "task-state",
+      "stateExample": "../exemplos/task-state-planning.json",
+      "observedAt": "2026-08-30T09:30:02.300-03:00",
+      "availableDocuments": {
+        "plan": "../planos/exemplos/execution-plan-change-r1.json",
+        "authorizationRequest": "../../contratos/exemplos/authorization-request-change-r1.json"
+      },
+      "expectedAction": "request-authorization-decision",
+      "expectedReason": "authority-provider-decision-missing"
+    },
+    {
+      "caseId": "omni-permit-is-persisted-before-activation",
+      "inputKind": "task-state",
+      "stateExample": "../exemplos/task-state-planning.json",
+      "observedAt": "2026-08-30T09:30:02.550-03:00",
+      "availableDocuments": {
+        "plan": "../planos/exemplos/execution-plan-change-r1.json",
+        "authorizationRequest": "../../contratos/exemplos/authorization-request-change-r1.json",
+        "authorizationDecision": "../../contratos/exemplos/authorization-decision-change-r1-permit.json"
+      },
+      "expectedAction": "persist-authorization-enforcement",
+      "expectedReason": "enforcement-missing"
+    },
+    {
+      "caseId": "valid-enforcement-activates-plan-atomically",
+      "inputKind": "task-state",
+      "stateExample": "../exemplos/task-state-planning.json",
+      "observedAt": "2026-08-30T09:30:02.700-03:00",
+      "availableDocuments": {
+        "plan": "../planos/exemplos/execution-plan-change-r1.json",
+        "authorizationRequest": "../../contratos/exemplos/authorization-request-change-r1.json",
+        "authorizationDecision": "../../contratos/exemplos/authorization-decision-change-r1-permit.json",
+        "authorizationEnforcement": "../autorizacao/exemplos/authorization-enforcement-change-r1.json"
+      },
+      "expectedAction": "activate-plan",
+      "expectedReason": "plan-authorized"
+    },
+    {
+      "caseId": "denied-plan-does-not-activate-partially",
+      "inputKind": "task-state",
+      "stateExample": "../exemplos/task-state-planning.json",
+      "observedAt": "2026-08-30T09:30:02.700-03:00",
+      "authorityOutcome": "deny",
+      "availableDocuments": {
+        "plan": "../planos/exemplos/execution-plan-change-r1.json",
+        "authorizationRequest": "../../contratos/exemplos/authorization-request-change-r1.json"
+      },
+      "expectedAction": "block-authorization",
+      "expectedReason": "plan-denied"
+    },
+    {
+      "caseId": "ready-task-starts-authorized-attempt",
+      "inputKind": "task-state",
+      "stateExample": "../exemplos/task-state-ready.json",
+      "observedAt": "2026-08-30T09:30:03.100-03:00",
+      "expectedAction": "start-attempt",
+      "expectedReason": "authorized-plan-ready"
+    },
+    {
+      "caseId": "expired-ready-task-returns-to-authorization",
+      "inputKind": "task-state",
+      "stateExample": "../exemplos/task-state-ready.json",
+      "observedAt": "2026-08-30T09:35:00-03:00",
+      "expectedAction": "request-reauthorization",
+      "expectedReason": "authorization-expired"
+    },
+    {
+      "caseId": "running-task-dispatches-only-next-planned-action",
+      "inputKind": "task-state",
+      "stateExample": "../exemplos/task-state-running.json",
+      "observedAt": "2026-08-30T09:30:30.200-03:00",
+      "nextActionId": "action-modify-readme-link",
+      "expectedAction": "dispatch-action",
+      "expectedReason": "planned-action-ready"
+    },
+    {
+      "caseId": "running-task-reconciles-uncertain-effect-first",
+      "inputKind": "task-state",
+      "stateExample": "../exemplos/task-state-running.json",
+      "observedAt": "2026-08-30T09:30:30.200-03:00",
+      "hasUncertainEffect": true,
+      "nextActionId": "action-modify-readme-link",
+      "expectedAction": "reconcile-effect",
+      "expectedReason": "uncertain-effect-precedes-new-work"
+    },
+    {
+      "caseId": "attempt-prefix-complete-enters-verification",
+      "inputKind": "task-state",
+      "stateExample": "../exemplos/task-state-running.json",
+      "observedAt": "2026-08-30T09:30:30.200-03:00",
+      "attemptStepsComplete": true,
+      "expectedAction": "begin-verification",
+      "expectedReason": "execution-prefix-complete"
+    },
+    {
+      "caseId": "blocked-task-waits-with-required-input-visible",
+      "inputKind": "task-state",
+      "stateExample": "../exemplos/task-state-blocked.json",
+      "observedAt": "2026-08-30T12:02:00-03:00",
+      "expectedAction": "await-resume-input",
+      "expectedReason": "task-blocked"
+    },
+    {
+      "caseId": "cancellation-reconciles-inflight-work",
+      "inputKind": "task-state",
+      "stateExample": "../exemplos/task-state-cancelling-active.json",
+      "observedAt": "2026-08-30T09:30:31-03:00",
+      "expectedAction": "reconcile-inflight-work",
+      "expectedReason": "cancellation-not-quiescent"
+    },
+    {
+      "caseId": "quiesced-cancellation-settles",
+      "inputKind": "task-state",
+      "stateExample": "../exemplos/task-state-cancelling-quiesced.json",
+      "observedAt": "2026-08-30T12:00:02-03:00",
+      "expectedAction": "settle-cancellation",
+      "expectedReason": "cancellation-quiesced"
+    },
+    {
+      "caseId": "terminal-success-is-not-reopened",
+      "inputKind": "task-state",
+      "stateExample": "../exemplos/task-state-succeeded.json",
+      "observedAt": "2026-08-30T09:32:03-03:00",
+      "expectedAction": "no-op-terminal",
+      "expectedReason": "task-terminal"
+    },
+    {
+      "caseId": "terminal-failure-is-not-reopened",
+      "inputKind": "task-state",
+      "stateExample": "../exemplos/task-state-failed.json",
+      "observedAt": "2026-08-30T09:04:01-03:00",
+      "expectedAction": "no-op-terminal",
+      "expectedReason": "task-terminal"
+    }
+  ]
+}

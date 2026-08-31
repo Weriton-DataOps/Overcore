@@ -1,0 +1,86 @@
+{
+  "contractVersion": "1.0",
+  "requestId": "req-20260831-runtime-inspection-001",
+  "idempotencyKey": "inspect-overcore-runtime-foundation-20260831",
+  "correlationId": "corr-overcore-runtime-foundation",
+  "createdAt": "2026-08-31T14:00:00-03:00",
+  "preflight": {
+    "draftId": "draft-runtime-inspection-example",
+    "draftRevision": 1,
+    "draftFingerprint": {
+      "algorithm": "sha256-jcs-v1",
+      "value": "sha256:23171199646978868785145c51752745661008fe116e43da61d104621ead2d69"
+    },
+    "readinessReportId": "readiness-runtime-inspection-example"
+  },
+  "client": {
+    "id": "client-overcore-cli-demo",
+    "kind": "cli"
+  },
+  "objective": "Inspecionar todos os contratos JSON Schema públicos da fundação do Overcore e produzir evidência verificável sem alterar o repositório.",
+  "priority": "normal",
+  "context": {
+    "summary": "A primeira tarefa executável prova leitura real, autorização, fila, verificação e resultado sem efeitos de escrita.",
+    "references": [
+      {
+        "refId": "ref-overcore-runtime-repository",
+        "uri": "file:///C:/Users/wp.santos/Documents/Overcore",
+        "kind": "repository",
+        "sensitivity": "internal"
+      }
+    ],
+    "assumptions": []
+  },
+  "constraints": [
+    {
+      "id": "constraint-runtime-read-only",
+      "kind": "technical",
+      "description": "A tarefa pode ler contratos e produzir relatório em memória, mas não altera arquivos.",
+      "sourceRef": "ref-overcore-runtime-repository"
+    }
+  ],
+  "authority": {
+    "mode": "proceed-within-scope",
+    "grants": [
+      {
+        "resourceRef": "ref-overcore-runtime-repository",
+        "operations": ["filesystem.read"]
+      }
+    ],
+    "expansionBoundaries": [
+      "destructive",
+      "irreversible",
+      "financial",
+      "privilege-expansion",
+      "external-publication",
+      "secret-access"
+    ]
+  },
+  "acceptanceCriteria": [
+    {
+      "id": "criterion-runtime-json-readable",
+      "description": "Todos os contratos públicos encontrados são JSON legível.",
+      "verification": {
+        "method": "test",
+        "expected": "Nenhum arquivo terminado em .schema.json na pasta contratos falha no parse JSON."
+      }
+    },
+    {
+      "id": "criterion-runtime-contract-closed",
+      "description": "Todos os contratos públicos encontrados fecham o objeto raiz.",
+      "verification": {
+        "method": "schema",
+        "expected": "Cada contrato declara additionalProperties igual a false no objeto raiz."
+      }
+    }
+  ],
+  "budget": {
+    "maxDurationMs": 300000,
+    "maxAttempts": 2,
+    "maxParallelism": 1
+  },
+  "expectedOutput": {
+    "kind": "report",
+    "mediaType": "application/json"
+  }
+}

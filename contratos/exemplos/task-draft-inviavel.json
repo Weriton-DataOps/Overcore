@@ -1,0 +1,61 @@
+{
+  "contractVersion": "1.0",
+  "draftId": "draft-expired-deadline-report",
+  "revision": 1,
+  "idempotencyKey": "prepare-expired-deadline-report",
+  "executionIdempotencyKey": "execute-expired-deadline-report",
+  "createdAt": "2026-08-30T12:10:00-03:00",
+  "client": {
+    "id": "client-contract-example",
+    "kind": "cli"
+  },
+  "objective": "Produzir um relatório e concluí-lo até o prazo informado.",
+  "context": {
+    "references": [],
+    "assumptions": []
+  },
+  "knownConstraints": [
+    {
+      "id": "constraint-expired-deadline",
+      "kind": "temporal",
+      "description": "A conclusão precisa ocorrer até 2026-08-30T11:00:00-03:00."
+    }
+  ],
+  "knownAcceptanceCriteria": [
+    {
+      "id": "criterion-report-before-deadline",
+      "description": "O relatório é concluído antes do prazo informado.",
+      "verificationHint": "inspection"
+    }
+  ],
+  "discoveryAuthority": {
+    "mode": "inspect-only",
+    "grants": []
+  },
+  "availableExecutionAuthority": {
+    "mode": "proceed-within-scope",
+    "grants": [],
+    "expansionBoundaries": []
+  },
+  "executionBudget": {
+    "source": {
+      "kind": "client-explicit",
+      "sourceId": "owner-primary-user"
+    },
+    "limits": {
+      "maxDurationMs": 30000,
+      "maxAttempts": 1,
+      "maxParallelism": 1
+    }
+  },
+  "decisionAnswers": [],
+  "preflightBudget": {
+    "maxDurationMs": 30000,
+    "maxInspectionOperations": 2
+  },
+  "executionHints": {
+    "priority": "urgent",
+    "deadline": "2026-08-30T11:00:00-03:00",
+    "expectedOutputKind": "report"
+  }
+}

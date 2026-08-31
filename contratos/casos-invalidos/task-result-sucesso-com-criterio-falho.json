@@ -1,0 +1,49 @@
+{
+  "contractVersion": "1.0",
+  "resultId": "result-invalid-failed-criterion",
+  "requestId": "req-20260830-inspection-001",
+  "requestFingerprint": {
+    "algorithm": "sha256-jcs-v1",
+    "value": "sha256:33fcb5a04d18b6d00536ea6085bc36838b350ddd3058041ea741005069d306d6"
+  },
+  "taskId": "task-invalid-failed-criterion",
+  "stateRef": {
+    "stateRevision": 6,
+    "transitionId": "transition-invalid-success",
+    "emissionSequence": 1
+  },
+  "reportedAt": "2026-08-30T11:00:00-03:00",
+  "status": "succeeded",
+  "summary": "Este resultado é inválido porque declara sucesso com critério falho.",
+  "criteria": [
+    {
+      "criterionId": "criterion-json-readable",
+      "status": "failed",
+      "evidenceRefs": ["evidence-invalid-failure"]
+    }
+  ],
+  "evidence": [
+    {
+      "evidenceId": "evidence-invalid-failure",
+      "kind": "test-result",
+      "capturedAt": "2026-08-30T10:59:59-03:00",
+      "summary": "O teste falhou.",
+      "digest": "sha256:bf04ca2d91d363344ee7cfde69d4addbe2071d87dbd262a12142d925582b1ceb",
+      "artifactRefs": [],
+      "origin": {
+        "kind": "runtime",
+        "id": "overcore-runtime-v1"
+      }
+    }
+  ],
+  "artifacts": [],
+  "effects": [],
+  "execution": {
+    "attemptCount": 1,
+    "maxParallelismObserved": 1,
+    "durationMs": 1000,
+    "startedAt": "2026-08-30T10:59:59-03:00",
+    "finishedAt": "2026-08-30T11:00:00-03:00",
+    "lastTransitionAt": "2026-08-30T11:00:00-03:00"
+  }
+}

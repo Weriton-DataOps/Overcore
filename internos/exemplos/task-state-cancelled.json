@@ -1,0 +1,127 @@
+{
+  "modelVersion": "1.0",
+  "taskId": "task-20260830-change-001",
+  "requestBinding": {
+    "requestId": "req-20260830-change-001",
+    "requestFingerprint": {
+      "algorithm": "sha256-jcs-v1",
+      "value": "sha256:44340c327366e5c0c78780634343b74720dfff72be25e70a4cfff87b23bbb6e7"
+    }
+  },
+  "acceptedAt": "2026-08-30T09:30:00-03:00",
+  "updatedAt": "2026-08-30T09:30:10-03:00",
+  "stateRevision": 4,
+  "executionEpoch": 2,
+  "lifecycle": {
+    "state": "cancelled",
+    "enteredAt": "2026-08-30T09:30:10-03:00",
+    "lastTransitionId": "transition-cancelled-001"
+  },
+  "criterionProgress": [
+    {
+      "criterionId": "criterion-link-present",
+      "status": "not-run",
+      "evidenceRefs": []
+    },
+    {
+      "criterionId": "criterion-scope-preserved",
+      "status": "not-run",
+      "evidenceRefs": []
+    }
+  ],
+  "cancellation": {
+    "cancellationId": "cancellation-client-001",
+    "initiatedBy": "client",
+    "requestedAt": "2026-08-30T09:30:09-03:00",
+    "status": "quiesced",
+    "lastUpdatedRevision": 4,
+    "evidenceRefs": ["evidence-client-cancellation"]
+  },
+  "latestCheckpointRef": "artifact-cancel-checkpoint",
+  "terminalResultRef": "result-change-cancelled-001",
+  "usage": {
+    "attemptCount": 0,
+    "maxParallelismObserved": 0,
+    "activeDurationMs": 10000
+  },
+  "ledger": {
+    "transitions": [
+      {
+        "transitionId": "transition-accepted-002",
+        "sequence": 1,
+        "stateRevision": 1,
+        "from": null,
+        "to": "accepted",
+        "at": "2026-08-30T09:30:00-03:00",
+        "triggerKind": "admission",
+        "triggerRef": "req-20260830-change-001",
+        "evidenceRefs": []
+      },
+      {
+        "transitionId": "transition-planning-002",
+        "sequence": 2,
+        "stateRevision": 2,
+        "from": "accepted",
+        "to": "planning",
+        "at": "2026-08-30T09:30:01-03:00",
+        "triggerKind": "planning-started",
+        "evidenceRefs": []
+      },
+      {
+        "transitionId": "transition-cancelling-001",
+        "sequence": 3,
+        "stateRevision": 3,
+        "from": "planning",
+        "to": "cancelling",
+        "at": "2026-08-30T09:30:09-03:00",
+        "triggerKind": "cancellation-requested",
+        "triggerRef": "cancellation-client-001",
+        "evidenceRefs": ["evidence-client-cancellation"]
+      },
+      {
+        "transitionId": "transition-cancelled-001",
+        "sequence": 4,
+        "stateRevision": 4,
+        "from": "cancelling",
+        "to": "cancelled",
+        "at": "2026-08-30T09:30:10-03:00",
+        "triggerKind": "cancellation-settled",
+        "triggerRef": "cancellation-client-001",
+        "resultRef": "result-change-cancelled-001",
+        "evidenceRefs": ["evidence-client-cancellation"]
+      }
+    ],
+    "attempts": [],
+    "effects": [],
+    "blocks": [],
+    "checkpoints": [
+      {
+        "checkpointRef": "artifact-cancel-checkpoint",
+        "digest": "sha256:e158b0f74500be40a445efd629e74b7feacbf561f1766b432d9cbfca787e86e9",
+        "requestFingerprint": {
+          "algorithm": "sha256-jcs-v1",
+          "value": "sha256:44340c327366e5c0c78780634343b74720dfff72be25e70a4cfff87b23bbb6e7"
+        },
+        "stateRevision": 3,
+        "resumeTarget": "planning",
+        "createdAt": "2026-08-30T09:30:09-03:00"
+      }
+    ],
+    "evidenceRefs": ["evidence-client-cancellation"],
+    "artifactRefs": ["artifact-cancel-checkpoint"],
+    "resultRefs": [
+      {
+        "resultId": "result-change-cancelled-001",
+        "stateRevision": 4,
+        "transitionId": "transition-cancelled-001",
+        "emissionSequence": 1,
+        "status": "cancelled",
+        "resultFingerprint": {
+          "algorithm": "sha256-jcs-v1",
+          "value": "sha256:e06039dc1c5e338fe7fc296f6fdec2016a9f8a7ce16b6ace78bfcc1f5a5729be"
+        },
+        "emittedAt": "2026-08-30T09:30:10-03:00"
+      }
+    ]
+  }
+}

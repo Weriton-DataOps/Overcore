@@ -1,0 +1,91 @@
+{
+  "modelVersion": "1.0",
+  "enforcementId": "authenf-change-r1-001",
+  "taskId": "task-20260830-change-001",
+  "authorizationRequestBinding": {
+    "documentId": "authreq-change-r1-001",
+    "fingerprint": {
+      "algorithm": "sha256-jcs-v1",
+      "value": "sha256:052db81804c57411d78a7f77fe94ba3a95d70ac3a4bd062f1aadc42bdc41e3a0"
+    }
+  },
+  "authorizationDecisionBinding": {
+    "documentId": "authdec-change-r1-001",
+    "fingerprint": {
+      "algorithm": "sha256-jcs-v1",
+      "value": "sha256:3a56c55561e3d0edfc821ec93740e2cd8caee9ad67b471f1b5690e3f8ec4d416"
+    }
+  },
+  "requestBinding": {
+    "requestId": "req-20260830-change-001",
+    "requestFingerprint": {
+      "algorithm": "sha256-jcs-v1",
+      "value": "sha256:44340c327366e5c0c78780634343b74720dfff72be25e70a4cfff87b23bbb6e7"
+    }
+  },
+  "planBinding": {
+    "planId": "plan-change-001",
+    "planRevision": 1,
+    "planFingerprint": {
+      "algorithm": "sha256-jcs-v1",
+      "value": "sha256:753e28d45a8b113e6229aafdba6ad8d4ffc27403de44896f3cb159d6a4822366"
+    },
+    "strategyFingerprint": {
+      "algorithm": "sha256-jcs-v1",
+      "value": "sha256:4cacdebff2d82278d6592b865a80090e4d30ebbeda74758c4fec1517d999e3dd"
+    }
+  },
+  "providerRef": "omni-authority-provider",
+  "status": "authorized",
+  "evaluatedAt": "2026-08-30T09:30:02.600-03:00",
+  "expiresAt": "2026-08-30T09:35:00-03:00",
+  "lastRevocationCheckAt": "2026-08-30T09:30:02.600-03:00",
+  "actionGrants": [
+    {
+      "actionId": "action-read-readme",
+      "outcome": "permit",
+      "requiredControls": ["sanitize-output"]
+    },
+    {
+      "actionId": "action-read-task-request-doc",
+      "outcome": "permit",
+      "requiredControls": ["sanitize-output"]
+    },
+    {
+      "actionId": "action-modify-readme-link",
+      "outcome": "permit",
+      "requiredControls": [
+        "checkpoint-before-mutation",
+        "verify-after-effect",
+        "reconcile-before-retry",
+        "revocation-check-before-effect"
+      ]
+    },
+    {
+      "actionId": "action-read-link-result",
+      "outcome": "permit",
+      "requiredControls": ["sanitize-output"]
+    },
+    {
+      "actionId": "action-read-link-target",
+      "outcome": "permit",
+      "requiredControls": ["sanitize-output"]
+    },
+    {
+      "actionId": "action-verify-journal-scope",
+      "outcome": "permit",
+      "requiredControls": []
+    },
+    {
+      "actionId": "action-assemble-change-delivery",
+      "outcome": "permit",
+      "requiredControls": ["sanitize-output"]
+    }
+  ],
+  "activationEligible": true,
+  "activatedAtStateRevision": 3,
+  "recordFingerprint": {
+    "algorithm": "sha256-jcs-v1",
+    "value": "sha256:341e4942fa1751a6c0c4f854c5d1735de9acdba622921fbf7eb341c27a396cc9"
+  }
+}
