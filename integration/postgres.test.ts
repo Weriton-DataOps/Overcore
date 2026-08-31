@@ -11,14 +11,30 @@ import { TaskManager } from '../src/application/task-manager.js'
 import { TaskWorker } from '../src/application/task-worker.js'
 import { ContractValidator } from '../src/contracts/validator.js'
 import { fingerprint } from '../src/domain/fingerprint.js'
-import type { JsonObject, StoredTask, TaskDraft, TaskReadinessReport, TaskRequest, TaskState } from '../src/domain/types.js'
-import { createPostgresPool, migrate } from '../src/infrastructure/database/postgres.js'
+import type { CasMutation, JsonObject, StoredTask, TaskDraft, TaskReadinessReport, TaskRequest, TaskState } from '../src/domain/types.js'
+import { createPostgresPool, migrate, type PostgresPool } from '../src/infrastructure/database/postgres.js'
 import { PostgresTaskStore } from '../src/infrastructure/database/postgres-task-store.js'
 import { ConcurrentPreflightUpdateError } from '../src/ports/preflight-store.js'
 import { ConcurrentTaskUpdateError } from '../src/ports/task-store.js'
 import { PermittingAuthorityProvider } from '../src/testing/permitting-authority-provider.js'
 
 const root = process.cwd()
+
+class FailOncePostgresTaskStore extends PostgresTaskStore {
+  private failed = false
+
+  constructor(pool: PostgresPool, private readonly eventKind: string) {
+    super(pool)
+  }
+
+  override async compareAndSwap(mutation: CasMutation) {
+    if (!this.failed && mutation.event.kind === this.eventKind) {
+      this.failed = true
+      throw new Error(`queda PostgreSQL simulada em ${this.eventKind}`)
+    }
+    return super.compareAndSwap(mutation)
+  }
+}
 
 function withState(previous: StoredTask, state: TaskState): StoredTask {
   return {
@@ -99,6 +115,26 @@ test('PostgreSQL real persiste, rejeita CAS obsoleto e distribui duas tarefas en
     assert.equal(readyReport.appliedDecisionAnswers.length, 1)
     assert.equal(readyReport.preparedRequest?.idempotencyKey, draft.executionIdempotencyKey)
 
+    const crashingManager = new TaskManager(
+      new FailOncePostgresTaskStore(pool, 'execution-scheduled'),
+      validator,
+      new PermittingAuthorityProvider()
+    )
+    await assert.rejects(
+      crashingManager.admitPrepared(readyReport.reportId),
+      /queda PostgreSQL simulada em execution-scheduled/
+    )
+    const partialTask = await store.findByIdempotencyKey(draft.executionIdempotencyKey)
+    assert.equal(partialTask?.status, 'ready')
+    if (!partialTask) throw new Error('Tarefa parcial não foi persistida para o teste de retomada.')
+    const preflightTaskId = partialTask.taskId
+    taskIds.push(preflightTaskId)
+    const outboxBeforeRestart = await pool.query<{ count: string }>(
+      'SELECT count(*) FROM overcore_task_outbox WHERE task_id=$1',
+      [preflightTaskId]
+    )
+    assert.equal(outboxBeforeRestart.rows[0]?.count, '0')
+
     const concurrentAdmissions = await Promise.all([
       restartedManager.admitPrepared(readyReport.reportId),
       new TaskManager(
@@ -108,8 +144,8 @@ test('PostgreSQL real persiste, rejeita CAS obsoleto e distribui duas tarefas en
       ).admitPrepared(readyReport.reportId)
     ])
     assert.equal(concurrentAdmissions[0].taskId, concurrentAdmissions[1].taskId)
-    const preflightTaskId = concurrentAdmissions[0].taskId
-    taskIds.push(preflightTaskId)
+    assert.equal(concurrentAdmissions[0].taskId, preflightTaskId)
+    assert.equal((await store.findById(preflightTaskId))?.status, 'running')
     const admissionRows = await pool.query<{ count: string }>(
       'SELECT count(*) FROM overcore_tasks WHERE idempotency_key=$1',
       [draft.executionIdempotencyKey]

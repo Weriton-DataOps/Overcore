@@ -55,18 +55,40 @@ async function serve(): Promise<void> {
   })
   process.stdout.write(`Overcore ativo em http://${config.host}:${address.port}\n`)
 
+  let reconciling = false
+  const reconcile = () => {
+    if (reconciling) return
+    reconciling = true
+    void manager.reconcilePending()
+      .then((outcomes) => {
+        for (const outcome of outcomes) {
+          if (outcome.outcome === 'failed') {
+            process.stderr.write(`reconciler ${outcome.taskId}: ${outcome.error ?? 'falha sem mensagem'}\n`)
+          }
+        }
+      })
+      .catch((error: unknown) => process.stderr.write(
+        `reconciler: ${error instanceof Error ? error.message : String(error)}\n`
+      ))
+      .finally(() => { reconciling = false })
+  }
+  reconcile()
+  const reconciliationInterval = setInterval(reconcile, 1_000)
+  reconciliationInterval.unref()
+
   let working = false
-  const interval = setInterval(() => {
+  const workerInterval = setInterval(() => {
     if (working) return
     working = true
     void worker.runOnce()
       .catch((error: unknown) => process.stderr.write(`worker: ${error instanceof Error ? error.message : String(error)}\n`))
       .finally(() => { working = false })
   }, 500)
-  interval.unref()
+  workerInterval.unref()
 
   const shutdown = async () => {
-    clearInterval(interval)
+    clearInterval(reconciliationInterval)
+    clearInterval(workerInterval)
     await new Promise<void>((resolve) => server.close(() => resolve()))
     await removeRuntimeDescriptor(descriptorPath)
     await pool.end()

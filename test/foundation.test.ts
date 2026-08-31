@@ -8,8 +8,8 @@ import { PreflightAdmissionError, TaskManager } from '../src/application/task-ma
 import { TaskWorker } from '../src/application/task-worker.js'
 import { permittingDecision } from '../src/application/authorization.js'
 import { ContractValidator } from '../src/contracts/validator.js'
-import { scopeKey } from '../src/domain/fingerprint.js'
-import type { JsonObject, TaskRequest } from '../src/domain/types.js'
+import { scopeKey, stableId } from '../src/domain/fingerprint.js'
+import type { CasMutation, JsonObject, TaskRequest } from '../src/domain/types.js'
 import { ReadOnlyContractInspectionExecutor } from '../src/application/inspection-executor.js'
 import { ConcurrentTaskUpdateError } from '../src/ports/task-store.js'
 import type { AuthorityProvider } from '../src/ports/task-store.js'
@@ -17,6 +17,22 @@ import { InMemoryTaskStore } from '../src/testing/in-memory-task-store.js'
 import { PermittingAuthorityProvider } from '../src/testing/permitting-authority-provider.js'
 
 const root = process.cwd()
+
+class FailOnceTaskStore extends InMemoryTaskStore {
+  private failed = false
+
+  constructor(private readonly eventKind: string) {
+    super()
+  }
+
+  override async compareAndSwap(mutation: CasMutation) {
+    if (!this.failed && mutation.event.kind === this.eventKind) {
+      this.failed = true
+      throw new Error(`queda simulada em ${this.eventKind}`)
+    }
+    return super.compareAndSwap(mutation)
+  }
+}
 
 async function requestFixture(): Promise<TaskRequest> {
   const path = join(root, 'contratos', 'exemplos', 'task-request-inspecao-executavel.json')
@@ -57,6 +73,83 @@ test('a mesma chave idempotente devolve a tarefa existente sem duplicar execuç�
   const second = await manager.submit(structuredClone(request))
   assert.equal(second.taskId, first.taskId)
   assert.equal(store.tasks.size, 1)
+  assert.equal(store.outbox.size, 1)
+})
+
+for (const scenario of [
+  { eventKind: 'planning-started', partialStatus: 'accepted' },
+  { eventKind: 'plan-authorized', partialStatus: 'planning' },
+  { eventKind: 'execution-scheduled', partialStatus: 'ready' }
+] as const) {
+  test(`reinício retoma tarefa em ${scenario.partialStatus} sem duplicar efeitos`, async () => {
+    const validator: ContractValidator = await ContractValidator.create(root)
+    const store = new FailOnceTaskStore(scenario.eventKind)
+    const request = await requestFixture()
+    request.requestId = `req-restart-${scenario.partialStatus}-0001`
+    request.idempotencyKey = `restart-${scenario.partialStatus}-0001`
+    const firstProcess = new TaskManager(store, validator, new PermittingAuthorityProvider())
+
+    await assert.rejects(firstProcess.submit(request), new RegExp(`queda simulada em ${scenario.eventKind}`))
+    const taskId = stableId('task', request.idempotencyKey)
+    assert.equal((await store.findById(taskId))?.status, scenario.partialStatus)
+
+    const restartedProcess = new TaskManager(store, validator, new PermittingAuthorityProvider())
+    const resumed = await restartedProcess.reconcile(taskId)
+    assert.equal(resumed?.status, 'running')
+    assert.equal(resumed?.stateRevision, 4)
+    assert.equal(store.tasks.size, 1)
+    assert.equal(store.plans.size, 1)
+    assert.equal(store.authorizations.size, 1)
+    assert.equal(store.outbox.size, 1)
+  })
+}
+
+test('lease impede dupla retomada e expira depois de uma queda', async () => {
+  const validator: ContractValidator = await ContractValidator.create(root)
+  const store = new FailOnceTaskStore('planning-started')
+  const request = await requestFixture()
+  request.requestId = 'req-reconciliation-lease-0001'
+  request.idempotencyKey = 'reconciliation-lease-0001'
+  await assert.rejects(
+    new TaskManager(store, validator, new PermittingAuthorityProvider()).submit(request),
+    /queda simulada/
+  )
+  const taskId = stableId('task', request.idempotencyKey)
+  const now = new Date()
+  const firstClaim = await store.claimReconciliation(taskId, 'crashed-process', 1_000, now)
+  assert.ok(firstClaim)
+  assert.equal(await store.claimReconciliation(taskId, 'competing-process', 1_000, new Date(now.getTime() + 999)), null)
+  assert.ok(await store.claimReconciliation(taskId, 'restarted-process', 1_000, new Date(now.getTime() + 1_001)))
+})
+
+test('dois reconciliadores concorrentes consultam o Omni apenas uma vez', async () => {
+  const validator: ContractValidator = await ContractValidator.create(root)
+  const store = new FailOnceTaskStore('plan-authorized')
+  let authorityCalls = 0
+  const authorizationRequestIds: string[] = []
+  const authority: AuthorityProvider = {
+    async evaluate(request: JsonObject) {
+      authorityCalls += 1
+      authorizationRequestIds.push(String(request.authorizationRequestId))
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      return permittingDecision(request)
+    }
+  }
+  const request = await requestFixture()
+  request.requestId = 'req-concurrent-reconciliation-0001'
+  request.idempotencyKey = 'concurrent-reconciliation-0001'
+  await assert.rejects(new TaskManager(store, validator, authority).submit(request), /queda simulada/)
+  assert.equal(authorityCalls, 1)
+  const taskId = stableId('task', request.idempotencyKey)
+
+  await Promise.all([
+    new TaskManager(store, validator, authority).reconcile(taskId),
+    new TaskManager(store, validator, authority).reconcile(taskId)
+  ])
+
+  assert.equal(authorityCalls, 2)
+  assert.equal(new Set(authorizationRequestIds).size, 1)
+  assert.equal((await store.findById(taskId))?.status, 'running')
   assert.equal(store.outbox.size, 1)
 })
 
@@ -141,6 +234,14 @@ test('migração declara PostgreSQL, CAS documental e fila concorrente', async (
   assert.match(storeSource, /state_revision=\$8/)
   assert.match(storeSource, /FOR UPDATE SKIP LOCKED/)
   assert.doesNotMatch(sql, /sqlite/i)
+})
+
+test('migração de reconciliação cria lease expirável sem inventar outro estado de tarefa', async () => {
+  const sql = await readFile(join(root, 'migrations', '003_task_reconciliation_lease.sql'), 'utf8')
+  assert.match(sql, /reconciliation_token/i)
+  assert.match(sql, /reconciliation_until\s+timestamptz/i)
+  assert.match(sql, /status IN \('accepted', 'planning', 'ready'\)/i)
+  assert.doesNotMatch(sql, /ADD VALUE|CREATE TYPE/i)
 })
 
 test('fixture da primeira tarefa continua válida no contrato público', async () => {

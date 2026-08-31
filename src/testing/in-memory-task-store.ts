@@ -32,6 +32,7 @@ export class InMemoryTaskStore implements TaskStore {
   readonly preflightStreams = new Map<string, { idempotencyKey: string; latestRevision: number }>()
   readonly preflightRevisions = new Map<string, StoredPreflightRevision>()
   readonly preflightReports = new Map<string, TaskReadinessReport>()
+  readonly reconciliationLeases = new Map<string, { ownerId: string; claimToken: string; until: string }>()
 
   private preflightKey(draftId: string, revision: number): string {
     return `${draftId}:${revision}`
@@ -106,6 +107,54 @@ export class InMemoryTaskStore implements TaskStore {
   async findByIdempotencyKey(idempotencyKey: string): Promise<StoredTask | null> {
     const task = [...this.tasks.values()].find((item) => item.idempotencyKey === idempotencyKey)
     return task ? copy(task) : null
+  }
+
+  async findPlan(taskId: string, planId: string, planRevision: number): Promise<JsonObject | null> {
+    const plan = this.plans.get(taskId)
+    if (!plan || plan.planId !== planId || plan.planRevision !== planRevision) return null
+    return copy(plan)
+  }
+
+  async findAuthorization(taskId: string, decisionId: string) {
+    const authorization = this.authorizations.get(taskId)
+    if (!authorization || authorization.decision.decisionId !== decisionId) return null
+    return copy(authorization)
+  }
+
+  async listReconciliationCandidates(limit: number, now = new Date()): Promise<StoredTask[]> {
+    return [...this.tasks.values()]
+      .filter((task) => task.status === 'accepted' || task.status === 'planning' || task.status === 'ready')
+      .filter((task) => {
+        const lease = this.reconciliationLeases.get(task.taskId)
+        return !lease || Date.parse(lease.until) <= now.getTime()
+      })
+      .sort((left, right) => left.updatedAt.localeCompare(right.updatedAt))
+      .slice(0, Math.max(0, limit))
+      .map(copy)
+  }
+
+  async claimReconciliation(
+    taskId: string,
+    ownerId: string,
+    leaseMs: number,
+    now = new Date()
+  ): Promise<string | null> {
+    const task = this.tasks.get(taskId)
+    if (!task || (task.status !== 'accepted' && task.status !== 'planning' && task.status !== 'ready')) return null
+    const current = this.reconciliationLeases.get(taskId)
+    if (current && Date.parse(current.until) > now.getTime()) return null
+    const claimToken = `${ownerId}:${randomUUID()}`
+    this.reconciliationLeases.set(taskId, {
+      ownerId,
+      claimToken,
+      until: new Date(now.getTime() + leaseMs).toISOString()
+    })
+    return claimToken
+  }
+
+  async releaseReconciliation(taskId: string, claimToken: string): Promise<void> {
+    const lease = this.reconciliationLeases.get(taskId)
+    if (lease?.claimToken === claimToken) this.reconciliationLeases.delete(taskId)
   }
 
   async compareAndSwap(mutation: CasMutation): Promise<StoredTask> {

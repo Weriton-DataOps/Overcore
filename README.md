@@ -146,6 +146,8 @@ A posição e a autenticação do motor estão na
 - rejeição de relatório não pronto, ultrapassado ou de chave reaproveitada com outro request;
 - persistência append-only de drafts e relatórios, recuperação automática entre instâncias,
   idempotência e CAS entre revisões concorrentes;
+- retomada automática de tarefas interrompidas em `accepted`, `planning` ou `ready`, com lease
+  expirável, releitura de plano/autorização e uma única outbox mesmo entre instâncias concorrentes;
 - rejeição das 14 mutações adversariais declaradas para o domínio do Preflight;
 - build e typecheck estritos.
 
@@ -180,11 +182,11 @@ implementação.
 
 ## Próximo passo
 
-O Preflight executável, persistente e o handoff idempotente estão fechados. O próximo desenho é a
-retomada/reconciliação do Task Manager: se o processo cair depois de criar `accepted`, durante
-`planning` ou antes do dispatch, uma nova instância deve calcular e executar a próxima transição
-admissível sem duplicar plano, autorização ou efeito. O Task State já guarda a verdade; falta ligar o
-motor que continua a partir dela.
+O Preflight, o handoff idempotente e a retomada automática do Task Manager estão fechados. O próximo
+desenho é a recuperação estruturada quando continuar não é imediatamente possível: autorização
+vencida, indisponibilidade temporária do Omni, erro repetível de planejamento, backoff, entrada em
+`blocked` e retorno seguro à fase correta. Essa camada deve diferenciar espera recuperável de falha
+terminal sem esconder loops nem repetir efeitos.
 
 O futuro Agente de Discovery continua reservado pela
 [`ADR-008`](docs/decisoes/ADR-008-discovery-adaptativa-no-preflight.md). Agentes, skills, modelos, Graph

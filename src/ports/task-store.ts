@@ -7,6 +7,12 @@ import type {
 import type { AgentRuntimeAuthorization } from './agent-runtime.js'
 import type { PreflightStore } from './preflight-store.js'
 
+export interface StoredTaskAuthorization {
+  request: JsonObject
+  decision: JsonObject
+  enforcement: JsonObject
+}
+
 export class ConcurrentTaskUpdateError extends Error {
   constructor(taskId: string, expectedRevision: number) {
     super(`A tarefa ${taskId} não está mais na revisão ${expectedRevision}.`)
@@ -25,6 +31,11 @@ export interface TaskStore extends PreflightStore {
   create(task: StoredTask, event: CasMutation['event']): Promise<StoredTask>
   findById(taskId: string): Promise<StoredTask | null>
   findByIdempotencyKey(idempotencyKey: string): Promise<StoredTask | null>
+  findPlan(taskId: string, planId: string, planRevision: number): Promise<JsonObject | null>
+  findAuthorization(taskId: string, decisionId: string): Promise<StoredTaskAuthorization | null>
+  listReconciliationCandidates(limit: number, now?: Date): Promise<StoredTask[]>
+  claimReconciliation(taskId: string, ownerId: string, leaseMs: number, now?: Date): Promise<string | null>
+  releaseReconciliation(taskId: string, claimToken: string): Promise<void>
   compareAndSwap(mutation: CasMutation): Promise<StoredTask>
   claimOutbox(workerId: string, leaseMs: number, now?: Date): Promise<ClaimedMessage | null>
   completeOutbox(outboxId: string, claimToken: string): Promise<void>

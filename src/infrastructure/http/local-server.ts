@@ -82,8 +82,12 @@ export function createLocalServer(manager: TaskManager, worker: TaskWorker, toke
         return
       }
       if (request.method === 'POST' && url.pathname === '/v1/work-once') {
+        const reconciliation = await manager.reconcilePending()
         const task = await worker.runOnce()
-        send(response, 200, task ? { taskId: task.taskId, status: task.status } : { status: 'idle' })
+        send(response, 200, {
+          reconciliation,
+          ...(task ? { taskId: task.taskId, status: task.status } : { status: 'idle' })
+        })
         return
       }
       send(response, 404, { error: 'not-found' })

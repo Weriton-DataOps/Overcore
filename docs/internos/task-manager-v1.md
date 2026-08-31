@@ -162,6 +162,24 @@ ligada ao plano ativo e ao epoch atual.
 **Por quê:** a autorização pode expirar entre planejamento e execução. A referência gravada no estado
 não basta sozinha.
 
+### 8.1 Retomar depois de queda
+
+**O que faz:** ao iniciar e durante a operação, procura tarefas em `accepted`, `planning` ou `ready`,
+reserva uma lease curta e calcula a próxima transição a partir do `Task State` persistido.
+
+```text
+accepted -> recria somente planning
+planning -> recompõe o plano determinístico e consulta o Omni
+ready    -> relê plano + autorização e cria somente a outbox ausente
+```
+
+**Por quê:** idempotência impede criar duas tarefas, mas sozinha não termina uma tarefa que ficou pela
+metade. A reconciliação dá progresso sem usar histórico de chat como memória operacional.
+
+A lease de reconciliação não é um segundo status: apenas escolhe temporariamente qual processo pode
+escrever. Ela expira em 30 segundos se o processo cair. Cada transição ainda usa CAS e aparece no
+ledger normal. A decisão completa está na ADR-011.
+
 ### 9. Despachar a próxima ação
 
 **O que faz:** identifica somente a próxima ação admitida pelo prefixo do plano e passa pelo gate:

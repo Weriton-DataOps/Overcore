@@ -1,6 +1,13 @@
+import { randomUUID } from 'node:crypto'
+
 import { canonicalJson, fingerprint, scopeKey, stableId } from '../domain/fingerprint.js'
-import type { JsonObject, StoredTask, TaskRequest } from '../domain/types.js'
-import { DuplicateTaskError, type AuthorityProvider, type TaskStore } from '../ports/task-store.js'
+import type { Fingerprint, JsonObject, StoredTask, TaskRequest, TaskStatus } from '../domain/types.js'
+import {
+  ConcurrentTaskUpdateError,
+  DuplicateTaskError,
+  type AuthorityProvider,
+  type TaskStore
+} from '../ports/task-store.js'
 import { ContractValidator } from '../contracts/validator.js'
 import { buildAuthorizationRequest, buildEnforcement } from './authorization.js'
 import { buildInspectionPlan, repositoryUri } from './inspection-plan.js'
@@ -13,6 +20,17 @@ export interface Clock {
 }
 
 export const systemClock: Clock = { now: () => new Date() }
+
+const RECONCILABLE_STATUSES = new Set<TaskStatus>(['accepted', 'planning', 'ready'])
+const RECONCILIATION_LEASE_MS = 30_000
+const MAX_RECONCILIATION_TRANSITIONS = 3
+
+export interface ReconciliationOutcome {
+  taskId: string
+  outcome: 'advanced' | 'unchanged' | 'busy' | 'failed'
+  status?: TaskStatus
+  error?: string
+}
 
 export type PreflightAdmissionErrorCode =
   | 'preflight-report-not-found'
@@ -71,6 +89,23 @@ function assertFingerprint(document: JsonObject, field: string): void {
   }
 }
 
+function object(value: unknown, label: string): JsonObject {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${label} inválido.`)
+  return value as JsonObject
+}
+
+function fingerprintValue(value: unknown, label: string): string {
+  const found = object(value, label)
+  if (found.algorithm !== 'sha256-jcs-v1' || typeof found.value !== 'string') {
+    throw new Error(`${label} inválido.`)
+  }
+  return found.value
+}
+
+function assertEqual(left: unknown, right: unknown, message: string): void {
+  if (canonicalJson(left as never) !== canonicalJson(right as never)) throw new Error(message)
+}
+
 function assertDecisionMatches(request: TaskRequest, authRequest: JsonObject, decision: JsonObject, at: Date): void {
   if (decision.authorizationRequestId !== authRequest.authorizationRequestId) {
     throw new Error('Omni respondeu a outro pedido de autorização.')
@@ -112,6 +147,7 @@ function assertDecisionMatches(request: TaskRequest, authRequest: JsonObject, de
 
 export class TaskManager {
   private readonly preflight: TaskPreflight
+  private readonly coordinatorId = `task-manager-${process.pid}-${randomUUID()}`
 
   constructor(
     private readonly store: TaskStore,
@@ -157,7 +193,7 @@ export class TaskManager {
     const existing = await this.store.findByIdempotencyKey(request.idempotencyKey)
     if (existing) {
       assertSameExecutionIntent(existing, request)
-      return existing
+      return (await this.reconcile(existing.taskId)) ?? existing
     }
 
     const latest = await this.store.findLatestPreflightByIdempotencyKey(stored.idempotencyKey)
@@ -176,7 +212,7 @@ export class TaskManager {
     const duplicate = await this.store.findByIdempotencyKey(request.idempotencyKey)
     if (duplicate) {
       assertSameExecutionIntent(duplicate, request)
-      return duplicate
+      return (await this.reconcile(duplicate.taskId)) ?? duplicate
     }
 
     const now = this.clock.now().toISOString()
@@ -184,7 +220,7 @@ export class TaskManager {
     const requestFingerprint = fingerprint(request as never)
     const state = acceptedState(taskId, request, requestFingerprint, now)
     this.validator.taskState(state)
-    let task: StoredTask = {
+    const task: StoredTask = {
       taskId,
       requestId: request.requestId,
       idempotencyKey: request.idempotencyKey,
@@ -198,7 +234,7 @@ export class TaskManager {
       updatedAt: now
     }
     try {
-      task = await this.store.create(task, event(taskId, 1, 'task-accepted', now, {
+      await this.store.create(task, event(taskId, 1, 'task-accepted', now, {
         requestId: request.requestId,
         preflightReportId: String(request.preflight.readinessReportId)
       }))
@@ -207,96 +243,213 @@ export class TaskManager {
         const existing = await this.store.findById(error.existingTaskId)
         if (existing) {
           assertSameExecutionIntent(existing, request)
-          return existing
+          return (await this.reconcile(existing.taskId)) ?? existing
         }
       }
       throw error
     }
+    return (await this.reconcile(taskId)) ?? task
+  }
 
+  async reconcile(taskId: string): Promise<StoredTask | null> {
+    let current = await this.store.findById(taskId)
+    if (!current || !RECONCILABLE_STATUSES.has(current.status)) return current
+
+    const claimToken = await this.store.claimReconciliation(
+      taskId,
+      this.coordinatorId,
+      RECONCILIATION_LEASE_MS,
+      this.clock.now()
+    )
+    if (!claimToken) return this.store.findById(taskId)
+
+    try {
+      for (let step = 0; step < MAX_RECONCILIATION_TRANSITIONS; step += 1) {
+        current = await this.store.findById(taskId)
+        if (!current || !RECONCILABLE_STATUSES.has(current.status)) return current
+        try {
+          if (current.status === 'accepted') current = await this.advanceAccepted(current)
+          else if (current.status === 'planning') current = await this.advancePlanning(current)
+          else current = await this.advanceReady(current)
+        } catch (error) {
+          if (error instanceof ConcurrentTaskUpdateError) continue
+          throw error
+        }
+      }
+      return this.store.findById(taskId)
+    } finally {
+      await this.store.releaseReconciliation(taskId, claimToken)
+    }
+  }
+
+  async reconcilePending(limit = 32): Promise<ReconciliationOutcome[]> {
+    const candidates = await this.store.listReconciliationCandidates(limit, this.clock.now())
+    const outcomes: ReconciliationOutcome[] = []
+    for (const candidate of candidates) {
+      try {
+        const before = candidate.status
+        const reconciled = await this.reconcile(candidate.taskId)
+        if (!reconciled) {
+          outcomes.push({ taskId: candidate.taskId, outcome: 'failed', error: 'Tarefa desapareceu durante a reconciliação.' })
+        } else if (RECONCILABLE_STATUSES.has(reconciled.status) && reconciled.status === before) {
+          outcomes.push({ taskId: candidate.taskId, outcome: 'busy', status: reconciled.status })
+        } else {
+          outcomes.push({
+            taskId: candidate.taskId,
+            outcome: reconciled.status === before ? 'unchanged' : 'advanced',
+            status: reconciled.status
+          })
+        }
+      } catch (error) {
+        outcomes.push({
+          taskId: candidate.taskId,
+          outcome: 'failed',
+          error: error instanceof Error ? error.message : String(error)
+        })
+      }
+    }
+    return outcomes
+  }
+
+  private async advanceAccepted(task: StoredTask): Promise<StoredTask> {
     const planningAt = this.clock.now().toISOString()
     const planningState = transition(task.state, 'planning', 'planning-started', planningAt)
     this.validator.taskState(planningState)
-    task = await this.store.compareAndSwap({
+    return this.store.compareAndSwap({
       expectedRevision: task.stateRevision,
       next: record(task, planningState),
-      event: event(taskId, planningState.stateRevision, 'planning-started', planningAt)
+      event: event(task.taskId, planningState.stateRevision, 'planning-started', planningAt)
     })
+  }
 
-    const planAt = this.clock.now().toISOString()
-    const plan = await buildInspectionPlan(taskId, request, requestFingerprint, planningState.stateRevision, planAt)
+  private async advancePlanning(task: StoredTask): Promise<StoredTask> {
+    const requestFingerprint = fingerprint(task.request as never)
+    const stateRequestBinding = object(task.state.requestBinding, 'requestBinding')
+    assertEqual(
+      stateRequestBinding.requestFingerprint,
+      requestFingerprint,
+      'Task State está ligado a outro conteúdo de TaskRequest.'
+    )
+    const planAt = String(task.state.lifecycle.enteredAt)
+    const plan = await buildInspectionPlan(
+      task.taskId,
+      task.request,
+      requestFingerprint,
+      task.stateRevision,
+      planAt
+    )
     this.validator.assert('execution-plan', plan)
     assertFingerprint(plan, 'planFingerprint')
-    const authRequest = buildAuthorizationRequest(request, requestFingerprint, plan, planAt)
+    const authRequest = buildAuthorizationRequest(task.request, requestFingerprint, plan, planAt)
     this.validator.assert('authorization-request', authRequest)
     assertFingerprint(authRequest, 'authorizationRequestFingerprint')
     const decision = await this.authorityProvider.evaluate(authRequest)
     this.validator.assert('authorization-decision', decision)
     assertFingerprint(decision, 'decisionFingerprint')
-    assertDecisionMatches(request, authRequest, decision, this.clock.now())
+    assertDecisionMatches(task.request, authRequest, decision, this.clock.now())
     const enforcementAt = this.clock.now().toISOString()
-    const enforcement = buildEnforcement(taskId, authRequest, decision, enforcementAt)
+    const enforcement = buildEnforcement(task.taskId, authRequest, decision, enforcementAt)
     this.validator.assert('authorization-enforcement', enforcement)
     assertFingerprint(enforcement, 'recordFingerprint')
 
     const readyState = bindReadyState(task.state, {
       planId: String(plan.planId),
       planRevision: Number(plan.planRevision),
-      planFingerprint: plan.planFingerprint as never,
-      strategyFingerprint: plan.strategyFingerprint as never,
-      basisStateRevision: Number((plan.taskBinding as JsonObject).basisStateRevision),
+      planFingerprint: plan.planFingerprint as Fingerprint,
+      strategyFingerprint: plan.strategyFingerprint as Fingerprint,
+      basisStateRevision: Number(object(plan.taskBinding, 'taskBinding').basisStateRevision),
       authorization: {
         enforcementId: String(enforcement.enforcementId),
-        enforcementFingerprint: enforcement.recordFingerprint as never,
+        enforcementFingerprint: enforcement.recordFingerprint as Fingerprint,
         decisionId: String(decision.decisionId),
-        decisionFingerprint: decision.decisionFingerprint as never,
+        decisionFingerprint: decision.decisionFingerprint as Fingerprint,
         expiresAt: String(enforcement.expiresAt),
-        activatedAtRevision: 3
+        activatedAtRevision: task.stateRevision + 1
       }
     }, enforcementAt)
     this.validator.taskState(readyState)
-    task = await this.store.compareAndSwap({
+    return this.store.compareAndSwap({
       expectedRevision: task.stateRevision,
       next: record(task, readyState),
-      event: event(taskId, readyState.stateRevision, 'plan-authorized', enforcementAt, {
+      event: event(task.taskId, readyState.stateRevision, 'plan-authorized', enforcementAt, {
         planId: String(plan.planId),
         decisionId: String(decision.decisionId)
       }),
       plan,
       authorization: { request: authRequest, decision, enforcement }
     })
+  }
+
+  private async advanceReady(task: StoredTask): Promise<StoredTask> {
+    const binding = object(task.state.activePlanBinding, 'activePlanBinding')
+    const planId = String(binding.planId)
+    const planRevision = Number(binding.planRevision)
+    const authorizationBinding = object(binding.authorizationBinding, 'authorizationBinding')
+    const plan = await this.store.findPlan(task.taskId, planId, planRevision)
+    if (!plan) throw new Error(`Plano ${planId}@${planRevision} não foi encontrado para retomar a tarefa.`)
+    const authorization = await this.store.findAuthorization(task.taskId, String(authorizationBinding.decisionId))
+    if (!authorization) throw new Error('Autorização persistida não foi encontrada para retomar a tarefa.')
+
+    this.validator.assert('execution-plan', plan)
+    this.validator.assert('authorization-request', authorization.request)
+    this.validator.assert('authorization-decision', authorization.decision)
+    this.validator.assert('authorization-enforcement', authorization.enforcement)
+    assertFingerprint(plan, 'planFingerprint')
+    assertFingerprint(authorization.request, 'authorizationRequestFingerprint')
+    assertFingerprint(authorization.decision, 'decisionFingerprint')
+    assertFingerprint(authorization.enforcement, 'recordFingerprint')
+    assertDecisionMatches(task.request, authorization.request, authorization.decision, this.clock.now())
+
+    assertEqual(plan.planFingerprint, binding.planFingerprint, 'Fingerprint do plano persistido diverge do Task State.')
+    assertEqual(plan.strategyFingerprint, binding.strategyFingerprint, 'Estratégia persistida diverge do Task State.')
+    assertEqual(
+      authorization.decision.decisionFingerprint,
+      authorizationBinding.decisionFingerprint,
+      'Decisão persistida diverge do Task State.'
+    )
+    assertEqual(
+      authorization.enforcement.recordFingerprint,
+      authorizationBinding.enforcementFingerprint,
+      'Enforcement persistido diverge do Task State.'
+    )
+    if (authorization.enforcement.enforcementId !== authorizationBinding.enforcementId) {
+      throw new Error('Enforcement persistido pertence a outra autorização.')
+    }
+    if (authorization.enforcement.expiresAt !== authorizationBinding.expiresAt) {
+      throw new Error('Validade do enforcement diverge do Task State.')
+    }
 
     const runningAt = this.clock.now().toISOString()
     const runningState = startAttempt(
       task.state,
-      String(plan.planId),
-      Number(plan.planRevision),
-      plan.strategyFingerprint as never,
+      planId,
+      planRevision,
+      plan.strategyFingerprint as Fingerprint,
       runningAt
     )
     this.validator.taskState(runningState)
-    const outboxId = stableId('outbox-inspection', `${taskId}:${runningState.executionEpoch}`)
-    const authorizedActions = authRequest.actions as JsonObject[]
-    const actionDecisions = decision.actionDecisions as JsonObject[]
+    const outboxId = stableId('outbox-inspection', `${task.taskId}:${runningState.executionEpoch}`)
+    const authorizedActions = authorization.request.actions as JsonObject[]
+    const actionDecisions = authorization.decision.actionDecisions as JsonObject[]
     const permittedActionIds = new Set(
       actionDecisions.filter((item) => item.outcome === 'permit').map((item) => String(item.actionId))
     )
-    const recordFingerprint = enforcement.recordFingerprint as JsonObject
-    task = await this.store.compareAndSwap({
+    return this.store.compareAndSwap({
       expectedRevision: task.stateRevision,
       next: record(task, runningState),
-      event: event(taskId, runningState.stateRevision, 'execution-scheduled', runningAt, { outboxId }),
+      event: event(task.taskId, runningState.stateRevision, 'execution-scheduled', runningAt, { outboxId }),
       outbox: {
         outboxId,
-        taskId,
+        taskId: task.taskId,
         kind: 'execute-inspection',
         payload: {
-          repositoryUri: repositoryUri(request),
-          objective: request.objective,
-          budget: request.budget,
+          repositoryUri: repositoryUri(task.request),
+          objective: task.request.objective,
+          budget: task.request.budget,
           runtimeAuthorization: {
-            enforcementId: String(enforcement.enforcementId),
-            enforcementFingerprint: String(recordFingerprint.value),
-            expiresAt: String(enforcement.expiresAt),
+            enforcementId: String(authorization.enforcement.enforcementId),
+            enforcementFingerprint: fingerprintValue(authorization.enforcement.recordFingerprint, 'recordFingerprint'),
+            expiresAt: String(authorization.enforcement.expiresAt),
             operations: [...new Set(authorizedActions
               .filter((item) => permittedActionIds.has(String(item.actionId)))
               .map((item) => String(item.operation)))],
@@ -309,7 +462,6 @@ export class TaskManager {
         attempts: 0
       }
     })
-    return task
   }
 
   async get(taskId: string): Promise<StoredTask | null> {

@@ -311,6 +311,75 @@ export class PostgresTaskStore implements TaskStore {
     return result.rows[0] ? mapTask(result.rows[0]) : null
   }
 
+  async findPlan(taskId: string, planId: string, planRevision: number): Promise<JsonObject | null> {
+    const result = await this.pool.query<{ document: JsonObject }>(
+      `SELECT document FROM overcore_task_plans
+       WHERE task_id=$1 AND plan_id=$2 AND plan_revision=$3`,
+      [taskId, planId, planRevision]
+    )
+    return result.rows[0]?.document ?? null
+  }
+
+  async findAuthorization(taskId: string, decisionId: string) {
+    const result = await this.pool.query<{
+      request_document: JsonObject
+      decision_document: JsonObject
+      enforcement_document: JsonObject
+    }>(
+      `SELECT request_document, decision_document, enforcement_document
+       FROM overcore_task_authorizations
+       WHERE task_id=$1 AND decision_id=$2`,
+      [taskId, decisionId]
+    )
+    const row = result.rows[0]
+    return row ? {
+      request: row.request_document,
+      decision: row.decision_document,
+      enforcement: row.enforcement_document
+    } : null
+  }
+
+  async listReconciliationCandidates(limit: number, now = new Date()): Promise<StoredTask[]> {
+    const result = await this.pool.query<TaskRow>(
+      `SELECT * FROM overcore_tasks
+       WHERE status IN ('accepted', 'planning', 'ready')
+         AND (reconciliation_until IS NULL OR reconciliation_until <= $1)
+       ORDER BY updated_at, task_id
+       LIMIT $2`,
+      [now, Math.max(0, limit)]
+    )
+    return result.rows.map(mapTask)
+  }
+
+  async claimReconciliation(
+    taskId: string,
+    ownerId: string,
+    leaseMs: number,
+    now = new Date()
+  ): Promise<string | null> {
+    const claimToken = `${ownerId}:${randomUUID()}`
+    const until = new Date(now.getTime() + leaseMs)
+    const result = await this.pool.query<{ reconciliation_token: string }>(
+      `UPDATE overcore_tasks
+       SET reconciliation_owner=$1, reconciliation_token=$2, reconciliation_until=$3
+       WHERE task_id=$4
+         AND status IN ('accepted', 'planning', 'ready')
+         AND (reconciliation_until IS NULL OR reconciliation_until <= $5)
+       RETURNING reconciliation_token`,
+      [ownerId, claimToken, until, taskId, now]
+    )
+    return result.rows[0]?.reconciliation_token ?? null
+  }
+
+  async releaseReconciliation(taskId: string, claimToken: string): Promise<void> {
+    await this.pool.query(
+      `UPDATE overcore_tasks
+       SET reconciliation_owner=NULL, reconciliation_token=NULL, reconciliation_until=NULL
+       WHERE task_id=$1 AND reconciliation_token=$2`,
+      [taskId, claimToken]
+    )
+  }
+
   async compareAndSwap(mutation: CasMutation): Promise<StoredTask> {
     if (mutation.next.stateRevision !== mutation.expectedRevision + 1) {
       throw new Error('CAS precisa avançar exatamente uma revisão.')
@@ -330,7 +399,10 @@ export class PostgresTaskStore implements TaskStore {
       const result = await client.query<TaskRow>(
         `UPDATE overcore_tasks
          SET status=$1, state_revision=$2, execution_epoch=$3, state_document=$4::jsonb,
-             result_document=$5::jsonb, updated_at=$6
+             result_document=$5::jsonb, updated_at=$6,
+             reconciliation_owner=CASE WHEN $1 IN ('accepted','planning','ready') THEN reconciliation_owner ELSE NULL END,
+             reconciliation_token=CASE WHEN $1 IN ('accepted','planning','ready') THEN reconciliation_token ELSE NULL END,
+             reconciliation_until=CASE WHEN $1 IN ('accepted','planning','ready') THEN reconciliation_until ELSE NULL END
          WHERE task_id=$7 AND state_revision=$8
          RETURNING *`,
         [

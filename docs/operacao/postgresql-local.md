@@ -13,6 +13,7 @@ Task Manager
     +--> tarefa + Task State
     +--> plano + autorização
     +--> eventos
+    +--> lease curta de reconciliação
     `--> outbox ----> workers concorrentes
 ```
 
@@ -65,6 +66,10 @@ npm run test:postgres
 
 O migrador registra nome e SHA-256 de cada arquivo. Uma migration aplicada nunca deve ser reescrita;
 uma alteração posterior nasce em um novo arquivo numerado.
+
+A migration `003_task_reconciliation_lease.sql` acrescenta três colunas operacionais à tarefa. Elas
+guardam proprietário, token e vencimento da reconciliação. Não representam fase do trabalho e são
+apagadas quando a tarefa chega a `running` ou sai por outro caminho das fases recuperáveis.
 
 ## Por que não existe SQLite nem broker agora
 
