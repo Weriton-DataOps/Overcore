@@ -16,6 +16,7 @@ import type {
 import {
   ConcurrentTaskUpdateError,
   DuplicateTaskError,
+  type ReconciliationFailure,
   type TaskStore
 } from '../../ports/task-store.js'
 import {
@@ -36,6 +37,11 @@ interface TaskRow {
   request_document: TaskRequest
   state_document: TaskState
   result_document: JsonObject | null
+  reconciliation_failure_count: number
+  reconciliation_retry_at: Date | null
+  reconciliation_error_code: string | null
+  reconciliation_error_fingerprint: string | null
+  reconciliation_last_error_at: Date | null
   created_at: Date
   updated_at: Date
 }
@@ -84,6 +90,21 @@ function mapTask(row: TaskRow): StoredTask {
     updatedAt: row.updated_at.toISOString()
   }
   if (row.result_document) task.result = row.result_document
+  if (
+    row.reconciliation_failure_count > 0 &&
+    row.reconciliation_retry_at &&
+    row.reconciliation_error_code &&
+    row.reconciliation_error_fingerprint &&
+    row.reconciliation_last_error_at
+  ) {
+    task.reconciliation = {
+      failureCount: row.reconciliation_failure_count,
+      retryAt: row.reconciliation_retry_at.toISOString(),
+      errorCode: row.reconciliation_error_code,
+      errorFingerprint: row.reconciliation_error_fingerprint,
+      lastErrorAt: row.reconciliation_last_error_at.toISOString()
+    }
+  }
   return task
 }
 
@@ -344,6 +365,7 @@ export class PostgresTaskStore implements TaskStore {
       `SELECT * FROM overcore_tasks
        WHERE status IN ('accepted', 'planning', 'ready')
          AND (reconciliation_until IS NULL OR reconciliation_until <= $1)
+         AND (reconciliation_retry_at IS NULL OR reconciliation_retry_at <= $1)
        ORDER BY updated_at, task_id
        LIMIT $2`,
       [now, Math.max(0, limit)]
@@ -365,16 +387,52 @@ export class PostgresTaskStore implements TaskStore {
        WHERE task_id=$4
          AND status IN ('accepted', 'planning', 'ready')
          AND (reconciliation_until IS NULL OR reconciliation_until <= $5)
+         AND (reconciliation_retry_at IS NULL OR reconciliation_retry_at <= $5)
        RETURNING reconciliation_token`,
       [ownerId, claimToken, until, taskId, now]
     )
     return result.rows[0]?.reconciliation_token ?? null
   }
 
+  async deferReconciliation(
+    taskId: string,
+    claimToken: string,
+    failure: ReconciliationFailure
+  ): Promise<void> {
+    const result = await this.pool.query(
+      `UPDATE overcore_tasks
+       SET reconciliation_owner=NULL,
+           reconciliation_token=NULL,
+           reconciliation_until=NULL,
+           reconciliation_failure_count=reconciliation_failure_count+1,
+           reconciliation_retry_at=$1,
+           reconciliation_error_code=$2,
+           reconciliation_error_fingerprint=$3,
+           reconciliation_last_error_at=$4
+       WHERE task_id=$5 AND reconciliation_token=$6`,
+      [
+        failure.retryAt,
+        failure.code,
+        failure.errorFingerprint,
+        failure.occurredAt,
+        taskId,
+        claimToken
+      ]
+    )
+    if (result.rowCount !== 1) throw new Error('Lease da reconciliação não confere ao adiar a tarefa.')
+  }
+
   async releaseReconciliation(taskId: string, claimToken: string): Promise<void> {
     await this.pool.query(
       `UPDATE overcore_tasks
-       SET reconciliation_owner=NULL, reconciliation_token=NULL, reconciliation_until=NULL
+       SET reconciliation_owner=NULL,
+           reconciliation_token=NULL,
+           reconciliation_until=NULL,
+           reconciliation_failure_count=0,
+           reconciliation_retry_at=NULL,
+           reconciliation_error_code=NULL,
+           reconciliation_error_fingerprint=NULL,
+           reconciliation_last_error_at=NULL
        WHERE task_id=$1 AND reconciliation_token=$2`,
       [taskId, claimToken]
     )
@@ -402,7 +460,12 @@ export class PostgresTaskStore implements TaskStore {
              result_document=$5::jsonb, updated_at=$6,
              reconciliation_owner=CASE WHEN $1 IN ('accepted','planning','ready') THEN reconciliation_owner ELSE NULL END,
              reconciliation_token=CASE WHEN $1 IN ('accepted','planning','ready') THEN reconciliation_token ELSE NULL END,
-             reconciliation_until=CASE WHEN $1 IN ('accepted','planning','ready') THEN reconciliation_until ELSE NULL END
+             reconciliation_until=CASE WHEN $1 IN ('accepted','planning','ready') THEN reconciliation_until ELSE NULL END,
+             reconciliation_failure_count=CASE WHEN $1 IN ('accepted','planning','ready') THEN reconciliation_failure_count ELSE 0 END,
+             reconciliation_retry_at=CASE WHEN $1 IN ('accepted','planning','ready') THEN reconciliation_retry_at ELSE NULL END,
+             reconciliation_error_code=CASE WHEN $1 IN ('accepted','planning','ready') THEN reconciliation_error_code ELSE NULL END,
+             reconciliation_error_fingerprint=CASE WHEN $1 IN ('accepted','planning','ready') THEN reconciliation_error_fingerprint ELSE NULL END,
+             reconciliation_last_error_at=CASE WHEN $1 IN ('accepted','planning','ready') THEN reconciliation_last_error_at ELSE NULL END
          WHERE task_id=$7 AND state_revision=$8
          RETURNING *`,
         [

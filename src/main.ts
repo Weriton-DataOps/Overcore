@@ -64,6 +64,10 @@ async function serve(): Promise<void> {
         for (const outcome of outcomes) {
           if (outcome.outcome === 'failed') {
             process.stderr.write(`reconciler ${outcome.taskId}: ${outcome.error ?? 'falha sem mensagem'}\n`)
+          } else if (outcome.outcome === 'deferred') {
+            process.stderr.write(
+              `reconciler ${outcome.taskId}: ${outcome.error ?? 'nova tentativa adiada'}; retry ${outcome.retryAt ?? 'não informado'}\n`
+            )
           }
         }
       })
@@ -188,6 +192,11 @@ async function status(taskId: string | undefined): Promise<void> {
   process.stdout.write(`${JSON.stringify(await api(`/v1/tasks/${encodeURIComponent(taskId)}`, 'GET'), null, 2)}\n`)
 }
 
+async function resume(taskId: string | undefined): Promise<void> {
+  if (!taskId) throw new Error('Uso: overcore resume <task-id>')
+  process.stdout.write(`${JSON.stringify(await api(`/v1/tasks/${encodeURIComponent(taskId)}/resume`, 'POST'), null, 2)}\n`)
+}
+
 async function main(): Promise<void> {
   const command = process.argv[2]
   if (command === 'serve') return serve()
@@ -197,11 +206,12 @@ async function main(): Promise<void> {
   if (command === 'admit') return admit(process.argv[3])
   if (command === 'demo-preflight') return demoPreflight(process.argv[3])
   if (command === 'status') return status(process.argv[3])
+  if (command === 'resume') return resume(process.argv[3])
   if (command === 'work-once') {
     process.stdout.write(`${JSON.stringify(await api('/v1/work-once', 'POST'), null, 2)}\n`)
     return
   }
-  throw new Error('Uso: overcore <serve|migrate|preflight|admit|status|work-once|demo-preflight|demo-inspection>')
+  throw new Error('Uso: overcore <serve|migrate|preflight|admit|status|resume|work-once|demo-preflight|demo-inspection>')
 }
 
 await main().catch((error: unknown) => {

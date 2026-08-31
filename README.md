@@ -148,6 +148,8 @@ A posição e a autenticação do motor estão na
   idempotência e CAS entre revisões concorrentes;
 - retomada automática de tarefas interrompidas em `accepted`, `planning` ou `ready`, com lease
   expirável, releitura de plano/autorização e uma única outbox mesmo entre instâncias concorrentes;
+- recovery de coordenação com backoff persistente, erro visível, renovação automática de autorização
+  vencida, `TaskResult blocked` e retomada explícita para uma fase segura;
 - rejeição das 14 mutações adversariais declaradas para o domínio do Preflight;
 - build e typecheck estritos.
 
@@ -182,11 +184,11 @@ implementação.
 
 ## Próximo passo
 
-O Preflight, o handoff idempotente e a retomada automática do Task Manager estão fechados. O próximo
-desenho é a recuperação estruturada quando continuar não é imediatamente possível: autorização
-vencida, indisponibilidade temporária do Omni, erro repetível de planejamento, backoff, entrada em
-`blocked` e retorno seguro à fase correta. Essa camada deve diferenciar espera recuperável de falha
-terminal sem esconder loops nem repetir efeitos.
+O Preflight, o handoff idempotente, a retomada automática e o recovery da coordenação estão fechados.
+O próximo desenho é a recuperação durante a execução: falha do worker ou do Agent SDK, outbox
+reentregue, tentativa interrompida, efeito incerto, retry com orçamento e verificação antes de
+qualquer novo efeito. Essa etapa deverá usar o journal e os checkpoints já contratados, sem introduzir
+agentes, skills, Registry ou Graph Engine antes da discussão correspondente.
 
 O futuro Agente de Discovery continua reservado pela
 [`ADR-008`](docs/decisoes/ADR-008-discovery-adaptativa-no-preflight.md). Agentes, skills, modelos, Graph
@@ -201,6 +203,7 @@ Com o servidor ativo, o cliente usa a persistência real por:
 ```powershell
 node dist/main.js preflight contratos/exemplos/task-draft-incompleto.json
 node dist/main.js admit <report-id-ready>
+node dist/main.js resume <task-id-bloqueada>
 ```
 
 Pela API local, envie somente `{ "draft": ... }` para `POST /v1/preflight`. Quando o resultado for

@@ -81,6 +81,12 @@ export function createLocalServer(manager: TaskManager, worker: TaskWorker, toke
         send(response, task ? 200 : 404, task ?? { error: 'not-found' })
         return
       }
+      const resumeMatch = url.pathname.match(/^\/v1\/tasks\/([A-Za-z0-9._:-]+)\/resume$/)
+      if (request.method === 'POST' && resumeMatch?.[1]) {
+        const task = await manager.resume(resumeMatch[1])
+        send(response, task ? 202 : 404, task ?? { error: 'not-found' })
+        return
+      }
       if (request.method === 'POST' && url.pathname === '/v1/work-once') {
         const reconciliation = await manager.reconcilePending()
         const task = await worker.runOnce()

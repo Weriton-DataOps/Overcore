@@ -112,6 +112,7 @@ nulo        -> accepted
 accepted    -> planning | cancelling
 planning    -> ready | blocked | failed | cancelling
 ready       -> running | blocked | cancelling
+ready       -> ready somente por authorization-refreshed, preservando o mesmo plano
 running     -> verifying | planning | blocked | failed | cancelling
 verifying   -> succeeded | planning | blocked | failed | cancelling
 blocked     -> planning | ready | verifying | failed | cancelling
@@ -133,6 +134,7 @@ A fase sozinha não basta: o gatilho também precisa explicar a transição. A m
 | `verifying -> succeeded` | `verification-passed` |
 | qualquer origem válida `-> blocked` | `block-detected` |
 | `blocked -> planning/ready/verifying` | `condition-restored` |
+| `ready -> ready` com novo enforcement para o mesmo plano | `authorization-refreshed` |
 | `running/verifying -> planning` | `retry-scheduled` |
 | qualquer origem cancelável `-> cancelling` | `cancellation-requested` |
 | `cancelling -> cancelled` | `cancellation-settled` |

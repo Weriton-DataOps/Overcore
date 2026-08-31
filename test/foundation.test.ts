@@ -8,15 +8,27 @@ import { PreflightAdmissionError, TaskManager } from '../src/application/task-ma
 import { TaskWorker } from '../src/application/task-worker.js'
 import { permittingDecision } from '../src/application/authorization.js'
 import { ContractValidator } from '../src/contracts/validator.js'
-import { scopeKey, stableId } from '../src/domain/fingerprint.js'
+import { fingerprint, scopeKey, stableId } from '../src/domain/fingerprint.js'
 import type { CasMutation, JsonObject, TaskRequest } from '../src/domain/types.js'
 import { ReadOnlyContractInspectionExecutor } from '../src/application/inspection-executor.js'
-import { ConcurrentTaskUpdateError } from '../src/ports/task-store.js'
+import { AuthorityProviderError, ConcurrentTaskUpdateError } from '../src/ports/task-store.js'
 import type { AuthorityProvider } from '../src/ports/task-store.js'
 import { InMemoryTaskStore } from '../src/testing/in-memory-task-store.js'
 import { PermittingAuthorityProvider } from '../src/testing/permitting-authority-provider.js'
 
 const root = process.cwd()
+
+class MutableClock {
+  constructor(private current = new Date()) {}
+
+  now(): Date {
+    return new Date(this.current)
+  }
+
+  advance(milliseconds: number): void {
+    this.current = new Date(this.current.getTime() + milliseconds)
+  }
+}
 
 class FailOnceTaskStore extends InMemoryTaskStore {
   private failed = false
@@ -87,13 +99,17 @@ for (const scenario of [
     const request = await requestFixture()
     request.requestId = `req-restart-${scenario.partialStatus}-0001`
     request.idempotencyKey = `restart-${scenario.partialStatus}-0001`
-    const firstProcess = new TaskManager(store, validator, new PermittingAuthorityProvider())
+    const clock = new MutableClock()
+    const authority = new PermittingAuthorityProvider(() => clock.now())
+    const firstProcess = new TaskManager(store, validator, authority, clock)
 
-    await assert.rejects(firstProcess.submit(request), new RegExp(`queda simulada em ${scenario.eventKind}`))
+    const interrupted = await firstProcess.submit(request)
     const taskId = stableId('task', request.idempotencyKey)
-    assert.equal((await store.findById(taskId))?.status, scenario.partialStatus)
+    assert.equal(interrupted.status, scenario.partialStatus)
+    assert.equal(interrupted.reconciliation?.failureCount, 1)
 
-    const restartedProcess = new TaskManager(store, validator, new PermittingAuthorityProvider())
+    clock.advance(1_001)
+    const restartedProcess = new TaskManager(store, validator, authority, clock)
     const resumed = await restartedProcess.reconcile(taskId)
     assert.equal(resumed?.status, 'running')
     assert.equal(resumed?.stateRevision, 4)
@@ -110,12 +126,11 @@ test('lease impede dupla retomada e expira depois de uma queda', async () => {
   const request = await requestFixture()
   request.requestId = 'req-reconciliation-lease-0001'
   request.idempotencyKey = 'reconciliation-lease-0001'
-  await assert.rejects(
-    new TaskManager(store, validator, new PermittingAuthorityProvider()).submit(request),
-    /queda simulada/
-  )
+  const clock = new MutableClock()
+  await new TaskManager(store, validator, new PermittingAuthorityProvider(() => clock.now()), clock).submit(request)
   const taskId = stableId('task', request.idempotencyKey)
-  const now = new Date()
+  clock.advance(1_001)
+  const now = clock.now()
   const firstClaim = await store.claimReconciliation(taskId, 'crashed-process', 1_000, now)
   assert.ok(firstClaim)
   assert.equal(await store.claimReconciliation(taskId, 'competing-process', 1_000, new Date(now.getTime() + 999)), null)
@@ -127,30 +142,177 @@ test('dois reconciliadores concorrentes consultam o Omni apenas uma vez', async 
   const store = new FailOnceTaskStore('plan-authorized')
   let authorityCalls = 0
   const authorizationRequestIds: string[] = []
+  const clock = new MutableClock()
   const authority: AuthorityProvider = {
     async evaluate(request: JsonObject) {
       authorityCalls += 1
       authorizationRequestIds.push(String(request.authorizationRequestId))
       await new Promise((resolve) => setTimeout(resolve, 10))
-      return permittingDecision(request)
+      return permittingDecision(request, clock.now())
     }
   }
   const request = await requestFixture()
   request.requestId = 'req-concurrent-reconciliation-0001'
   request.idempotencyKey = 'concurrent-reconciliation-0001'
-  await assert.rejects(new TaskManager(store, validator, authority).submit(request), /queda simulada/)
+  await new TaskManager(store, validator, authority, clock).submit(request)
   assert.equal(authorityCalls, 1)
   const taskId = stableId('task', request.idempotencyKey)
+  clock.advance(1_001)
 
   await Promise.all([
-    new TaskManager(store, validator, authority).reconcile(taskId),
-    new TaskManager(store, validator, authority).reconcile(taskId)
+    new TaskManager(store, validator, authority, clock).reconcile(taskId),
+    new TaskManager(store, validator, authority, clock).reconcile(taskId)
   ])
 
   assert.equal(authorityCalls, 2)
   assert.equal(new Set(authorizationRequestIds).size, 1)
   assert.equal((await store.findById(taskId))?.status, 'running')
   assert.equal(store.outbox.size, 1)
+})
+
+test('falha temporária do Omni aplica backoff persistente e retoma sem intervenção', async () => {
+  const validator: ContractValidator = await ContractValidator.create(root)
+  const store = new InMemoryTaskStore()
+  const clock = new MutableClock()
+  let calls = 0
+  const authority: AuthorityProvider = {
+    async evaluate(request: JsonObject) {
+      calls += 1
+      if (calls === 1) {
+        throw new AuthorityProviderError('authority-provider-unavailable', true, 'Omni reiniciando.')
+      }
+      return permittingDecision(request, clock.now())
+    }
+  }
+  const request = await requestFixture()
+  request.requestId = 'req-authority-backoff-0001'
+  request.idempotencyKey = 'authority-backoff-0001'
+  const manager = new TaskManager(store, validator, authority, clock)
+
+  const deferred = await manager.submit(request)
+  assert.equal(deferred.status, 'planning')
+  assert.equal(deferred.reconciliation?.failureCount, 1)
+  assert.equal(Date.parse(String(deferred.reconciliation?.retryAt)), clock.now().getTime() + 1_000)
+  assert.equal((await manager.reconcile(deferred.taskId))?.status, 'planning')
+  assert.equal(calls, 1)
+
+  clock.advance(1_001)
+  const resumed = await manager.reconcile(deferred.taskId)
+  assert.equal(resumed?.status, 'running')
+  assert.equal(resumed?.reconciliation, undefined)
+  assert.equal(calls, 2)
+  assert.equal(store.outbox.size, 1)
+})
+
+test('falhas temporárias repetidas aumentam o backoff sem criar estado paralelo', async () => {
+  const validator: ContractValidator = await ContractValidator.create(root)
+  const store = new InMemoryTaskStore()
+  const clock = new MutableClock()
+  let calls = 0
+  const authority: AuthorityProvider = {
+    async evaluate() {
+      calls += 1
+      throw new AuthorityProviderError('authority-provider-unavailable', true, 'Omni ainda indisponível.')
+    }
+  }
+  const request = await requestFixture()
+  request.requestId = 'req-authority-exponential-backoff-0001'
+  request.idempotencyKey = 'authority-exponential-backoff-0001'
+  const manager = new TaskManager(store, validator, authority, clock)
+  const first = await manager.submit(request)
+  assert.equal(first.reconciliation?.failureCount, 1)
+
+  clock.advance(1_001)
+  const second = await manager.reconcile(first.taskId)
+  assert.equal(second?.status, 'planning')
+  assert.equal(second?.reconciliation?.failureCount, 2)
+  assert.equal(Date.parse(String(second?.reconciliation?.retryAt)), clock.now().getTime() + 2_000)
+  assert.equal(calls, 2)
+  assert.equal(second?.state.lifecycle.state, 'planning')
+})
+
+test('negação do Omni produz TaskResult blocked e retoma somente pela fase segura', async () => {
+  const validator: ContractValidator = await ContractValidator.create(root)
+  const store = new InMemoryTaskStore()
+  const clock = new MutableClock()
+  let permit = false
+  const authority: AuthorityProvider = {
+    async evaluate(request: JsonObject) {
+      const decision = permittingDecision(request, clock.now())
+      if (permit) return decision
+      decision.outcome = 'deny'
+      decision.actionDecisions = (decision.actionDecisions as JsonObject[]).map((item) => ({
+        ...item,
+        outcome: 'deny',
+        reasonCode: 'outside-delegated-authority',
+        requiredControls: []
+      }))
+      delete decision.decisionFingerprint
+      decision.decisionFingerprint = fingerprint(decision)
+      return decision
+    }
+  }
+  const request = await requestFixture()
+  request.requestId = 'req-authority-block-0001'
+  request.idempotencyKey = 'authority-block-0001'
+  const manager = new TaskManager(store, validator, authority, clock)
+
+  const blocked = await manager.submit(request)
+  assert.equal(blocked.status, 'blocked')
+  assert.equal(blocked.result?.status, 'blocked')
+  assert.equal((blocked.result?.inputRequired as JsonObject).code, 'block-authorization-denied')
+  assert.equal(store.outbox.size, 0)
+  validator.taskState(blocked.state)
+  validator.assert('task-result', blocked.result)
+
+  permit = true
+  clock.advance(1_000)
+  const resumed = await manager.resume(blocked.taskId)
+  assert.equal(resumed?.status, 'running')
+  assert.equal(resumed?.stateRevision, 6)
+  assert.equal(store.outbox.size, 1)
+  assert.equal(store.events.filter((item) => item.kind === 'condition-restored').length, 1)
+  const completed = await new TaskWorker(
+    'worker-after-block',
+    store,
+    validator,
+    new ReadOnlyContractInspectionExecutor(),
+    clock
+  ).runOnce()
+  assert.equal(completed?.status, 'succeeded')
+  assert.equal((completed?.result?.stateRef as JsonObject).emissionSequence, 2)
+  assert.equal(
+    (completed?.result?.stateRef as JsonObject).supersedesResultId,
+    blocked.result?.resultId
+  )
+  assert.equal((completed?.state.ledger.resultRefs as JsonObject[]).length, 2)
+})
+
+test('autorização vencida é renovada para o mesmo plano antes da execução', async () => {
+  const validator: ContractValidator = await ContractValidator.create(root)
+  const store = new FailOnceTaskStore('execution-scheduled')
+  const clock = new MutableClock()
+  const authority = new PermittingAuthorityProvider(() => clock.now())
+  const request = await requestFixture()
+  request.requestId = 'req-authorization-refresh-0001'
+  request.idempotencyKey = 'authorization-refresh-0001'
+  const firstProcess = new TaskManager(store, validator, authority, clock)
+  const interrupted = await firstProcess.submit(request)
+  assert.equal(interrupted.status, 'ready')
+  assert.equal(store.authorizations.size, 1)
+  assert.equal(store.outbox.size, 0)
+
+  clock.advance(6 * 60_000)
+  const restartedProcess = new TaskManager(store, validator, authority, clock)
+  const resumed = await restartedProcess.reconcile(interrupted.taskId)
+  assert.equal(resumed?.status, 'running')
+  assert.equal(resumed?.stateRevision, 5)
+  assert.equal(store.plans.size, 1)
+  assert.equal(store.authorizations.size, 2)
+  assert.equal(store.outbox.size, 1)
+  assert.equal(store.events.filter((item) => item.kind === 'authorization-refreshed').length, 1)
+  const requestIds = [...store.authorizations.values()].map((item) => String(item.request.authorizationRequestId))
+  assert.equal(new Set(requestIds).size, 2)
 })
 
 test('a mesma chave idempotente com outro TaskRequest é conflito, não repetição', async () => {
@@ -244,6 +406,15 @@ test('migração de reconciliação cria lease expirável sem inventar outro est
   assert.doesNotMatch(sql, /ADD VALUE|CREATE TYPE/i)
 })
 
+test('migração de recovery torna backoff persistente e observável fora do Task State', async () => {
+  const sql = await readFile(join(root, 'migrations', '004_reconciliation_backoff.sql'), 'utf8')
+  assert.match(sql, /reconciliation_failure_count/i)
+  assert.match(sql, /reconciliation_retry_at\s+timestamptz/i)
+  assert.match(sql, /reconciliation_error_fingerprint/i)
+  assert.match(sql, /não altera o estado de domínio/i)
+  assert.doesNotMatch(sql, /ADD VALUE|CREATE TYPE/i)
+})
+
 test('fixture da primeira tarefa continua válida no contrato público', async () => {
   const validator: ContractValidator = await ContractValidator.create(root)
   const request: unknown = await requestFixture()
@@ -265,7 +436,11 @@ test('documento do Omni com fingerprint válido no formato mas falso não ativa 
     }
   }
   const manager = new TaskManager(store, validator, dishonestProvider)
-  await assert.rejects(manager.submit(await requestFixture()), /decisionFingerprint não corresponde/)
+  const blocked = await manager.submit(await requestFixture())
   assert.equal(store.outbox.size, 0)
-  assert.equal([...store.tasks.values()][0]?.status, 'planning')
+  assert.equal(blocked.status, 'blocked')
+  assert.equal(blocked.result?.status, 'blocked')
+  assert.equal((blocked.result?.inputRequired as JsonObject).code, 'block-authority-provider-invalid')
+  validator.taskState(blocked.state)
+  validator.assert('task-result', blocked.result)
 })

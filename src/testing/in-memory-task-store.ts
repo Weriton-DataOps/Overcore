@@ -10,6 +10,7 @@ import type {
 import {
   ConcurrentTaskUpdateError,
   DuplicateTaskError,
+  type ReconciliationFailure,
   type TaskStore
 } from '../ports/task-store.js'
 import {
@@ -26,7 +27,7 @@ function copy<T>(value: T): T {
 export class InMemoryTaskStore implements TaskStore {
   readonly tasks = new Map<string, StoredTask>()
   readonly plans = new Map<string, JsonObject>()
-  readonly authorizations = new Map<string, { request: JsonObject; decision: JsonObject; enforcement: JsonObject }>()
+  readonly authorizations = new Map<string, { taskId: string; request: JsonObject; decision: JsonObject; enforcement: JsonObject }>()
   readonly events: CasMutation['event'][] = []
   readonly outbox = new Map<string, OutboxMessage>()
   readonly preflightStreams = new Map<string, { idempotencyKey: string; latestRevision: number }>()
@@ -116,9 +117,13 @@ export class InMemoryTaskStore implements TaskStore {
   }
 
   async findAuthorization(taskId: string, decisionId: string) {
-    const authorization = this.authorizations.get(taskId)
-    if (!authorization || authorization.decision.decisionId !== decisionId) return null
-    return copy(authorization)
+    const authorization = this.authorizations.get(decisionId)
+    if (!authorization || authorization.taskId !== taskId) return null
+    return copy({
+      request: authorization.request,
+      decision: authorization.decision,
+      enforcement: authorization.enforcement
+    })
   }
 
   async listReconciliationCandidates(limit: number, now = new Date()): Promise<StoredTask[]> {
@@ -128,6 +133,7 @@ export class InMemoryTaskStore implements TaskStore {
         const lease = this.reconciliationLeases.get(task.taskId)
         return !lease || Date.parse(lease.until) <= now.getTime()
       })
+      .filter((task) => !task.reconciliation || Date.parse(task.reconciliation.retryAt) <= now.getTime())
       .sort((left, right) => left.updatedAt.localeCompare(right.updatedAt))
       .slice(0, Math.max(0, limit))
       .map(copy)
@@ -141,6 +147,7 @@ export class InMemoryTaskStore implements TaskStore {
   ): Promise<string | null> {
     const task = this.tasks.get(taskId)
     if (!task || (task.status !== 'accepted' && task.status !== 'planning' && task.status !== 'ready')) return null
+    if (task.reconciliation && Date.parse(task.reconciliation.retryAt) > now.getTime()) return null
     const current = this.reconciliationLeases.get(taskId)
     if (current && Date.parse(current.until) > now.getTime()) return null
     const claimToken = `${ownerId}:${randomUUID()}`
@@ -152,9 +159,37 @@ export class InMemoryTaskStore implements TaskStore {
     return claimToken
   }
 
+  async deferReconciliation(
+    taskId: string,
+    claimToken: string,
+    failure: ReconciliationFailure
+  ): Promise<void> {
+    const lease = this.reconciliationLeases.get(taskId)
+    const task = this.tasks.get(taskId)
+    if (!task || lease?.claimToken !== claimToken) {
+      throw new Error('Lease da reconciliação não confere ao adiar a tarefa.')
+    }
+    task.reconciliation = {
+      failureCount: (task.reconciliation?.failureCount ?? 0) + 1,
+      retryAt: failure.retryAt.toISOString(),
+      errorCode: failure.code,
+      errorFingerprint: failure.errorFingerprint,
+      lastErrorAt: failure.occurredAt.toISOString()
+    }
+    this.tasks.set(taskId, copy(task))
+    this.reconciliationLeases.delete(taskId)
+  }
+
   async releaseReconciliation(taskId: string, claimToken: string): Promise<void> {
     const lease = this.reconciliationLeases.get(taskId)
-    if (lease?.claimToken === claimToken) this.reconciliationLeases.delete(taskId)
+    if (lease?.claimToken === claimToken) {
+      this.reconciliationLeases.delete(taskId)
+      const task = this.tasks.get(taskId)
+      if (task) {
+        delete task.reconciliation
+        this.tasks.set(taskId, copy(task))
+      }
+    }
   }
 
   async compareAndSwap(mutation: CasMutation): Promise<StoredTask> {
@@ -171,11 +206,20 @@ export class InMemoryTaskStore implements TaskStore {
         throw new Error('Lease da outbox não confere no fechamento transacional.')
       }
     }
-    this.tasks.set(mutation.next.taskId, copy(mutation.next))
+    const next = copy(mutation.next)
+    if (next.status !== 'accepted' && next.status !== 'planning' && next.status !== 'ready') {
+      delete next.reconciliation
+    }
+    this.tasks.set(next.taskId, next)
     this.events.push(copy(mutation.event))
     if (mutation.outbox) this.outbox.set(mutation.outbox.outboxId, copy(mutation.outbox))
     if (mutation.plan) this.plans.set(mutation.next.taskId, copy(mutation.plan))
-    if (mutation.authorization) this.authorizations.set(mutation.next.taskId, copy(mutation.authorization))
+    if (mutation.authorization) {
+      this.authorizations.set(String(mutation.authorization.decision.decisionId), {
+        taskId: mutation.next.taskId,
+        ...copy(mutation.authorization)
+      })
+    }
     if (mutation.completeOutbox) {
       this.outbox.delete(mutation.completeOutbox.outboxId)
     }

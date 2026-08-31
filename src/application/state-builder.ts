@@ -10,6 +10,15 @@ interface AuthorizationBinding {
   activatedAtRevision: number
 }
 
+export interface TaskBlockSpecification {
+  blockId: string
+  resultId: string
+  evidenceId: string
+  resumeTarget: 'planning' | 'ready' | 'verifying'
+  mode: 'resume-same-request' | 'replacement-request-required'
+  condition: string
+}
+
 interface PlanBinding {
   planId: string
   planRevision: number
@@ -136,6 +145,104 @@ export function bindReadyState(previous: TaskState, binding: PlanBinding, now: s
   return next
 }
 
+export function refreshReadyAuthorization(
+  previous: TaskState,
+  authorization: AuthorizationBinding,
+  now: string
+): TaskState {
+  if (previous.lifecycle.state !== 'ready') throw new Error('Somente tarefa ready pode renovar autorização.')
+  const active = previous.activePlanBinding
+  if (!active || typeof active !== 'object' || Array.isArray(active)) throw new Error('Plano ativo ausente na renovação.')
+  const activeBinding = active as JsonObject
+  const next = transition(previous, 'ready', 'authorization-refreshed', now, authorization.enforcementId)
+  const authorizationBinding: JsonObject = {
+    enforcementId: authorization.enforcementId,
+    enforcementFingerprint: authorization.enforcementFingerprint,
+    decisionId: authorization.decisionId,
+    decisionFingerprint: authorization.decisionFingerprint,
+    expiresAt: authorization.expiresAt,
+    activatedAtRevision: next.stateRevision
+  }
+  next.activePlanBinding = { ...activeBinding, authorizationBinding }
+  const planRefs = arrayAt(ledger(next), 'planRefs')
+  const activePlanRef = [...planRefs].reverse().find((item) =>
+    item.planId === activeBinding.planId && item.planRevision === activeBinding.planRevision
+  )
+  if (!activePlanRef) throw new Error('Histórico do plano ativo ausente na renovação.')
+  activePlanRef.authorizationBinding = authorizationBinding
+  return next
+}
+
+export function blockTaskState(previous: TaskState, specification: TaskBlockSpecification, now: string): TaskState {
+  const from = previous.lifecycle.state
+  if (from !== 'planning' && from !== 'ready') {
+    throw new Error(`Bloqueio v1 ainda não suporta origem ${from}.`)
+  }
+  const next = transition(previous, 'blocked', 'block-detected', now, specification.blockId)
+  next.activeBlockRef = specification.blockId
+  const transitions = arrayAt(ledger(next), 'transitions')
+  const lastTransition = transitions.at(-1)
+  if (!lastTransition) throw new Error('Transição de bloqueio ausente.')
+  lastTransition.resultRef = specification.resultId
+  lastTransition.evidenceRefs = [specification.evidenceId]
+  arrayAt(ledger(next), 'blocks').push({
+    blockId: specification.blockId,
+    blockingResultId: specification.resultId,
+    blockedAtRevision: next.stateRevision,
+    blockedFrom: from,
+    resumeTarget: specification.resumeTarget,
+    mode: specification.mode,
+    condition: specification.condition,
+    evidenceRefs: [specification.evidenceId],
+    createdAt: now
+  })
+  const rawEvidenceRefs = ledger(next).evidenceRefs
+  if (!Array.isArray(rawEvidenceRefs)) throw new Error('Ledger sem evidenceRefs.')
+  if (!rawEvidenceRefs.some((item) => item === specification.evidenceId)) rawEvidenceRefs.push(specification.evidenceId)
+  return next
+}
+
+export function attachResultReference(
+  previous: TaskState,
+  resultId: string,
+  resultFingerprint: Fingerprint,
+  status: 'blocked' | 'succeeded' | 'failed' | 'cancelled',
+  emittedAt: string
+): TaskState {
+  const next = structuredClone(previous)
+  const resultRefs = arrayAt(ledger(next), 'resultRefs')
+  resultRefs.push({
+    resultId,
+    stateRevision: next.stateRevision,
+    transitionId: next.lifecycle.lastTransitionId,
+    emissionSequence: resultRefs.length + 1,
+    status,
+    resultFingerprint,
+    emittedAt
+  })
+  return next
+}
+
+export function resumeBlockedState(previous: TaskState, now: string): TaskState {
+  if (previous.lifecycle.state !== 'blocked' || typeof previous.activeBlockRef !== 'string') {
+    throw new Error('A tarefa não possui bloqueio ativo para retomar.')
+  }
+  const blocks = arrayAt(ledger(previous), 'blocks')
+  const active = blocks.find((item) => item.blockId === previous.activeBlockRef)
+  if (!active) throw new Error('Registro do bloqueio ativo não foi encontrado.')
+  if (active.mode !== 'resume-same-request') {
+    throw new Error('O bloqueio exige um novo TaskRequest e não pode retomar a tarefa atual.')
+  }
+  const target = active.resumeTarget
+  if (target !== 'planning' && target !== 'ready' && target !== 'verifying') {
+    throw new Error('Destino de retomada inválido.')
+  }
+  const next = transition(previous, target, 'condition-restored', now, String(active.blockId))
+  delete next.activeBlockRef
+  if (target === 'planning') delete next.activePlanBinding
+  return next
+}
+
 export function startAttempt(previous: TaskState, planId: string, planRevision: number, strategyFingerprint: Fingerprint, now: string): TaskState {
   const attemptId = stableId('attempt', `${previous.taskId}:${previous.executionEpoch}:1`)
   const next = transition(previous, 'running', 'execution-started', now, attemptId)
@@ -217,14 +324,15 @@ export function succeed(
   next.terminalResultRef = resultId
   next.usage = { ...next.usage, activeDurationMs: Math.max(0, Date.parse(now) - Date.parse(String(attempt.startedAt))) }
   ledger(next).evidenceRefs = allEvidence
-  ledger(next).resultRefs = [{
+  const resultRefs = arrayAt(ledger(next), 'resultRefs')
+  resultRefs.push({
     resultId,
     stateRevision: next.stateRevision,
     transitionId: next.lifecycle.lastTransitionId,
-    emissionSequence: 1,
+    emissionSequence: resultRefs.length + 1,
     status: 'succeeded',
     resultFingerprint,
     emittedAt: now
-  }]
+  })
   return next
 }

@@ -919,6 +919,7 @@
             "verification-passed",
             "block-detected",
             "condition-restored",
+            "authorization-refreshed",
             "retry-scheduled",
             "cancellation-requested",
             "cancellation-settled",

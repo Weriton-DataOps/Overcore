@@ -1,17 +1,27 @@
 import { randomUUID } from 'node:crypto'
 
-import { canonicalJson, fingerprint, scopeKey, stableId } from '../domain/fingerprint.js'
+import { canonicalJson, fingerprint, scopeKey, sha256, stableId } from '../domain/fingerprint.js'
 import type { Fingerprint, JsonObject, StoredTask, TaskRequest, TaskStatus } from '../domain/types.js'
 import {
   ConcurrentTaskUpdateError,
   DuplicateTaskError,
+  AuthorityProviderError,
   type AuthorityProvider,
   type TaskStore
 } from '../ports/task-store.js'
 import { ContractValidator } from '../contracts/validator.js'
 import { buildAuthorizationRequest, buildEnforcement } from './authorization.js'
 import { buildInspectionPlan, repositoryUri } from './inspection-plan.js'
-import { acceptedState, bindReadyState, startAttempt, transition } from './state-builder.js'
+import {
+  acceptedState,
+  attachResultReference,
+  bindReadyState,
+  blockTaskState,
+  refreshReadyAuthorization,
+  resumeBlockedState,
+  startAttempt,
+  transition
+} from './state-builder.js'
 import { BaselineDiscovery } from './baseline-discovery.js'
 import { TaskPreflight } from './task-preflight.js'
 
@@ -27,9 +37,43 @@ const MAX_RECONCILIATION_TRANSITIONS = 3
 
 export interface ReconciliationOutcome {
   taskId: string
-  outcome: 'advanced' | 'unchanged' | 'busy' | 'failed'
+  outcome: 'advanced' | 'unchanged' | 'busy' | 'deferred' | 'failed'
   status?: TaskStatus
+  retryAt?: string
   error?: string
+}
+
+class AuthorizationDeniedError extends Error {
+  constructor() {
+    super('Omni negou a ativação do plano.')
+    this.name = 'AuthorizationDeniedError'
+  }
+}
+
+class AuthorizationNotYetValidError extends Error {
+  constructor(readonly notBefore: Date) {
+    super('Decisão do Omni ainda não entrou em vigor.')
+    this.name = 'AuthorizationNotYetValidError'
+  }
+}
+
+class AuthorizationExpiredError extends Error {
+  constructor() {
+    super('Decisão do Omni já expirou.')
+    this.name = 'AuthorizationExpiredError'
+  }
+}
+
+interface BlockDescriptor {
+  code: string
+  kind: 'authority' | 'resource' | 'external-condition'
+  summary: string
+  condition: string
+  reason: string
+  question: string
+  options: Array<{ id: string; label: string; consequence: string }>
+  impact: string
+  resumeTarget: 'planning' | 'ready'
 }
 
 export type PreflightAdmissionErrorCode =
@@ -115,10 +159,12 @@ function assertDecisionMatches(request: TaskRequest, authRequest: JsonObject, de
       throw new Error(`Decisão do Omni diverge em ${field}.`)
     }
   }
-  if (decision.outcome === 'deny') throw new Error('Omni negou a ativação do plano.')
+  if (decision.outcome === 'deny') throw new AuthorizationDeniedError()
   const limits = decision.limits as JsonObject
-  if (!limits || Date.parse(String(limits.notBefore)) > at.getTime()) throw new Error('Decisão do Omni ainda não entrou em vigor.')
-  if (Date.parse(String(limits.expiresAt)) <= at.getTime()) throw new Error('Decisão do Omni já expirou.')
+  if (!limits) throw new Error('Decisão do Omni não declarou limites.')
+  const notBefore = new Date(String(limits.notBefore))
+  if (notBefore.getTime() > at.getTime()) throw new AuthorizationNotYetValidError(notBefore)
+  if (Date.parse(String(limits.expiresAt)) <= at.getTime()) throw new AuthorizationExpiredError()
   if (Number(limits.maxDurationMs) > request.budget.maxDurationMs) {
     throw new Error('Decisão do Omni ampliou o orçamento temporal da tarefa.')
   }
@@ -263,6 +309,7 @@ export class TaskManager {
     )
     if (!claimToken) return this.store.findById(taskId)
 
+    let deferred = false
     try {
       for (let step = 0; step < MAX_RECONCILIATION_TRANSITIONS; step += 1) {
         current = await this.store.findById(taskId)
@@ -277,8 +324,28 @@ export class TaskManager {
         }
       }
       return this.store.findById(taskId)
+    } catch (error) {
+      current = await this.store.findById(taskId)
+      if (!current || !RECONCILABLE_STATUSES.has(current.status)) throw error
+      const block = this.blockDescriptor(error, current)
+      if (block) return await this.block(current, block, error)
+
+      const occurredAt = this.clock.now()
+      const delayMs = this.retryDelay(error, current.reconciliation?.failureCount ?? 0, occurredAt)
+      await this.store.deferReconciliation(taskId, claimToken, {
+        code: this.recoveryCode(error),
+        errorFingerprint: sha256(canonicalJson({
+          name: error instanceof Error ? error.name : 'Error',
+          message: error instanceof Error ? error.message : String(error),
+          code: this.recoveryCode(error)
+        })),
+        occurredAt,
+        retryAt: new Date(occurredAt.getTime() + delayMs)
+      })
+      deferred = true
+      return this.store.findById(taskId)
     } finally {
-      await this.store.releaseReconciliation(taskId, claimToken)
+      if (!deferred) await this.store.releaseReconciliation(taskId, claimToken)
     }
   }
 
@@ -291,6 +358,14 @@ export class TaskManager {
         const reconciled = await this.reconcile(candidate.taskId)
         if (!reconciled) {
           outcomes.push({ taskId: candidate.taskId, outcome: 'failed', error: 'Tarefa desapareceu durante a reconciliação.' })
+        } else if (reconciled.reconciliation) {
+          outcomes.push({
+            taskId: candidate.taskId,
+            outcome: 'deferred',
+            status: reconciled.status,
+            retryAt: reconciled.reconciliation.retryAt,
+            error: reconciled.reconciliation.errorCode
+          })
         } else if (RECONCILABLE_STATUSES.has(reconciled.status) && reconciled.status === before) {
           outcomes.push({ taskId: candidate.taskId, outcome: 'busy', status: reconciled.status })
         } else {
@@ -309,6 +384,206 @@ export class TaskManager {
       }
     }
     return outcomes
+  }
+
+  async resume(taskId: string): Promise<StoredTask | null> {
+    const task = await this.store.findById(taskId)
+    if (!task || task.status !== 'blocked') return task
+    const resumedAt = this.clock.now().toISOString()
+    const resumedState = resumeBlockedState(task.state, resumedAt)
+    this.validator.taskState(resumedState)
+    try {
+      await this.store.compareAndSwap({
+        expectedRevision: task.stateRevision,
+        next: record(task, resumedState),
+        event: event(task.taskId, resumedState.stateRevision, 'condition-restored', resumedAt, {
+          blockId: String(task.state.activeBlockRef),
+          resumeTarget: resumedState.lifecycle.state
+        })
+      })
+    } catch (error) {
+      if (!(error instanceof ConcurrentTaskUpdateError)) throw error
+    }
+    return this.reconcile(taskId)
+  }
+
+  private recoveryCode(error: unknown): string {
+    if (error instanceof AuthorityProviderError) return error.code
+    if (error instanceof AuthorizationNotYetValidError) return 'authorization-not-yet-valid'
+    if (error instanceof AuthorizationExpiredError) return 'authorization-expired'
+    const systemCode = (error as NodeJS.ErrnoException | undefined)?.code
+    if (typeof systemCode === 'string') return `system-${systemCode.toLowerCase()}`
+    return 'reconciliation-internal-error'
+  }
+
+  private retryDelay(error: unknown, previousFailures: number, now: Date): number {
+    if (error instanceof AuthorizationNotYetValidError) {
+      return Math.max(250, error.notBefore.getTime() - now.getTime())
+    }
+    if (error instanceof AuthorityProviderError && error.retryAfterMs !== undefined) {
+      return Math.min(300_000, Math.max(1_000, error.retryAfterMs))
+    }
+    return Math.min(30_000, 1_000 * (2 ** Math.min(previousFailures, 5)))
+  }
+
+  private blockDescriptor(error: unknown, task: StoredTask): BlockDescriptor | null {
+    const resumeTarget = task.status === 'ready' ? 'ready' : 'planning'
+    if (error instanceof AuthorizationDeniedError) {
+      return {
+        code: 'block-authorization-denied',
+        kind: 'authority',
+        summary: 'O Omni negou a autorização do plano; nenhuma execução foi iniciada.',
+        condition: 'O mesmo plano precisa receber uma nova autorização válida do Omni.',
+        reason: 'O plano atual não recebeu autoridade suficiente para executar suas ações.',
+        question: 'O crachá ou a política do Omni foi ajustado para permitir uma nova avaliação deste plano?',
+        options: [{
+          id: 'option-retry-authorization',
+          label: 'Avaliar novamente',
+          consequence: 'A mesma tarefa retorna à fase segura e solicita outra decisão para o plano.'
+        }],
+        impact: 'A tarefa permanece parada e nenhum executor recebe trabalho.',
+        resumeTarget
+      }
+    }
+    if (error instanceof AuthorityProviderError && !error.retryable) {
+      return {
+        code: 'block-authority-provider-invalid',
+        kind: 'authority',
+        summary: 'A resposta permanente da porta do Omni impediu a autorização do plano.',
+        condition: 'A porta local do Omni precisa voltar a aceitar o contrato de autorização.',
+        reason: error.message,
+        question: 'A integração local do Omni foi corrigida para que a autorização possa ser avaliada novamente?',
+        options: [{
+          id: 'option-retry-authority-port',
+          label: 'Testar novamente',
+          consequence: 'O Overcore retoma da fase segura e consulta a mesma porta contratada.'
+        }],
+        impact: 'Nenhuma tentativa ou ferramenta é iniciada enquanto a porta permanecer inválida.',
+        resumeTarget
+      }
+    }
+    if (error instanceof AuthorizationExpiredError) {
+      return {
+        code: 'block-invalid-fresh-authorization',
+        kind: 'authority',
+        summary: 'O Omni devolveu uma autorização que já estava vencida.',
+        condition: 'O Omni precisa emitir uma decisão nova com janela de validade futura.',
+        reason: error.message,
+        question: 'O relógio e a emissão de autorizações do Omni foram corrigidos?',
+        options: [{
+          id: 'option-retry-fresh-authorization',
+          label: 'Solicitar novamente',
+          consequence: 'O Overcore repete a avaliação com uma nova identidade de ciclo.'
+        }],
+        impact: 'O plano não é ativado com uma autorização vencida.',
+        resumeTarget
+      }
+    }
+    const systemCode = (error as NodeJS.ErrnoException | undefined)?.code
+    if (systemCode === 'ENOENT' || systemCode === 'EACCES' || systemCode === 'EPERM') {
+      return {
+        code: 'block-resource-unavailable',
+        kind: 'resource',
+        summary: 'Um recurso necessário ao planejamento não pôde ser lido.',
+        condition: 'A referência original precisa existir e estar legível para o Overcore.',
+        reason: error instanceof Error ? error.message : String(error),
+        question: 'O recurso original foi restaurado com acesso de leitura?',
+        options: [{
+          id: 'option-retry-original-resource',
+          label: 'Verificar novamente',
+          consequence: 'A mesma tarefa volta ao planejamento sem trocar silenciosamente sua referência.'
+        }],
+        impact: 'O planejamento fica pausado e nenhuma execução é iniciada.',
+        resumeTarget: 'planning'
+      }
+    }
+    return null
+  }
+
+  private async block(task: StoredTask, descriptor: BlockDescriptor, error: unknown): Promise<StoredTask> {
+    const blockedAt = this.clock.now().toISOString()
+    const seed = `${task.taskId}:${task.stateRevision + 1}:${descriptor.code}`
+    const blockId = stableId('block', seed)
+    const resultId = stableId('result-blocked', seed)
+    const evidenceId = stableId('evidence-block', seed)
+    let blockedState = blockTaskState(task.state, {
+      blockId,
+      resultId,
+      evidenceId,
+      resumeTarget: descriptor.resumeTarget,
+      mode: 'resume-same-request',
+      condition: descriptor.condition
+    }, blockedAt)
+    const resultRefs = object(blockedState.ledger, 'ledger').resultRefs
+    const emissionSequence = Array.isArray(resultRefs) ? resultRefs.length + 1 : 1
+    const usage = object(blockedState.usage, 'usage')
+    const evidenceBasis = {
+      taskId: task.taskId,
+      stateRevision: blockedState.stateRevision,
+      code: descriptor.code,
+      errorName: error instanceof Error ? error.name : 'Error',
+      errorMessage: error instanceof Error ? error.message : String(error)
+    }
+    const result: JsonObject = {
+      contractVersion: '1.0',
+      resultId,
+      requestId: task.requestId,
+      requestFingerprint: object(task.state.requestBinding, 'requestBinding').requestFingerprint,
+      taskId: task.taskId,
+      stateRef: {
+        stateRevision: blockedState.stateRevision,
+        transitionId: blockedState.lifecycle.lastTransitionId,
+        emissionSequence
+      },
+      reportedAt: blockedAt,
+      status: 'blocked',
+      summary: descriptor.summary,
+      criteria: blockedState.criterionProgress.map((item) => ({
+        criterionId: String(item.criterionId),
+        status: item.status,
+        evidenceRefs: Array.isArray(item.evidenceRefs) ? item.evidenceRefs : []
+      })),
+      evidence: [{
+        evidenceId,
+        kind: 'state-readback',
+        capturedAt: blockedAt,
+        summary: descriptor.reason,
+        digest: sha256(canonicalJson(evidenceBasis)),
+        artifactRefs: [],
+        origin: { kind: 'runtime', id: 'overcore-runtime-v1' }
+      }],
+      artifacts: [],
+      effects: [],
+      execution: {
+        attemptCount: Number(usage.attemptCount ?? 0),
+        maxParallelismObserved: Number(usage.maxParallelismObserved ?? 0),
+        durationMs: Number(usage.activeDurationMs ?? 0),
+        lastTransitionAt: blockedAt
+      },
+      inputRequired: {
+        blockId,
+        mode: 'resume-same-request',
+        code: descriptor.code,
+        kind: descriptor.kind,
+        reason: descriptor.reason,
+        question: descriptor.question,
+        options: descriptor.options,
+        impact: descriptor.impact,
+        evidenceRefs: [evidenceId]
+      }
+    }
+    this.validator.assert('task-result', result)
+    blockedState = attachResultReference(blockedState, resultId, fingerprint(result), 'blocked', blockedAt)
+    this.validator.taskState(blockedState)
+    return this.store.compareAndSwap({
+      expectedRevision: task.stateRevision,
+      next: record(task, blockedState, result),
+      event: event(task.taskId, blockedState.stateRevision, 'block-detected', blockedAt, {
+        blockId,
+        code: descriptor.code,
+        evidenceId
+      })
+    })
   }
 
   private async advanceAccepted(task: StoredTask): Promise<StoredTask> {
@@ -340,15 +615,25 @@ export class TaskManager {
     )
     this.validator.assert('execution-plan', plan)
     assertFingerprint(plan, 'planFingerprint')
-    const authRequest = buildAuthorizationRequest(task.request, requestFingerprint, plan, planAt)
+    const authRequest = buildAuthorizationRequest(
+      task.request,
+      requestFingerprint,
+      plan,
+      planAt,
+      task.stateRevision === 2 ? 1 : task.stateRevision
+    )
     this.validator.assert('authorization-request', authRequest)
     assertFingerprint(authRequest, 'authorizationRequestFingerprint')
-    const decision = await this.authorityProvider.evaluate(authRequest)
-    this.validator.assert('authorization-decision', decision)
-    assertFingerprint(decision, 'decisionFingerprint')
+    const decision = await this.evaluateAuthorization(authRequest)
     assertDecisionMatches(task.request, authRequest, decision, this.clock.now())
     const enforcementAt = this.clock.now().toISOString()
-    const enforcement = buildEnforcement(task.taskId, authRequest, decision, enforcementAt)
+    const enforcement = buildEnforcement(
+      task.taskId,
+      authRequest,
+      decision,
+      enforcementAt,
+      task.stateRevision + 1
+    )
     this.validator.assert('authorization-enforcement', enforcement)
     assertFingerprint(enforcement, 'recordFingerprint')
 
@@ -380,6 +665,21 @@ export class TaskManager {
     })
   }
 
+  private async evaluateAuthorization(authRequest: JsonObject): Promise<JsonObject> {
+    const decision = await this.authorityProvider.evaluate(authRequest)
+    try {
+      this.validator.assert('authorization-decision', decision)
+      assertFingerprint(decision, 'decisionFingerprint')
+    } catch (error) {
+      throw new AuthorityProviderError(
+        'authority-provider-invalid-decision',
+        false,
+        `Authority Provider devolveu decisão inválida: ${error instanceof Error ? error.message : String(error)}`
+      )
+    }
+    return decision
+  }
+
   private async advanceReady(task: StoredTask): Promise<StoredTask> {
     const binding = object(task.state.activePlanBinding, 'activePlanBinding')
     const planId = String(binding.planId)
@@ -398,6 +698,9 @@ export class TaskManager {
     assertFingerprint(authorization.request, 'authorizationRequestFingerprint')
     assertFingerprint(authorization.decision, 'decisionFingerprint')
     assertFingerprint(authorization.enforcement, 'recordFingerprint')
+    if (Date.parse(String(authorization.enforcement.expiresAt)) <= this.clock.now().getTime()) {
+      return this.refreshAuthorization(task, plan)
+    }
     assertDecisionMatches(task.request, authorization.request, authorization.decision, this.clock.now())
 
     assertEqual(plan.planFingerprint, binding.planFingerprint, 'Fingerprint do plano persistido diverge do Task State.')
@@ -461,6 +764,52 @@ export class TaskManager {
         availableAt: runningAt,
         attempts: 0
       }
+    })
+  }
+
+  private async refreshAuthorization(task: StoredTask, plan: JsonObject): Promise<StoredTask> {
+    const refreshedAt = this.clock.now().toISOString()
+    const requestFingerprint = fingerprint(task.request as never)
+    const authorizationCycle = task.stateRevision + 1
+    const authRequest = buildAuthorizationRequest(
+      task.request,
+      requestFingerprint,
+      plan,
+      refreshedAt,
+      authorizationCycle
+    )
+    this.validator.assert('authorization-request', authRequest)
+    assertFingerprint(authRequest, 'authorizationRequestFingerprint')
+    const decision = await this.evaluateAuthorization(authRequest)
+    assertDecisionMatches(task.request, authRequest, decision, this.clock.now())
+    const enforcementAt = this.clock.now().toISOString()
+    const enforcement = buildEnforcement(
+      task.taskId,
+      authRequest,
+      decision,
+      enforcementAt,
+      task.stateRevision + 1
+    )
+    this.validator.assert('authorization-enforcement', enforcement)
+    assertFingerprint(enforcement, 'recordFingerprint')
+    const refreshedState = refreshReadyAuthorization(task.state, {
+      enforcementId: String(enforcement.enforcementId),
+      enforcementFingerprint: enforcement.recordFingerprint as Fingerprint,
+      decisionId: String(decision.decisionId),
+      decisionFingerprint: decision.decisionFingerprint as Fingerprint,
+      expiresAt: String(enforcement.expiresAt),
+      activatedAtRevision: task.stateRevision + 1
+    }, enforcementAt)
+    this.validator.taskState(refreshedState)
+    return this.store.compareAndSwap({
+      expectedRevision: task.stateRevision,
+      next: record(task, refreshedState),
+      event: event(task.taskId, refreshedState.stateRevision, 'authorization-refreshed', enforcementAt, {
+        planId: String(plan.planId),
+        decisionId: String(decision.decisionId),
+        authorizationRequestId: String(authRequest.authorizationRequestId)
+      }),
+      authorization: { request: authRequest, decision, enforcement }
     })
   }
 

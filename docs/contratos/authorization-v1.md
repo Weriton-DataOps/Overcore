@@ -136,6 +136,9 @@ revisão sem ela; essa revisão recebe outro fingerprint e volta ao Omni.
 Uma decisão vale somente para `planId + planRevision + planFingerprint + strategyFingerprint`.
 
 - retry da mesma tentativa e mesma revisão pode reutilizar a decisão enquanto válida e não revogada;
+- se a decisão vencer antes do início da tentativa, o mesmo plano recebe um novo
+  `AuthorizationRequest`, uma nova decisão e um novo enforcement; a autorização anterior permanece
+  histórica e nunca é estendida ou sobrescrita;
 - nova tentativa com a mesma revisão pode reutilizá-la, respeitando epoch, budget e validade;
 - qualquer nova revisão do plano exige outro `AuthorizationRequest` e outra decisão;
 - decisão expirada, revogada, destinada a outro ambiente ou com atestação inválida nunca ativa plano;

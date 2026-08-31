@@ -172,6 +172,13 @@ export interface StoredTask {
   request: TaskRequest
   state: TaskState
   result?: JsonObject
+  reconciliation?: {
+    failureCount: number
+    retryAt: string
+    errorCode: string
+    errorFingerprint: string
+    lastErrorAt: string
+  }
   createdAt: string
   updatedAt: string
 }

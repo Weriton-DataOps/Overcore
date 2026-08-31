@@ -71,6 +71,10 @@ A migration `003_task_reconciliation_lease.sql` acrescenta três colunas operaci
 guardam proprietário, token e vencimento da reconciliação. Não representam fase do trabalho e são
 apagadas quando a tarefa chega a `running` ou sai por outro caminho das fases recuperáveis.
 
+A migration `004_reconciliation_backoff.sql` guarda contagem, código, fingerprint, último erro e
+`retryAt` quando uma coordenação precisa esperar. Esses dados ficam fora do JSON do `Task State`, são
+visíveis na leitura da tarefa e desaparecem depois do primeiro ciclo bem-sucedido.
+
 ## Por que não existe SQLite nem broker agora
 
 PostgreSQL já entrega transação, JSONB, CAS e reivindicação concorrente da outbox com

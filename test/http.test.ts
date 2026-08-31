@@ -12,9 +12,11 @@ import { TaskPreflight } from '../src/application/task-preflight.js'
 import { TaskManager } from '../src/application/task-manager.js'
 import { TaskWorker } from '../src/application/task-worker.js'
 import { ContractValidator } from '../src/contracts/validator.js'
+import { fingerprint } from '../src/domain/fingerprint.js'
 import type { JsonObject, TaskDraft, TaskRequest } from '../src/domain/types.js'
 import { HttpAuthorityProvider } from '../src/infrastructure/authority/http-authority-provider.js'
 import { createLocalServer } from '../src/infrastructure/http/local-server.js'
+import { AuthorityProviderError, type AuthorityProvider } from '../src/ports/task-store.js'
 import { InMemoryTaskStore } from '../src/testing/in-memory-task-store.js'
 import { PermittingAuthorityProvider } from '../src/testing/permitting-authority-provider.js'
 
@@ -66,6 +68,31 @@ test('adaptador recusa endpoint que não seja loopback local', () => {
     () => new HttpAuthorityProvider(new URL('https://example.com/authority'), 'token-local-de-teste-comprido'),
     /loopback/
   )
+})
+
+test('adaptador classifica indisponibilidade temporária e respeita Retry-After', async () => {
+  const server = createServer((_request, response) => {
+    response.writeHead(503, { 'content-type': 'application/json', 'retry-after': '2' })
+    response.end(JSON.stringify({ error: 'restarting' }))
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  try {
+    const address = server.address()
+    assert.ok(address && typeof address !== 'string')
+    const provider = new HttpAuthorityProvider(
+      new URL(`http://127.0.0.1:${address.port}/v1/authority/evaluate`),
+      'token-http-retry-classification'
+    )
+    await assert.rejects(
+      provider.evaluate({ authorizationRequestId: 'authreq-retry-after-0001' }),
+      (error: unknown) =>
+        error instanceof AuthorityProviderError &&
+        error.retryable &&
+        error.retryAfterMs === 2_000
+    )
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()))
+  }
 })
 
 test('porta local autentica e recusa a antiga admissão direta de TaskRequest', async () => {
@@ -227,6 +254,62 @@ test('porta local admite o request congelado pelo reportId sem dupla tarefa', as
     const workedBody = await worked.json() as { taskId: string; status: string }
     assert.equal(workedBody.taskId, firstAdmission.taskId)
     assert.equal(workedBody.status, 'succeeded')
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()))
+  }
+})
+
+test('porta local retoma bloqueio pela fase segura', async () => {
+  const token = 'token-api-resume-local'
+  const validator = await ContractValidator.create(root)
+  const store = new InMemoryTaskStore()
+  let permit = false
+  const authority: AuthorityProvider = {
+    async evaluate(request: JsonObject) {
+      const decision = permittingDecision(request)
+      if (permit) return decision
+      decision.outcome = 'deny'
+      decision.actionDecisions = (decision.actionDecisions as JsonObject[]).map((item) => ({
+        ...item,
+        outcome: 'deny',
+        reasonCode: 'outside-delegated-authority',
+        requiredControls: []
+      }))
+      delete decision.decisionFingerprint
+      decision.decisionFingerprint = fingerprint(decision)
+      return decision
+    }
+  }
+  const manager = new TaskManager(store, validator, authority)
+  const worker = new TaskWorker(
+    'worker-http-resume',
+    store,
+    validator,
+    new ReadOnlyContractInspectionExecutor()
+  )
+  const request = JSON.parse(
+    await readFile(join(root, 'contratos', 'exemplos', 'task-request-inspecao-executavel.json'), 'utf8')
+  ) as TaskRequest
+  request.context.references[0]!.uri = pathToFileURL(root).href
+  request.requestId = 'req-http-resume-0001'
+  request.idempotencyKey = 'http-resume-0001'
+  const blocked = await manager.submit(request)
+  assert.equal(blocked.status, 'blocked')
+  permit = true
+
+  const server = createLocalServer(manager, worker, token)
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  try {
+    const address = server.address()
+    assert.ok(address && typeof address !== 'string')
+    const response = await fetch(
+      `http://127.0.0.1:${address.port}/v1/tasks/${encodeURIComponent(blocked.taskId)}/resume`,
+      { method: 'POST', headers: { authorization: `Bearer ${token}` } }
+    )
+    assert.equal(response.status, 202)
+    const resumed = await response.json() as { status: string; stateRevision: number }
+    assert.equal(resumed.status, 'running')
+    assert.equal(resumed.stateRevision, 6)
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()))
   }

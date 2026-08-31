@@ -180,6 +180,12 @@ A lease de reconciliação não é um segundo status: apenas escolhe temporariam
 escrever. Ela expira em 30 segundos se o processo cair. Cada transição ainda usa CAS e aparece no
 ledger normal. A decisão completa está na ADR-011.
 
+Falhas temporárias usam backoff persistente e visível. Uma autorização vencida recebe nova decisão e
+novo enforcement para o mesmo plano, registrados por `authorization-refreshed`; ela nunca é
+reutilizada. Negação, resposta permanente inválida ou recurso ausente produz `TaskResult blocked`.
+`overcore resume <task-id>` encerra o bloco e volta exclusivamente ao `resumeTarget` seguro. A política
+completa está na ADR-012.
+
 ### 9. Despachar a próxima ação
 
 **O que faz:** identifica somente a próxima ação admitida pelo prefixo do plano e passa pelo gate:

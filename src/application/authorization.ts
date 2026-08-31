@@ -20,7 +20,8 @@ export function buildAuthorizationRequest(
   request: TaskRequest,
   requestFingerprint: Fingerprint,
   plan: JsonObject,
-  now: string
+  now: string,
+  authorizationCycle = 1
 ): JsonObject {
   const planId = string(plan.planId, 'planId')
   const planRevision = number(plan.planRevision, 'planRevision')
@@ -53,7 +54,12 @@ export function buildAuthorizationRequest(
   }
   const base: JsonObject = {
     contractVersion: '1.0',
-    authorizationRequestId: stableId('authreq', `${planId}:${planRevision}`),
+    authorizationRequestId: stableId(
+      'authreq',
+      authorizationCycle === 1
+        ? `${planId}:${planRevision}`
+        : `${planId}:${planRevision}:cycle:${authorizationCycle}`
+    ),
     createdAt: now,
     requester: { id: 'overcore-execution-environment', kind: 'execution-environment' },
     authorityProvider: { id: 'omni-authority-provider', kind: 'assistant' },
@@ -80,7 +86,13 @@ export function buildAuthorizationRequest(
   return { ...base, authorizationRequestFingerprint: fingerprint(base) }
 }
 
-export function buildEnforcement(taskId: string, authorizationRequest: JsonObject, decision: JsonObject, now: string): JsonObject {
+export function buildEnforcement(
+  taskId: string,
+  authorizationRequest: JsonObject,
+  decision: JsonObject,
+  now: string,
+  activatedAtStateRevision = 3
+): JsonObject {
   const requestBinding = object(authorizationRequest.requestBinding, 'requestBinding')
   const planBinding = object(authorizationRequest.planBinding, 'planBinding')
   const actionDecisions = decision.actionDecisions
@@ -119,7 +131,7 @@ export function buildEnforcement(taskId: string, authorizationRequest: JsonObjec
       }
     }),
     activationEligible: eligible,
-    activatedAtStateRevision: 3
+    activatedAtStateRevision
   }
   return { ...base, recordFingerprint: fingerprint(base) }
 }

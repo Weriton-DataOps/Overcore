@@ -13,6 +13,13 @@ export interface StoredTaskAuthorization {
   enforcement: JsonObject
 }
 
+export interface ReconciliationFailure {
+  code: string
+  errorFingerprint: string
+  occurredAt: Date
+  retryAt: Date
+}
+
 export class ConcurrentTaskUpdateError extends Error {
   constructor(taskId: string, expectedRevision: number) {
     super(`A tarefa ${taskId} não está mais na revisão ${expectedRevision}.`)
@@ -27,6 +34,18 @@ export class DuplicateTaskError extends Error {
   }
 }
 
+export class AuthorityProviderError extends Error {
+  constructor(
+    readonly code: string,
+    readonly retryable: boolean,
+    message: string,
+    readonly retryAfterMs?: number
+  ) {
+    super(message)
+    this.name = 'AuthorityProviderError'
+  }
+}
+
 export interface TaskStore extends PreflightStore {
   create(task: StoredTask, event: CasMutation['event']): Promise<StoredTask>
   findById(taskId: string): Promise<StoredTask | null>
@@ -35,6 +54,7 @@ export interface TaskStore extends PreflightStore {
   findAuthorization(taskId: string, decisionId: string): Promise<StoredTaskAuthorization | null>
   listReconciliationCandidates(limit: number, now?: Date): Promise<StoredTask[]>
   claimReconciliation(taskId: string, ownerId: string, leaseMs: number, now?: Date): Promise<string | null>
+  deferReconciliation(taskId: string, claimToken: string, failure: ReconciliationFailure): Promise<void>
   releaseReconciliation(taskId: string, claimToken: string): Promise<void>
   compareAndSwap(mutation: CasMutation): Promise<StoredTask>
   claimOutbox(workerId: string, leaseMs: number, now?: Date): Promise<ClaimedMessage | null>

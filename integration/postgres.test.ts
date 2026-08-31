@@ -20,6 +20,18 @@ import { PermittingAuthorityProvider } from '../src/testing/permitting-authority
 
 const root = process.cwd()
 
+class MutableClock {
+  constructor(private current = new Date()) {}
+
+  now(): Date {
+    return new Date(this.current)
+  }
+
+  advance(milliseconds: number): void {
+    this.current = new Date(this.current.getTime() + milliseconds)
+  }
+}
+
 class FailOncePostgresTaskStore extends PostgresTaskStore {
   private failed = false
 
@@ -115,15 +127,17 @@ test('PostgreSQL real persiste, rejeita CAS obsoleto e distribui duas tarefas en
     assert.equal(readyReport.appliedDecisionAnswers.length, 1)
     assert.equal(readyReport.preparedRequest?.idempotencyKey, draft.executionIdempotencyKey)
 
+    const recoveryClock = new MutableClock()
+    const recoveryAuthority = new PermittingAuthorityProvider(() => recoveryClock.now())
     const crashingManager = new TaskManager(
       new FailOncePostgresTaskStore(pool, 'execution-scheduled'),
       validator,
-      new PermittingAuthorityProvider()
+      recoveryAuthority,
+      recoveryClock
     )
-    await assert.rejects(
-      crashingManager.admitPrepared(readyReport.reportId),
-      /queda PostgreSQL simulada em execution-scheduled/
-    )
+    const interruptedAdmission = await crashingManager.admitPrepared(readyReport.reportId)
+    assert.equal(interruptedAdmission.status, 'ready')
+    assert.equal(interruptedAdmission.reconciliation?.failureCount, 1)
     const partialTask = await store.findByIdempotencyKey(draft.executionIdempotencyKey)
     assert.equal(partialTask?.status, 'ready')
     if (!partialTask) throw new Error('Tarefa parcial não foi persistida para o teste de retomada.')
@@ -135,12 +149,19 @@ test('PostgreSQL real persiste, rejeita CAS obsoleto e distribui duas tarefas en
     )
     assert.equal(outboxBeforeRestart.rows[0]?.count, '0')
 
+    recoveryClock.advance(1_001)
     const concurrentAdmissions = await Promise.all([
-      restartedManager.admitPrepared(readyReport.reportId),
       new TaskManager(
         new PostgresTaskStore(pool),
         validator,
-        new PermittingAuthorityProvider()
+        recoveryAuthority,
+        recoveryClock
+      ).admitPrepared(readyReport.reportId),
+      new TaskManager(
+        new PostgresTaskStore(pool),
+        validator,
+        recoveryAuthority,
+        recoveryClock
       ).admitPrepared(readyReport.reportId)
     ])
     assert.equal(concurrentAdmissions[0].taskId, concurrentAdmissions[1].taskId)
@@ -201,7 +222,8 @@ test('PostgreSQL real persiste, rejeita CAS obsoleto e distribui duas tarefas en
       'worker-postgres-preflight-admission',
       store,
       validator,
-      new ReadOnlyContractInspectionExecutor()
+      new ReadOnlyContractInspectionExecutor(),
+      recoveryClock
     )
     const completedAdmission = await admissionWorker.runOnce()
     assert.equal(completedAdmission?.taskId, preflightTaskId)

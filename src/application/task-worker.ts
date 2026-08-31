@@ -178,6 +178,10 @@ export class TaskWorker {
         )
       }
       const startedAt = String((verifyingTask.state.ledger.attempts as JsonObject[])[0]?.startedAt ?? verifyingTask.createdAt)
+      const previousResultRefs = Array.isArray(verifyingTask.state.ledger.resultRefs)
+        ? verifyingTask.state.ledger.resultRefs as JsonObject[]
+        : []
+      const previousResultId = previousResultRefs.at(-1)?.resultId
       const result: JsonObject = {
         contractVersion: '1.0',
         resultId,
@@ -187,7 +191,8 @@ export class TaskWorker {
         stateRef: {
           stateRevision: verifyingTask.stateRevision + 1,
           transitionId,
-          emissionSequence: 1
+          emissionSequence: previousResultRefs.length + 1,
+          ...(typeof previousResultId === 'string' ? { supersedesResultId: previousResultId } : {})
         },
         reportedAt: finishedAt,
         status: 'succeeded',
