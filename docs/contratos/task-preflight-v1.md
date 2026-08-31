@@ -218,7 +218,7 @@ TaskPreflight
    `--> TaskReadinessReport
           +--> decisions-required: não executa
           +--> not-feasible: não executa
-          `--> ready: contém TaskRequest, ainda sem admiti-lo automaticamente
+          `--> ready: contém TaskRequest; admissão explícita recebe somente reportId
 ```
 
 `BaselineDiscovery` existe para provar o encadeamento e cobrir constatações determinísticas: prazo,
@@ -229,12 +229,15 @@ O cliente envia somente o draft. O Store recupera os relatórios citados, devolv
 quando recebe novamente uma revisão idêntica e usa CAS para impedir que duas sessões gravem conteúdos
 diferentes na mesma posição. A decisão está registrada na
 [`ADR-009`](../decisoes/ADR-009-preflight-persistente-append-only.md).
+O handoff busca novamente o documento persistido, recusa revisão ultrapassada antes da primeira
+admissão e converge repetições para a mesma tarefa, conforme a
+[`ADR-010`](../decisoes/ADR-010-handoff-ready-por-report-id.md).
 
 ## 10. O que fica para depois
 
 - contrato, ativação, modelo, ferramentas, skills e evals do futuro Agente de Discovery;
 - catálogo confiável de operações e seus efeitos;
 - interface do Omni para apresentar o pacote;
-- criação do Task State após a admissão.
+- retomada automática de Task States interrompidos depois da admissão.
 
 Essas etapas serão discutidas separadamente antes da implementação.

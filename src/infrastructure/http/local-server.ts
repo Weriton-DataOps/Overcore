@@ -44,8 +44,10 @@ export function createLocalServer(manager: TaskManager, worker: TaskWorker, toke
         return
       }
       if (request.method === 'POST' && url.pathname === '/v1/tasks') {
-        const task = await manager.submit(await jsonBody(request))
-        send(response, 202, { taskId: task.taskId, status: task.status, stateRevision: task.stateRevision })
+        send(response, 410, {
+          error: 'direct-admission-retired',
+          message: 'Admita o TaskRequest persistido por POST /v1/preflight/{reportId}/admit.'
+        })
         return
       }
       if (request.method === 'POST' && url.pathname === '/v1/preflight') {
@@ -60,6 +62,17 @@ export function createLocalServer(manager: TaskManager, worker: TaskWorker, toke
         }
         const report = await manager.prepare(body.draft)
         send(response, 200, report)
+        return
+      }
+      const admissionMatch = url.pathname.match(/^\/v1\/preflight\/([A-Za-z0-9._:-]+)\/admit$/)
+      if (request.method === 'POST' && admissionMatch?.[1]) {
+        const task = await manager.admitPrepared(admissionMatch[1])
+        send(response, 202, {
+          reportId: admissionMatch[1],
+          taskId: task.taskId,
+          status: task.status,
+          stateRevision: task.stateRevision
+        })
         return
       }
       const taskMatch = url.pathname.match(/^\/v1\/tasks\/([A-Za-z0-9._:-]+)$/)

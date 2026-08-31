@@ -136,16 +136,16 @@ async function api(path: string, method: 'GET' | 'POST', body?: unknown): Promis
   return result
 }
 
-async function submit(path: string | undefined): Promise<void> {
-  if (!path) throw new Error('Uso: overcore submit <task-request.json>')
-  const document = JSON.parse(await readFile(path, 'utf8')) as unknown
-  process.stdout.write(`${JSON.stringify(await api('/v1/tasks', 'POST', document), null, 2)}\n`)
-}
-
 async function preflight(path: string | undefined): Promise<void> {
   if (!path) throw new Error('Uso: overcore preflight <task-draft.json>')
   const draft = JSON.parse(await readFile(path, 'utf8')) as unknown
   process.stdout.write(`${JSON.stringify(await api('/v1/preflight', 'POST', { draft }), null, 2)}\n`)
+}
+
+async function admit(reportId: string | undefined): Promise<void> {
+  if (!reportId) throw new Error('Uso: overcore admit <report-id>')
+  const encoded = encodeURIComponent(reportId)
+  process.stdout.write(`${JSON.stringify(await api(`/v1/preflight/${encoded}/admit`, 'POST'), null, 2)}\n`)
 }
 
 async function demoPreflight(path: string | undefined): Promise<void> {
@@ -172,14 +172,14 @@ async function main(): Promise<void> {
   if (command === 'migrate') return runMigration()
   if (command === 'demo-inspection') return demoInspection()
   if (command === 'preflight') return preflight(process.argv[3])
+  if (command === 'admit') return admit(process.argv[3])
   if (command === 'demo-preflight') return demoPreflight(process.argv[3])
-  if (command === 'submit') return submit(process.argv[3])
   if (command === 'status') return status(process.argv[3])
   if (command === 'work-once') {
     process.stdout.write(`${JSON.stringify(await api('/v1/work-once', 'POST'), null, 2)}\n`)
     return
   }
-  throw new Error('Uso: overcore <serve|migrate|preflight|submit|status|work-once|demo-preflight|demo-inspection>')
+  throw new Error('Uso: overcore <serve|migrate|preflight|admit|status|work-once|demo-preflight|demo-inspection>')
 }
 
 await main().catch((error: unknown) => {

@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import test from 'node:test'
 
-import { TaskManager } from '../src/application/task-manager.js'
+import { PreflightAdmissionError, TaskManager } from '../src/application/task-manager.js'
 import { TaskWorker } from '../src/application/task-worker.js'
 import { permittingDecision } from '../src/application/authorization.js'
 import { ContractValidator } from '../src/contracts/validator.js'
@@ -56,6 +56,22 @@ test('a mesma chave idempotente devolve a tarefa existente sem duplicar execuç�
   const first = await manager.submit(request)
   const second = await manager.submit(structuredClone(request))
   assert.equal(second.taskId, first.taskId)
+  assert.equal(store.tasks.size, 1)
+  assert.equal(store.outbox.size, 1)
+})
+
+test('a mesma chave idempotente com outro TaskRequest é conflito, não repetição', async () => {
+  const validator: ContractValidator = await ContractValidator.create(root)
+  const store = new InMemoryTaskStore()
+  const manager = new TaskManager(store, validator, new PermittingAuthorityProvider())
+  const request = await requestFixture()
+  await manager.submit(request)
+  const conflicting = structuredClone(request)
+  conflicting.objective = 'Outra intenção tentou reutilizar a mesma chave de execução.'
+  await assert.rejects(
+    manager.submit(conflicting),
+    (error: unknown) => error instanceof PreflightAdmissionError && error.code === 'preflight-execution-conflict'
+  )
   assert.equal(store.tasks.size, 1)
   assert.equal(store.outbox.size, 1)
 })

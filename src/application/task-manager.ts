@@ -14,6 +14,29 @@ export interface Clock {
 
 export const systemClock: Clock = { now: () => new Date() }
 
+export type PreflightAdmissionErrorCode =
+  | 'preflight-report-not-found'
+  | 'preflight-report-integrity-failed'
+  | 'preflight-report-not-ready'
+  | 'preflight-report-stale'
+  | 'preflight-execution-conflict'
+
+export class PreflightAdmissionError extends Error {
+  constructor(readonly code: PreflightAdmissionErrorCode, message: string) {
+    super(message)
+    this.name = 'PreflightAdmissionError'
+  }
+}
+
+function assertSameExecutionIntent(existing: StoredTask, request: TaskRequest): void {
+  if (canonicalJson(existing.request) !== canonicalJson(request)) {
+    throw new PreflightAdmissionError(
+      'preflight-execution-conflict',
+      `A chave de execução ${request.idempotencyKey} já pertence à tarefa ${existing.taskId} com outro TaskRequest.`
+    )
+  }
+}
+
 function event(taskId: string, revision: number, kind: string, occurredAt: string, payload: JsonObject = {}) {
   return {
     eventId: stableId('event', `${taskId}:${revision}:${kind}`),
@@ -104,11 +127,57 @@ export class TaskManager {
     return this.preflight.run(document)
   }
 
+  async admitPrepared(reportId: string): Promise<StoredTask> {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/.test(reportId)) {
+      throw new PreflightAdmissionError('preflight-report-not-found', 'Identidade de relatório inválida.')
+    }
+    const report = await this.store.findPreflightReport(reportId)
+    if (!report) {
+      throw new PreflightAdmissionError(
+        'preflight-report-not-found',
+        `Relatório de Preflight ${reportId} não foi encontrado.`
+      )
+    }
+    const stored = await this.store.findPreflightRevision(report.draftId, report.draftRevision)
+    if (!stored || stored.reportId !== reportId || canonicalJson(stored.report) !== canonicalJson(report)) {
+      throw new PreflightAdmissionError(
+        'preflight-report-integrity-failed',
+        `Relatório ${reportId} não corresponde à revisão persistida do Preflight.`
+      )
+    }
+    this.validator.preflightReport(stored.draft, stored.report)
+    if (stored.report.status !== 'ready' || !stored.report.preparedRequest) {
+      throw new PreflightAdmissionError(
+        'preflight-report-not-ready',
+        `Relatório ${reportId} está em ${stored.report.status} e não pode ser admitido.`
+      )
+    }
+
+    const request = stored.report.preparedRequest
+    const existing = await this.store.findByIdempotencyKey(request.idempotencyKey)
+    if (existing) {
+      assertSameExecutionIntent(existing, request)
+      return existing
+    }
+
+    const latest = await this.store.findLatestPreflightByIdempotencyKey(stored.idempotencyKey)
+    if (!latest || latest.reportId !== reportId) {
+      throw new PreflightAdmissionError(
+        'preflight-report-stale',
+        `Relatório ${reportId} não é mais a revisão corrente do Preflight.`
+      )
+    }
+    return this.submit(request)
+  }
+
   async submit(document: unknown): Promise<StoredTask> {
     this.validator.taskRequest(document)
     const request = document
     const duplicate = await this.store.findByIdempotencyKey(request.idempotencyKey)
-    if (duplicate) return duplicate
+    if (duplicate) {
+      assertSameExecutionIntent(duplicate, request)
+      return duplicate
+    }
 
     const now = this.clock.now().toISOString()
     const taskId = stableId('task', request.idempotencyKey)
@@ -129,11 +198,17 @@ export class TaskManager {
       updatedAt: now
     }
     try {
-      task = await this.store.create(task, event(taskId, 1, 'task-accepted', now, { requestId: request.requestId }))
+      task = await this.store.create(task, event(taskId, 1, 'task-accepted', now, {
+        requestId: request.requestId,
+        preflightReportId: String(request.preflight.readinessReportId)
+      }))
     } catch (error) {
       if (error instanceof DuplicateTaskError) {
         const existing = await this.store.findById(error.existingTaskId)
-        if (existing) return existing
+        if (existing) {
+          assertSameExecutionIntent(existing, request)
+          return existing
+        }
       }
       throw error
     }

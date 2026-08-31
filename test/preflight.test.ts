@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import test from 'node:test'
 
 import { BaselineDiscovery } from '../src/application/baseline-discovery.js'
+import { PreflightAdmissionError, TaskManager } from '../src/application/task-manager.js'
 import { TaskPreflight, type PreflightClock } from '../src/application/task-preflight.js'
 import { ContractValidationError, ContractValidator } from '../src/contracts/validator.js'
 import { PreflightDomainError } from '../src/contracts/preflight-domain-validator.js'
@@ -12,6 +14,7 @@ import type { JsonObject, TaskDraft, TaskReadinessReport } from '../src/domain/t
 import type { DiscoveryPort } from '../src/ports/discovery.js'
 import { ConcurrentPreflightUpdateError } from '../src/ports/preflight-store.js'
 import { InMemoryTaskStore } from '../src/testing/in-memory-task-store.js'
+import { PermittingAuthorityProvider } from '../src/testing/permitting-authority-provider.js'
 
 const root = process.cwd()
 
@@ -22,6 +25,21 @@ class FixedClock implements PreflightClock {
 
 async function fixture<T>(name: string): Promise<T> {
   return JSON.parse(await readFile(join(root, 'contratos', 'exemplos', name), 'utf8')) as T
+}
+
+async function readyFirstRevision(suffix: string): Promise<TaskDraft> {
+  const draft = await fixture<TaskDraft>('task-draft-incompleto.json')
+  draft.draftId = `draft-ready-${suffix}`
+  draft.idempotencyKey = `prepare-ready-${suffix}`
+  draft.executionIdempotencyKey = `execute-ready-${suffix}`
+  draft.correlationId = `corr-ready-${suffix}`
+  draft.context.summary = 'O escopo foi definido antes da primeira revisão.'
+  draft.context.assumptions = []
+  const workspace = draft.context.references.find((item) => item.refId === 'ref-contract-docs-directory')
+  if (!workspace) throw new Error('Fixture sem a referência de workspace esperada.')
+  workspace.kind = 'repository'
+  workspace.uri = pathToFileURL(root).href
+  return draft
 }
 
 function resolvedRevision(draft: TaskDraft, report: TaskReadinessReport): TaskDraft {
@@ -122,6 +140,82 @@ test('nova instância recupera o relatório persistido e produz TaskRequest cong
   assert.equal(report.requestDerivations?.length, 9)
   assert.equal(store.preflightRevisions.size, 2)
   validator.preflightReport(resolved, report)
+})
+
+test('relatório ready é admitido uma única vez mesmo com duas chamadas concorrentes', async () => {
+  const validator: ContractValidator = await ContractValidator.create(root)
+  const store = new InMemoryTaskStore()
+  const clock = new FixedClock('2026-08-30T15:02:00Z')
+  const authority = new PermittingAuthorityProvider(() => clock.now())
+  const firstManager = new TaskManager(store, validator, authority, clock)
+  const report = await firstManager.prepare(await readyFirstRevision('concurrent-admission'))
+  assert.equal(report.status, 'ready')
+
+  const secondManager = new TaskManager(store, validator, authority, clock)
+  const admitted = await Promise.all([
+    firstManager.admitPrepared(report.reportId),
+    secondManager.admitPrepared(report.reportId)
+  ])
+  assert.equal(admitted[0].taskId, admitted[1].taskId)
+  assert.equal(store.tasks.size, 1)
+  assert.equal(store.outbox.size, 1)
+  const persisted = await firstManager.get(admitted[0].taskId)
+  assert.equal(persisted?.status, 'running')
+  assert.equal(persisted?.request.preflight.readinessReportId, report.reportId)
+})
+
+test('relatório incompleto não atravessa a fronteira de admissão', async () => {
+  const validator: ContractValidator = await ContractValidator.create(root)
+  const store = new InMemoryTaskStore()
+  const clock = new FixedClock('2026-08-30T15:02:00Z')
+  const manager = new TaskManager(
+    store,
+    validator,
+    new PermittingAuthorityProvider(() => clock.now()),
+    clock
+  )
+  const report = await manager.prepare(await fixture<TaskDraft>('task-draft-incompleto.json'))
+  await assert.rejects(
+    manager.admitPrepared(report.reportId),
+    (error: unknown) => error instanceof PreflightAdmissionError && error.code === 'preflight-report-not-ready'
+  )
+  assert.equal(store.tasks.size, 0)
+  assert.equal(store.outbox.size, 0)
+})
+
+test('relatório ready ultrapassado não cria tarefa, mas repetição já admitida continua idempotente', async () => {
+  const validator: ContractValidator = await ContractValidator.create(root)
+  const store = new InMemoryTaskStore()
+  const clock = new FixedClock('2026-08-30T15:02:00Z')
+  const manager = new TaskManager(
+    store,
+    validator,
+    new PermittingAuthorityProvider(() => clock.now()),
+    clock
+  )
+  const firstDraft = await readyFirstRevision('stale-admission')
+  const firstReport = await manager.prepare(firstDraft)
+  const secondDraft = structuredClone(firstDraft)
+  secondDraft.revision = 2
+  secondDraft.createdAt = '2026-08-30T15:03:00Z'
+  secondDraft.context.summary = 'Uma revisão mais nova refinou o contexto antes da admissão.'
+  const secondReport = await manager.prepare(secondDraft)
+  await assert.rejects(
+    manager.admitPrepared(firstReport.reportId),
+    (error: unknown) => error instanceof PreflightAdmissionError && error.code === 'preflight-report-stale'
+  )
+  const admitted = await manager.admitPrepared(secondReport.reportId)
+  const repeatedLatest = await manager.admitPrepared(secondReport.reportId)
+  assert.equal(repeatedLatest.taskId, admitted.taskId)
+
+  const thirdDraft = structuredClone(secondDraft)
+  thirdDraft.revision = 3
+  thirdDraft.createdAt = '2026-08-30T15:04:00Z'
+  thirdDraft.context.summary = 'Uma revisão posterior não invalida a repetição da admissão já concluída.'
+  await manager.prepare(thirdDraft)
+  const repeatedOldAdmission = await manager.admitPrepared(secondReport.reportId)
+  assert.equal(repeatedOldAdmission.taskId, admitted.taskId)
+  assert.equal(store.tasks.size, 1)
 })
 
 test('resposta não é aceita sem a revisão e o relatório persistidos', async () => {

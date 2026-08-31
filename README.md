@@ -40,6 +40,8 @@ e a porta neutra de Discovery já estão ligados. A implementação atual de Dis
 somente de leitura; ela não é o futuro Agente de Discovery. Drafts e relatórios ficam persistidos no
 PostgreSQL em revisões imutáveis, de acordo com a
 [`ADR-009`](docs/decisoes/ADR-009-preflight-persistente-append-only.md).
+O handoff explícito por `reportId`, sem transportar novamente o request, está registrado na
+[`ADR-010`](docs/decisoes/ADR-010-handoff-ready-por-report-id.md).
 
 O OverCore não conduz conversa para descobrir a intenção do usuário. Antes da execução, lacunas
 previsíveis voltam como `TaskReadinessReport decisions-required`; o chamador decide como obter as
@@ -138,6 +140,10 @@ A posição e a autenticação do motor estão na
 - `TaskDraft → Preflight → TaskReadinessReport`, com os sete checks, decisões agrupadas e emissão de
   `TaskRequest` somente quando todos passam;
 - endpoint local `POST /v1/preflight` sem criar tarefa, plano, tentativa ou mensagem de outbox;
+- admissão explícita por `POST /v1/preflight/{reportId}/admit`, recuperando e revalidando o
+  `TaskRequest` congelado sem permitir edição no caminho;
+- concorrência de admissão convergindo para uma única tarefa e uma única mensagem de outbox;
+- rejeição de relatório não pronto, ultrapassado ou de chave reaproveitada com outro request;
 - persistência append-only de drafts e relatórios, recuperação automática entre instâncias,
   idempotência e CAS entre revisões concorrentes;
 - rejeição das 14 mutações adversariais declaradas para o domínio do Preflight;
@@ -154,7 +160,7 @@ Ele também usa o executor determinístico: nenhuma resposta Claude é consumida
 - o gate ponta a ponta passou em 2026-08-31 como `GR\wp.santos`, sem privilégio administrativo:
   PostgreSQL, Authority Provider real do Omni, Claude Max por login, verificação determinística,
   `TaskResult` e limpeza final funcionaram na mesma tarefa;
-- o Preflight executável de `TaskDraft` é o próximo bloco.
+- o Preflight persistente e seu handoff para o Task State passaram nos gates local e PostgreSQL real.
 
 ## Regra de crescimento
 
@@ -174,11 +180,11 @@ implementação.
 
 ## Próximo passo
 
-O Preflight executável e persistente está fechado. O próximo desenho a discutir é o handoff
-idempotente do relatório `ready` para a admissão: definir quando e por qual comando o `TaskRequest`
-congelado deixa o prontuário de preparação e nasce como tarefa no `Task State`, sem dupla admissão.
-Isso não muda a separação: Discovery compreende e comprova; Preflight prepara; admissão e execução
-acontecem somente depois.
+O Preflight executável, persistente e o handoff idempotente estão fechados. O próximo desenho é a
+retomada/reconciliação do Task Manager: se o processo cair depois de criar `accepted`, durante
+`planning` ou antes do dispatch, uma nova instância deve calcular e executar a próxima transição
+admissível sem duplicar plano, autorização ou efeito. O Task State já guarda a verdade; falta ligar o
+motor que continua a partir dela.
 
 O futuro Agente de Discovery continua reservado pela
 [`ADR-008`](docs/decisoes/ADR-008-discovery-adaptativa-no-preflight.md). Agentes, skills, modelos, Graph
@@ -192,8 +198,11 @@ Com o servidor ativo, o cliente usa a persistência real por:
 
 ```powershell
 node dist/main.js preflight contratos/exemplos/task-draft-incompleto.json
+node dist/main.js admit <report-id-ready>
 ```
 
-Pela API local, envie somente `{ "draft": ... }` para `POST /v1/preflight`. O Overcore encontra os
-relatórios anteriores no PostgreSQL. `npm run demo:preflight` continua disponível como demonstração
-isolada em memória e não comprova persistência.
+Pela API local, envie somente `{ "draft": ... }` para `POST /v1/preflight`. Quando o resultado for
+`ready`, envie somente o identificador para `POST /v1/preflight/{reportId}/admit`. O Overcore encontra
+o histórico e o request congelado no PostgreSQL. A antiga admissão direta por `POST /v1/tasks` foi
+aposentada. `npm run demo:preflight` continua disponível como demonstração isolada em memória e não
+comprova persistência.

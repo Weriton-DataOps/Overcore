@@ -28,6 +28,7 @@ Preflight -> TaskReadinessReport ready
         v
 TaskRequest v1
         |
+        +--> admissão pública recebe somente readinessReportId
         +--> validação estrutural
         +--> validação de referências
         +--> validação de autoridade

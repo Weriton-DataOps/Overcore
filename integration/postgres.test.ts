@@ -57,6 +57,10 @@ test('PostgreSQL real persiste, rejeita CAS obsoleto e distribui duas tarefas en
     draft.createdAt = now.toISOString()
     draft.availableExecutionAuthority.expiresAt = new Date(now.getTime() + 3_600_000).toISOString()
     draft.discoveryAuthority.expiresAt = new Date(now.getTime() + 3_600_000).toISOString()
+    const workspace = draft.context.references.find((item) => item.refId === 'ref-contract-docs-directory')
+    if (!workspace) throw new Error('Fixture sem a referência de workspace esperada.')
+    workspace.kind = 'repository'
+    workspace.uri = pathToFileURL(root).href
     preflightDraftId = draft.draftId
 
     const firstReport = await manager.prepare(draft)
@@ -94,6 +98,28 @@ test('PostgreSQL real persiste, rejeita CAS obsoleto e distribui duas tarefas en
     assert.equal(readyReport.status, 'ready')
     assert.equal(readyReport.appliedDecisionAnswers.length, 1)
     assert.equal(readyReport.preparedRequest?.idempotencyKey, draft.executionIdempotencyKey)
+
+    const concurrentAdmissions = await Promise.all([
+      restartedManager.admitPrepared(readyReport.reportId),
+      new TaskManager(
+        new PostgresTaskStore(pool),
+        validator,
+        new PermittingAuthorityProvider()
+      ).admitPrepared(readyReport.reportId)
+    ])
+    assert.equal(concurrentAdmissions[0].taskId, concurrentAdmissions[1].taskId)
+    const preflightTaskId = concurrentAdmissions[0].taskId
+    taskIds.push(preflightTaskId)
+    const admissionRows = await pool.query<{ count: string }>(
+      'SELECT count(*) FROM overcore_tasks WHERE idempotency_key=$1',
+      [draft.executionIdempotencyKey]
+    )
+    assert.equal(admissionRows.rows[0]?.count, '1')
+    const admissionOutboxRows = await pool.query<{ count: string }>(
+      'SELECT count(*) FROM overcore_task_outbox WHERE task_id=$1 AND processed_at IS NULL',
+      [preflightTaskId]
+    )
+    assert.equal(admissionOutboxRows.rows[0]?.count, '1')
 
     const left = structuredClone(resolvedDraft)
     left.revision = 3
@@ -133,6 +159,17 @@ test('PostgreSQL real persiste, rejeita CAS obsoleto e distribui duas tarefas en
       ),
       /append-only/
     )
+    const repeatedAdmission = await restartedManager.admitPrepared(readyReport.reportId)
+    assert.equal(repeatedAdmission.taskId, preflightTaskId)
+    const admissionWorker = new TaskWorker(
+      'worker-postgres-preflight-admission',
+      store,
+      validator,
+      new ReadOnlyContractInspectionExecutor()
+    )
+    const completedAdmission = await admissionWorker.runOnce()
+    assert.equal(completedAdmission?.taskId, preflightTaskId)
+    assert.equal(completedAdmission?.status, 'succeeded')
 
     const fixtureTemplate = JSON.parse(
       await readFile(join(root, 'contratos', 'exemplos', 'task-request-inspecao-executavel.json'), 'utf8')
@@ -189,10 +226,18 @@ test('PostgreSQL real persiste, rejeita CAS obsoleto e distribui duas tarefas en
       'SELECT task_id, processed_at FROM overcore_task_outbox WHERE task_id = ANY($1::text[])',
       [taskIds]
     )
-    assert.equal(outbox.rows.length, 2)
+    assert.equal(outbox.rows.length, 3)
     assert.ok(outbox.rows.every((row) => row.processed_at instanceof Date))
   } finally {
     if (preflightDraftId) {
+      const admittedFromPreflight = await pool.query<{ task_id: string }>(
+        `SELECT task_id FROM overcore_tasks
+         WHERE request_document -> 'preflight' ->> 'draftId' = $1`,
+        [preflightDraftId]
+      )
+      for (const row of admittedFromPreflight.rows) {
+        if (!taskIds.includes(row.task_id)) taskIds.push(row.task_id)
+      }
       await pool.query('DELETE FROM overcore_preflight_streams WHERE draft_id=$1', [preflightDraftId])
     }
     if (taskIds.length > 0) {

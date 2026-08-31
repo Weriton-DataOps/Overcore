@@ -12,7 +12,7 @@ import { TaskPreflight } from '../src/application/task-preflight.js'
 import { TaskManager } from '../src/application/task-manager.js'
 import { TaskWorker } from '../src/application/task-worker.js'
 import { ContractValidator } from '../src/contracts/validator.js'
-import type { JsonObject, TaskRequest } from '../src/domain/types.js'
+import type { JsonObject, TaskDraft, TaskRequest } from '../src/domain/types.js'
 import { HttpAuthorityProvider } from '../src/infrastructure/authority/http-authority-provider.js'
 import { createLocalServer } from '../src/infrastructure/http/local-server.js'
 import { InMemoryTaskStore } from '../src/testing/in-memory-task-store.js'
@@ -68,7 +68,7 @@ test('adaptador recusa endpoint que não seja loopback local', () => {
   )
 })
 
-test('porta local autentica, admite tarefa e aciona um ciclo de trabalho', async () => {
+test('porta local autentica e recusa a antiga admissão direta de TaskRequest', async () => {
   const token = 'token-api-local-de-teste'
   const validator = await ContractValidator.create(root)
   const store = new InMemoryTaskStore()
@@ -103,18 +103,11 @@ test('porta local autentica, admite tarefa e aciona um ciclo de trabalho', async
       },
       body: JSON.stringify(request)
     })
-    assert.equal(admitted.status, 202)
-    const admittedBody = await admitted.json() as { taskId: string; status: string }
-    assert.equal(admittedBody.status, 'running')
-
-    const worked = await fetch(`${baseUrl}/v1/work-once`, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${token}` }
-    })
-    assert.equal(worked.status, 200)
-    const workedBody = await worked.json() as { taskId: string; status: string }
-    assert.equal(workedBody.taskId, admittedBody.taskId)
-    assert.equal(workedBody.status, 'succeeded')
+    assert.equal(admitted.status, 410)
+    const admittedBody = await admitted.json() as { error: string }
+    assert.equal(admittedBody.error, 'direct-admission-retired')
+    assert.equal(store.tasks.size, 0)
+    assert.equal(store.outbox.size, 0)
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()))
   }
@@ -151,9 +144,89 @@ test('porta local executa Preflight sem admitir nem agendar a tarefa', async () 
     const report = await response.json() as { status: string; preparedRequest?: unknown }
     assert.equal(report.status, 'decisions-required')
     assert.equal(report.preparedRequest, undefined)
+    const rejectedAdmission = await fetch(
+      `http://127.0.0.1:${address.port}/v1/preflight/${encodeURIComponent(String((report as JsonObject).reportId))}/admit`,
+      { method: 'POST', headers: { authorization: `Bearer ${token}` } }
+    )
+    assert.equal(rejectedAdmission.status, 400)
     assert.equal(store.tasks.size, 0)
     assert.equal(store.outbox.size, 0)
     assert.equal(store.preflightRevisions.size, 1)
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()))
+  }
+})
+
+test('porta local admite o request congelado pelo reportId sem dupla tarefa', async () => {
+  const token = 'token-api-admission-local'
+  const validator: ContractValidator = await ContractValidator.create(root)
+  const store = new InMemoryTaskStore()
+  const clock = { now: () => new Date('2026-08-30T15:02:00Z') }
+  const manager = new TaskManager(
+    store,
+    validator,
+    new PermittingAuthorityProvider(() => clock.now()),
+    clock
+  )
+  const worker = new TaskWorker(
+    'worker-http-admission',
+    store,
+    validator,
+    new ReadOnlyContractInspectionExecutor()
+  )
+  const server = createLocalServer(manager, worker, token)
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  try {
+    const address = server.address()
+    assert.ok(address && typeof address !== 'string')
+    const baseUrl = `http://127.0.0.1:${address.port}`
+    const draft = JSON.parse(
+      await readFile(join(root, 'contratos', 'exemplos', 'task-draft-incompleto.json'), 'utf8')
+    ) as TaskDraft
+    draft.draftId = 'draft-http-ready-admission'
+    draft.idempotencyKey = 'prepare-http-ready-admission'
+    draft.executionIdempotencyKey = 'execute-http-ready-admission'
+    draft.correlationId = 'corr-http-ready-admission'
+    draft.context.summary = 'O escopo foi resolvido antes do Preflight HTTP.'
+    draft.context.assumptions = []
+    const workspace = draft.context.references.find((item) => item.refId === 'ref-contract-docs-directory')
+    assert.ok(workspace)
+    workspace.kind = 'repository'
+    workspace.uri = pathToFileURL(root).href
+    const prepared = await fetch(`${baseUrl}/v1/preflight`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({ draft })
+    })
+    assert.equal(prepared.status, 200)
+    const report = await prepared.json() as { reportId: string; status: string }
+    assert.equal(report.status, 'ready')
+
+    const responses = await Promise.all([
+      fetch(`${baseUrl}/v1/preflight/${encodeURIComponent(report.reportId)}/admit`, {
+        method: 'POST', headers: { authorization: `Bearer ${token}` }
+      }),
+      fetch(`${baseUrl}/v1/preflight/${encodeURIComponent(report.reportId)}/admit`, {
+        method: 'POST', headers: { authorization: `Bearer ${token}` }
+      })
+    ])
+    assert.deepEqual(responses.map((item) => item.status), [202, 202])
+    const admitted = await Promise.all(responses.map(async (item) => item.json() as Promise<{ taskId: string }>))
+    const [firstAdmission, secondAdmission] = admitted
+    assert.ok(firstAdmission && secondAdmission)
+    assert.equal(firstAdmission.taskId, secondAdmission.taskId)
+    assert.equal(store.tasks.size, 1)
+    assert.equal(store.outbox.size, 1)
+    const worked = await fetch(`${baseUrl}/v1/work-once`, {
+      method: 'POST', headers: { authorization: `Bearer ${token}` }
+    })
+    assert.equal(worked.status, 200)
+    const workedBody = await worked.json() as { taskId: string; status: string }
+    assert.equal(workedBody.taskId, firstAdmission.taskId)
+    assert.equal(workedBody.status, 'succeeded')
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()))
   }

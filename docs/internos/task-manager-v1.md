@@ -93,7 +93,7 @@ Saídas possíveis:
 | --- | --- |
 | `decisions-required` | Devolver um único relatório agrupado ao Omni. |
 | `not-feasible` | Devolver a inviabilidade sem criar tarefa. |
-| `ready` | Persistir e devolver o `preparedRequest` congelado; o cliente o admite explicitamente pela porta de tarefas. |
+| `ready` | Persistir e devolver o `preparedRequest` congelado; o cliente admite explicitamente seu `reportId`. |
 
 Quando a compreensão do pedido exigir investigação adicional, o Preflight usa uma porta neutra de
 Discovery. A profundidade pode variar de um ajuste pequeno a um sistema amplo. O futuro Agente de
@@ -103,7 +103,9 @@ ganha autoridade de execução.
 Na implementação atual, `POST /v1/preflight` recebe somente `{ draft }`. O Preflight Store encontra
 os relatórios anteriores, preserva respostas herdadas e exige que decisões pendentes sejam
 respondidas na revisão seguinte. O relatório `ready` não é executado silenciosamente: ele contém o
-request congelado, que atravessa a admissão existente em uma chamada explícita.
+request congelado, e `POST /v1/preflight/{reportId}/admit` recupera esse mesmo documento do Store.
+O cliente não reenvia nem edita o request. A antiga admissão HTTP direta foi aposentada; a decisão e
+as regras de repetição estão na ADR-010.
 `decisions-required` e `not-feasible` persistem o prontuário, mas deixam tarefas e outbox intocadas.
 
 ### 3. Admitir o TaskRequest
