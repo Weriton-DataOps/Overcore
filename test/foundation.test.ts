@@ -415,6 +415,14 @@ test('migração de recovery torna backoff persistente e observável fora do Tas
   assert.doesNotMatch(sql, /ADD VALUE|CREATE TYPE/i)
 })
 
+test('migration de execução persiste recibo idempotente antes da verificação', async () => {
+  const sql = await readFile(join(root, 'migrations', '005_execution_receipts.sql'), 'utf8')
+  assert.match(sql, /overcore_task_execution_receipts/i)
+  assert.match(sql, /outbox_id text NOT NULL UNIQUE/i)
+  assert.match(sql, /payload_fingerprint/i)
+  assert.match(sql, /execution_epoch/i)
+})
+
 test('fixture da primeira tarefa continua válida no contrato público', async () => {
   const validator: ContractValidator = await ContractValidator.create(root)
   const request: unknown = await requestFixture()

@@ -5,6 +5,7 @@ import type { PoolClient } from 'pg'
 import type {
   CasMutation,
   ClaimedMessage,
+  ExecutionReceipt,
   JsonObject,
   StoredTask,
   TaskDraft,
@@ -55,6 +56,16 @@ interface OutboxRow {
   attempts: number
   claim_token: string
   locked_until: Date
+}
+
+interface ExecutionReceiptRow {
+  receipt_id: string
+  outbox_id: string
+  task_id: string
+  execution_epoch: number
+  payload: JsonObject
+  payload_fingerprint: string
+  recorded_at: Date
 }
 
 interface PreflightRevisionRow {
@@ -571,6 +582,109 @@ export class PostgresTaskStore implements TaskStore {
       claimToken: row.claim_token,
       lockedUntil: row.locked_until.toISOString()
     }
+  }
+
+  async findExecutionReceipt(outboxId: string): Promise<ExecutionReceipt | null> {
+    const result = await this.pool.query<ExecutionReceiptRow>(
+      `SELECT receipt_id, outbox_id, task_id, execution_epoch, payload,
+              payload_fingerprint, recorded_at
+       FROM overcore_task_execution_receipts
+       WHERE outbox_id=$1`,
+      [outboxId]
+    )
+    const row = result.rows[0]
+    if (!row) return null
+    return {
+      receiptId: row.receipt_id,
+      outboxId: row.outbox_id,
+      taskId: row.task_id,
+      executionEpoch: row.execution_epoch,
+      payload: row.payload,
+      payloadFingerprint: {
+        algorithm: 'sha256-jcs-v1',
+        value: row.payload_fingerprint as `sha256:${string}`
+      },
+      recordedAt: row.recorded_at.toISOString()
+    }
+  }
+
+  async saveExecutionReceipt(
+    receipt: ExecutionReceipt,
+    claimToken: string,
+    now = new Date()
+  ): Promise<ExecutionReceipt> {
+    const client = await this.pool.connect()
+    try {
+      await client.query('BEGIN')
+      const lease = await client.query(
+        `SELECT 1 FROM overcore_task_outbox
+         WHERE outbox_id=$1 AND claim_token=$2 AND processed_at IS NULL AND locked_until > $3
+         FOR UPDATE`,
+        [receipt.outboxId, claimToken, now.toISOString()]
+      )
+      if (lease.rowCount !== 1) throw new Error('Lease da outbox nao permite persistir o recibo de execucao.')
+      await client.query(
+        `INSERT INTO overcore_task_execution_receipts
+          (receipt_id, outbox_id, task_id, execution_epoch, payload, payload_fingerprint, recorded_at)
+         VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7)
+         ON CONFLICT (outbox_id) DO NOTHING`,
+        [
+          receipt.receiptId,
+          receipt.outboxId,
+          receipt.taskId,
+          receipt.executionEpoch,
+          JSON.stringify(receipt.payload),
+          receipt.payloadFingerprint.value,
+          receipt.recordedAt
+        ]
+      )
+      const result = await client.query<ExecutionReceiptRow>(
+        `SELECT receipt_id, outbox_id, task_id, execution_epoch, payload,
+                payload_fingerprint, recorded_at
+         FROM overcore_task_execution_receipts
+         WHERE outbox_id=$1`,
+        [receipt.outboxId]
+      )
+      const row = result.rows[0]
+      if (!row) throw new Error(`Recibo da outbox ${receipt.outboxId} nao foi persistido.`)
+      if (row.payload_fingerprint !== receipt.payloadFingerprint.value) {
+        throw new Error(`Recibo da outbox ${receipt.outboxId} possui outro conteudo.`)
+      }
+      await client.query('COMMIT')
+      return {
+        receiptId: row.receipt_id,
+        outboxId: row.outbox_id,
+        taskId: row.task_id,
+        executionEpoch: row.execution_epoch,
+        payload: row.payload,
+        payloadFingerprint: {
+          algorithm: 'sha256-jcs-v1',
+          value: row.payload_fingerprint as `sha256:${string}`
+        },
+        recordedAt: row.recorded_at.toISOString()
+      }
+    } catch (error) {
+      await client.query('ROLLBACK')
+      throw error
+    } finally {
+      client.release()
+    }
+  }
+
+  async extendOutboxLease(
+    outboxId: string,
+    claimToken: string,
+    leaseMs: number,
+    now = new Date()
+  ): Promise<void> {
+    const lockedUntil = new Date(now.getTime() + leaseMs)
+    const result = await this.pool.query(
+      `UPDATE overcore_task_outbox
+       SET locked_until=$4, updated_at=clock_timestamp()
+       WHERE outbox_id=$1 AND claim_token=$2 AND processed_at IS NULL AND locked_until > $3`,
+      [outboxId, claimToken, now.toISOString(), lockedUntil.toISOString()]
+    )
+    if (result.rowCount !== 1) throw new Error('Lease da outbox nao pode ser renovado.')
   }
 
   async completeOutbox(outboxId: string, claimToken: string): Promise<void> {

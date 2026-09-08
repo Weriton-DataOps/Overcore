@@ -358,3 +358,18 @@ Estas escolhas alteram materialmente a implementação e serão discutidas com o
 - empacotamento e comando de execução.
 
 Agentes, skills, modelos, Registry, Graph Engine e routing continuam fora desta etapa.
+
+## Recovery executável da primeira tarefa
+
+A implementação somente leitura agora diferencia:
+
+- **reentrega**: o mesmo worker lógico tenta consumir novamente a mesma outbox após erro transitório;
+- **retomada**: um recibo já persistido permite continuar de `running/verifying` sem executar de novo;
+- **retry**: a estratégia anterior é encerrada e nasce plano revisado, nova autorização, novo
+  `executionEpoch` e nova tentativa;
+- **falha terminal**: o orçamento acabou ou a causa não é recuperável, então sai um `TaskResult`
+  verificável e a outbox é concluída.
+
+O lease é renovado por heartbeat enquanto o executor está ativo. O desenho detalhado, as provas e o
+limite para futuras mutações estão na
+[`ADR-013`](../decisoes/ADR-013-recovery-durante-execucao-readonly-v1.md).

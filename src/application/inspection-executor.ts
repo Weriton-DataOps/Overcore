@@ -5,7 +5,20 @@ import { fileURLToPath } from 'node:url'
 import { sha256 } from '../domain/fingerprint.js'
 import type { InspectionEvidence, JsonObject } from '../domain/types.js'
 import type { AgentRuntimePort } from '../ports/agent-runtime.js'
-import type { InspectionExecutor } from '../ports/task-store.js'
+import { ExecutionFailure, type InspectionExecutor } from '../ports/task-store.js'
+
+function runtimeFailure(error: unknown): ExecutionFailure {
+  if (error instanceof ExecutionFailure) return error
+  const name = error instanceof Error ? error.name : 'Error'
+  const message = error instanceof Error ? error.message : String(error)
+  if (name === 'AnthropicLoginRequiredError') {
+    return new ExecutionFailure('agent-runtime-login-required', 'external', false, message)
+  }
+  if (/abort|timeout|tempo .*esgotado|rate.limit|overload|ECONN|network|socket/i.test(`${name}:${message}`)) {
+    return new ExecutionFailure('agent-runtime-transient', 'transient', true, message, 5_000)
+  }
+  return new ExecutionFailure('agent-runtime-interrupted', 'internal', true, message, 5_000)
+}
 
 export class ReadOnlyContractInspectionExecutor implements InspectionExecutor {
   async execute(input: Parameters<InspectionExecutor['execute']>[0]): Promise<JsonObject> {
@@ -45,11 +58,17 @@ export class AgentAssistedContractInspectionExecutor implements InspectionExecut
 
   async execute(input: Parameters<InspectionExecutor['execute']>[0]): Promise<JsonObject> {
     const root = fileURLToPath(input.repositoryUri)
-    const result = await this.runtime.run({
+    const prevalidated = input.strategyRevision > 1
+      ? await this.deterministic.execute(input) as unknown as InspectionEvidence
+      : undefined
+    let result
+    try {
+      result = await this.runtime.run({
       runId: input.runId,
       cwd: root,
       objective: [
         input.objective,
+        `Esta e a estrategia ${input.strategyRevision}; em retry, confirme o snapshot prevalidado antes da analise.`,
         'Inspecione somente os arquivos *.schema.json da pasta contratos.',
         'Não modifique arquivos. Devolva um relatório curto com os arquivos encontrados e qualquer divergência.'
       ].join('\n'),
@@ -59,12 +78,16 @@ export class AgentAssistedContractInspectionExecutor implements InspectionExecut
         'Use somente Read, Glob e Grep. Não proponha nem execute alterações.'
       ].join('\n'),
       tools: ['Read', 'Glob', 'Grep'],
-      maxTurns: 6,
+      maxTurns: Math.min(5 + input.strategyRevision, 20),
       timeoutMs: input.timeoutMs,
       authorization: input.authorization,
       ...(input.maxCostUsd === undefined ? {} : { maxCostUsd: input.maxCostUsd })
-    })
-    const inspection = await this.deterministic.execute(input) as unknown as InspectionEvidence
+      })
+    } catch (error) {
+      throw runtimeFailure(error)
+    }
+    const inspection = prevalidated
+      ?? await this.deterministic.execute(input) as unknown as InspectionEvidence
     inspection.agentRuntime = {
       engine: result.engine,
       sdkVersion: result.sdkVersion,

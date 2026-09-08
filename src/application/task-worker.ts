@@ -1,8 +1,8 @@
 import { fingerprint, sha256, stableId } from '../domain/fingerprint.js'
-import type { InspectionEvidence, JsonObject, StoredTask } from '../domain/types.js'
-import type { InspectionExecutor, TaskStore } from '../ports/task-store.js'
+import type { ClaimedMessage, ExecutionReceipt, InspectionEvidence, JsonObject, StoredTask } from '../domain/types.js'
+import { ExecutionFailure, type InspectionExecutor, type TaskStore } from '../ports/task-store.js'
 import { ContractValidator } from '../contracts/validator.js'
-import { beginVerification, succeed } from './state-builder.js'
+import { beginVerification, failTask, scheduleRetry, succeed } from './state-builder.js'
 import type { Clock } from './task-manager.js'
 import { systemClock } from './task-manager.js'
 
@@ -77,6 +77,54 @@ function object(value: unknown, label: string): JsonObject {
   return value as JsonObject
 }
 
+const MAX_DELIVERY_ATTEMPTS_PER_STRATEGY = 2
+const OUTBOX_LEASE_MS = 30_000
+const OUTBOX_HEARTBEAT_MS = 10_000
+
+function inspectionFrom(value: unknown): InspectionEvidence {
+  const found = object(value, 'resultado da inspecao') as unknown as InspectionEvidence
+  if (!Array.isArray(found.files) || typeof found.schemaCount !== 'number' || typeof found.capturedAt !== 'string') {
+    throw new ExecutionFailure(
+      'executor-invalid-result',
+      'internal',
+      false,
+      'O executor devolveu um resultado de inspecao incompleto.'
+    )
+  }
+  return found
+}
+
+function classifyExecutionFailure(error: unknown): ExecutionFailure {
+  if (error instanceof ExecutionFailure) return error
+  const message = error instanceof Error ? error.message : String(error)
+  if (/ENOENT|nao existe|nao encontrou contratos/i.test(message)) {
+    return new ExecutionFailure('inspection-resource-not-found', 'resource', false, message)
+  }
+  if (/ileg.vel|objeto raiz|JSON|contrato/i.test(message)) {
+    return new ExecutionFailure('inspection-verification-failed', 'verification', false, message)
+  }
+  return new ExecutionFailure('executor-interrupted', 'internal', true, message, 5_000)
+}
+
+function failureEvidence(task: StoredTask, failure: ExecutionFailure, at: string): JsonObject {
+  const details = {
+    code: failure.code,
+    category: failure.category,
+    retryable: failure.retryable,
+    message: failure.message,
+    executionEpoch: task.executionEpoch
+  }
+  return {
+    evidenceId: stableId('evidence-execution-failure', `${task.taskId}:${task.executionEpoch}:${sha256(JSON.stringify(details))}`),
+    kind: 'test-result',
+    capturedAt: at,
+    summary: failure.message.slice(0, 2000),
+    digest: sha256(JSON.stringify(details)),
+    artifactRefs: [],
+    origin: { kind: 'runtime', id: 'overcore-task-worker-v1' }
+  }
+}
+
 export class TaskWorker {
   constructor(
     private readonly workerId: string,
@@ -100,26 +148,52 @@ export class TaskWorker {
       const authorization = object(claimed.payload.runtimeAuthorization, 'autorização de runtime')
       const maxTokens = typeof budget.maxTokens === 'number' ? budget.maxTokens : undefined
       const maxCostUsd = typeof budget.maxCostUsd === 'number' ? budget.maxCostUsd : undefined
-      const inspection = await this.executor.execute({
-        runId: `${task.taskId}:epoch-${task.executionEpoch}`,
-        repositoryUri,
-        objective: String(claimed.payload.objective),
-        timeoutMs: Number(budget.maxDurationMs),
-        authorization: {
-          enforcementId: String(authorization.enforcementId),
-          enforcementFingerprint: String(authorization.enforcementFingerprint),
-          expiresAt: String(authorization.expiresAt),
-          operations: Array.isArray(authorization.operations) ? authorization.operations.map(String) : [],
-          requiredControls: Array.isArray(authorization.requiredControls)
-            ? authorization.requiredControls.map(String)
-            : []
-        },
-        ...(maxTokens === undefined ? {} : { maxTokens }),
-        ...(maxCostUsd === undefined ? {} : { maxCostUsd })
-      }) as unknown as InspectionEvidence
-      if (inspection.files.length === 0) throw new Error('A inspeção não encontrou contratos.')
-      if (inspection.files.some((file) => !file.readable || !file.rootClosed)) {
-        throw new Error('A inspeção encontrou contrato ilegível ou aberto no objeto raiz.')
+      let inspection: InspectionEvidence
+      const persistedReceipt = await this.store.findExecutionReceipt(claimed.outboxId)
+      if (persistedReceipt) {
+        this.assertReceipt(persistedReceipt, task, claimed.outboxId)
+        inspection = inspectionFrom(persistedReceipt.payload.inspection)
+      } else {
+        try {
+          inspection = inspectionFrom(await this.executeWithLeaseHeartbeat(claimed, {
+            runId: `${task.taskId}:epoch-${task.executionEpoch}`,
+            repositoryUri,
+            objective: String(claimed.payload.objective),
+            strategyRevision: Number(claimed.payload.strategyRevision ?? 1),
+            timeoutMs: Number(budget.maxDurationMs),
+            authorization: {
+              enforcementId: String(authorization.enforcementId),
+              enforcementFingerprint: String(authorization.enforcementFingerprint),
+              expiresAt: String(authorization.expiresAt),
+              operations: Array.isArray(authorization.operations) ? authorization.operations.map(String) : [],
+              requiredControls: Array.isArray(authorization.requiredControls)
+                ? authorization.requiredControls.map(String)
+                : []
+            },
+            ...(maxTokens === undefined ? {} : { maxTokens }),
+            ...(maxCostUsd === undefined ? {} : { maxCostUsd })
+          }))
+        } catch (error) {
+          return this.handleExecutionFailure(task, claimed, classifyExecutionFailure(error))
+        }
+        const receiptPayload: JsonObject = { kind: 'inspection-completed', inspection: inspection as never }
+        await this.store.saveExecutionReceipt({
+          receiptId: stableId('execution-receipt', claimed.outboxId),
+          outboxId: claimed.outboxId,
+          taskId: task.taskId,
+          executionEpoch: task.executionEpoch,
+          payload: receiptPayload,
+          payloadFingerprint: fingerprint(receiptPayload),
+          recordedAt: this.clock.now().toISOString()
+        }, claimed.claimToken, this.clock.now())
+      }
+      try {
+        if (inspection.files.length === 0) throw new Error('A inspecao nao encontrou contratos.')
+        if (inspection.files.some((file) => !file.readable || !file.rootClosed)) {
+          throw new Error('A inspecao encontrou contrato ilegivel ou aberto no objeto raiz.')
+        }
+      } catch (error) {
+        return this.handleExecutionFailure(task, claimed, classifyExecutionFailure(error))
       }
       const evidence = evidenceDocuments(task, inspection)
       const evidenceRefs = [evidence.readableId, evidence.closedId]
@@ -206,7 +280,7 @@ export class TaskWorker {
         artifacts: [],
         effects: [],
         execution: {
-          attemptCount: 1,
+          attemptCount: Number(verifyingTask.state.usage.attemptCount ?? 1),
           maxParallelismObserved: 1,
           durationMs: Math.max(0, Date.parse(finishedAt) - Date.parse(startedAt)),
           startedAt,
@@ -250,5 +324,172 @@ export class TaskWorker {
       )
       throw error
     }
+  }
+
+  private assertReceipt(receipt: ExecutionReceipt, task: StoredTask, outboxId: string): void {
+    if (receipt.outboxId !== outboxId || receipt.taskId !== task.taskId) {
+      throw new Error('Recibo de execucao pertence a outra tarefa ou mensagem.')
+    }
+    if (receipt.executionEpoch !== task.executionEpoch) {
+      throw new Error('Recibo de execucao pertence a outro executionEpoch.')
+    }
+    if (fingerprint(receipt.payload).value !== receipt.payloadFingerprint.value) {
+      throw new Error('Fingerprint do recibo de execucao nao corresponde ao payload persistido.')
+    }
+    if (receipt.payload.kind !== 'inspection-completed') {
+      throw new Error('Recibo de execucao possui kind inesperado.')
+    }
+  }
+
+  private async executeWithLeaseHeartbeat(
+    claimed: ClaimedMessage,
+    input: Parameters<InspectionExecutor['execute']>[0]
+  ): Promise<JsonObject> {
+    await this.store.extendOutboxLease(
+      claimed.outboxId,
+      claimed.claimToken,
+      OUTBOX_LEASE_MS,
+      this.clock.now()
+    )
+    let heartbeatError: unknown
+    let renewing = false
+    const heartbeat = setInterval(() => {
+      if (renewing || heartbeatError) return
+      renewing = true
+      void this.store.extendOutboxLease(
+        claimed.outboxId,
+        claimed.claimToken,
+        OUTBOX_LEASE_MS,
+        this.clock.now()
+      ).catch((error: unknown) => {
+        heartbeatError = error
+      }).finally(() => {
+        renewing = false
+      })
+    }, OUTBOX_HEARTBEAT_MS)
+    heartbeat.unref()
+    try {
+      const result = await this.executor.execute(input)
+      if (heartbeatError) throw heartbeatError
+      return result
+    } finally {
+      clearInterval(heartbeat)
+    }
+  }
+
+  private async handleExecutionFailure(
+    task: StoredTask,
+    claimed: ClaimedMessage,
+    failure: ExecutionFailure
+  ): Promise<StoredTask> {
+    const delayMs = Math.max(1_000, failure.retryAfterMs ?? 5_000)
+    if (failure.retryable && claimed.attempts < MAX_DELIVERY_ATTEMPTS_PER_STRATEGY) {
+      await this.store.releaseOutbox(
+        claimed.outboxId,
+        claimed.claimToken,
+        sha256(`${failure.code}:${failure.message}`),
+        new Date(this.clock.now().getTime() + delayMs)
+      )
+      return (await this.store.findById(task.taskId)) ?? task
+    }
+
+    const failedAt = this.clock.now().toISOString()
+    const evidence = failureEvidence(task, failure, failedAt)
+    const evidenceId = String(evidence.evidenceId)
+    const attemptCount = Number(task.state.usage.attemptCount ?? 1)
+    if (failure.retryable && attemptCount < task.request.budget.maxAttempts && !failure.effectUncertain) {
+      const retryState = scheduleRetry(task.state, evidenceId, failedAt)
+      this.validator.taskState(retryState)
+      return this.store.compareAndSwap({
+        expectedRevision: task.stateRevision,
+        next: record(task, retryState),
+        event: {
+          eventId: stableId('event-retry-scheduled', `${task.taskId}:${retryState.stateRevision}`),
+          kind: 'retry-scheduled',
+          occurredAt: failedAt,
+          payload: {
+            failure: evidence,
+            previousExecutionEpoch: task.executionEpoch,
+            nextExecutionEpoch: retryState.executionEpoch
+          }
+        },
+        completeOutbox: { outboxId: claimed.outboxId, claimToken: claimed.claimToken }
+      })
+    }
+
+    const previousResultRefs = Array.isArray(task.state.ledger.resultRefs)
+      ? task.state.ledger.resultRefs as JsonObject[]
+      : []
+    const previousResultId = previousResultRefs.at(-1)?.resultId
+    const resultId = stableId('result-execution-failed', `${task.taskId}:${task.stateRevision + 1}`)
+    const transitionId = stableId(
+      'transition-failed',
+      `${task.taskId}:${task.stateRevision + 1}:recovery-exhausted`
+    )
+    const attempts = Array.isArray(task.state.ledger.attempts)
+      ? task.state.ledger.attempts as JsonObject[]
+      : []
+    const startedAt = String(attempts[0]?.startedAt ?? task.createdAt)
+    const summary = failure.effectUncertain
+      ? 'A execucao terminou com efeito incerto e nao pode ser repetida sem reconciliacao.'
+      : failure.retryable
+        ? `A recuperacao esgotou ${task.request.budget.maxAttempts} tentativa(s): ${failure.message}`
+        : `A execucao terminou com falha nao recuperavel: ${failure.message}`
+    const result: JsonObject = {
+      contractVersion: '1.0',
+      resultId,
+      requestId: task.requestId,
+      requestFingerprint: task.state.requestBinding.requestFingerprint as never,
+      taskId: task.taskId,
+      stateRef: {
+        stateRevision: task.stateRevision + 1,
+        transitionId,
+        emissionSequence: previousResultRefs.length + 1,
+        ...(typeof previousResultId === 'string' ? { supersedesResultId: previousResultId } : {})
+      },
+      reportedAt: failedAt,
+      status: 'failed',
+      summary: summary.slice(0, 4000),
+      criteria: task.request.acceptanceCriteria.map((criterion, index) => ({
+        criterionId: criterion.id,
+        status: index === 0 ? 'failed' : 'not-run',
+        evidenceRefs: index === 0 ? [evidenceId] : []
+      })),
+      evidence: [evidence],
+      artifacts: [],
+      effects: [],
+      execution: {
+        attemptCount,
+        maxParallelismObserved: Number(task.state.usage.maxParallelismObserved ?? 1),
+        durationMs: Math.max(0, Date.parse(failedAt) - Date.parse(startedAt)),
+        startedAt,
+        finishedAt: failedAt,
+        lastTransitionAt: failedAt,
+        ...(typeof task.state.usage.tokens === 'number' ? { tokens: task.state.usage.tokens } : {}),
+        ...(typeof task.state.usage.costUsd === 'number' ? { costUsd: task.state.usage.costUsd } : {})
+      },
+      failure: {
+        code: failure.effectUncertain ? 'execution-effect-uncertain' : failure.code,
+        category: failure.effectUncertain ? 'external' : failure.category,
+        retryable: false,
+        summary: summary.slice(0, 2000),
+        evidenceRefs: [evidenceId]
+      }
+    }
+    this.validator.assert('task-result', result)
+    const resultFingerprint = fingerprint(result)
+    const failedState = failTask(task.state, resultId, resultFingerprint, evidenceId, failedAt)
+    this.validator.taskState(failedState)
+    return this.store.compareAndSwap({
+      expectedRevision: task.stateRevision,
+      next: record(task, failedState, result),
+      event: {
+        eventId: stableId('event-task-failed', `${task.taskId}:${failedState.stateRevision}`),
+        kind: 'task-failed',
+        occurredAt: failedAt,
+        payload: { failure: evidence, resultId, resultFingerprint }
+      },
+      completeOutbox: { outboxId: claimed.outboxId, claimToken: claimed.claimToken }
+    })
   }
 }

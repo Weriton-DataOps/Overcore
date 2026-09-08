@@ -286,6 +286,11 @@ test('PostgreSQL real persiste, rejeita CAS obsoleto e distribui duas tarefas en
     )
     assert.equal(outbox.rows.length, 3)
     assert.ok(outbox.rows.every((row) => row.processed_at instanceof Date))
+    const receipts = await pool.query<{ count: string }>(
+      'SELECT count(*) FROM overcore_task_execution_receipts WHERE task_id = ANY($1::text[])',
+      [taskIds]
+    )
+    assert.equal(receipts.rows[0]?.count, '3')
   } finally {
     if (preflightDraftId) {
       const admittedFromPreflight = await pool.query<{ task_id: string }>(
@@ -299,6 +304,7 @@ test('PostgreSQL real persiste, rejeita CAS obsoleto e distribui duas tarefas en
       await pool.query('DELETE FROM overcore_preflight_streams WHERE draft_id=$1', [preflightDraftId])
     }
     if (taskIds.length > 0) {
+      await pool.query('DELETE FROM overcore_task_execution_receipts WHERE task_id = ANY($1::text[])', [taskIds])
       await pool.query('DELETE FROM overcore_task_outbox WHERE task_id = ANY($1::text[])', [taskIds])
       await pool.query('DELETE FROM overcore_task_authorizations WHERE task_id = ANY($1::text[])', [taskIds])
       await pool.query('DELETE FROM overcore_task_plans WHERE task_id = ANY($1::text[])', [taskIds])

@@ -150,6 +150,8 @@ A posição e a autenticação do motor estão na
   expirável, releitura de plano/autorização e uma única outbox mesmo entre instâncias concorrentes;
 - recovery de coordenação com backoff persistente, erro visível, renovação automática de autorização
   vencida, `TaskResult blocked` e retomada explícita para uma fase segura;
+- recovery da execução somente leitura com heartbeat do lease, recibo durável, reentrega com backoff,
+  plano revisado, nova autorização, retry por orçamento e `TaskResult failed` terminal;
 - rejeição das 14 mutações adversariais declaradas para o domínio do Preflight;
 - build e typecheck estritos.
 
@@ -184,11 +186,11 @@ implementação.
 
 ## Próximo passo
 
-O Preflight, o handoff idempotente, a retomada automática e o recovery da coordenação estão fechados.
-O próximo desenho é a recuperação durante a execução: falha do worker ou do Agent SDK, outbox
-reentregue, tentativa interrompida, efeito incerto, retry com orçamento e verificação antes de
-qualquer novo efeito. Essa etapa deverá usar o journal e os checkpoints já contratados, sem introduzir
-agentes, skills, Registry ou Graph Engine antes da discussão correspondente.
+O Preflight, o handoff idempotente, a retomada da coordenação e o recovery da primeira execução
+somente leitura estão fechados. O próximo desenho é o **Harness de efeitos v1**: journal,
+`effectKey`, checkpoint, confirmação e reconciliação de efeito incerto antes da primeira ferramenta
+que possa escrever. Essa fronteira será discutida antes de virar código. Agentes, skills, Registry e
+Graph Engine continuam fora.
 
 O futuro Agente de Discovery continua reservado pela
 [`ADR-008`](docs/decisoes/ADR-008-discovery-adaptativa-no-preflight.md). Agentes, skills, modelos, Graph

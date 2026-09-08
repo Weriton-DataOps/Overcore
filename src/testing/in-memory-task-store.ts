@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import type {
   CasMutation,
   ClaimedMessage,
+  ExecutionReceipt,
   JsonObject,
   OutboxMessage,
   StoredTask
@@ -30,6 +31,7 @@ export class InMemoryTaskStore implements TaskStore {
   readonly authorizations = new Map<string, { taskId: string; request: JsonObject; decision: JsonObject; enforcement: JsonObject }>()
   readonly events: CasMutation['event'][] = []
   readonly outbox = new Map<string, OutboxMessage>()
+  readonly executionReceipts = new Map<string, ExecutionReceipt>()
   readonly preflightStreams = new Map<string, { idempotencyKey: string; latestRevision: number }>()
   readonly preflightRevisions = new Map<string, StoredPreflightRevision>()
   readonly preflightReports = new Map<string, TaskReadinessReport>()
@@ -37,6 +39,10 @@ export class InMemoryTaskStore implements TaskStore {
 
   private preflightKey(draftId: string, revision: number): string {
     return `${draftId}:${revision}`
+  }
+
+  private planKey(taskId: string, planId: string, planRevision: number): string {
+    return `${taskId}:${planId}:${planRevision}`
   }
 
   async findPreflightRevision(draftId: string, revision: number): Promise<StoredPreflightRevision | null> {
@@ -111,8 +117,8 @@ export class InMemoryTaskStore implements TaskStore {
   }
 
   async findPlan(taskId: string, planId: string, planRevision: number): Promise<JsonObject | null> {
-    const plan = this.plans.get(taskId)
-    if (!plan || plan.planId !== planId || plan.planRevision !== planRevision) return null
+    const plan = this.plans.get(this.planKey(taskId, planId, planRevision))
+    if (!plan) return null
     return copy(plan)
   }
 
@@ -213,7 +219,12 @@ export class InMemoryTaskStore implements TaskStore {
     this.tasks.set(next.taskId, next)
     this.events.push(copy(mutation.event))
     if (mutation.outbox) this.outbox.set(mutation.outbox.outboxId, copy(mutation.outbox))
-    if (mutation.plan) this.plans.set(mutation.next.taskId, copy(mutation.plan))
+    if (mutation.plan) {
+      this.plans.set(
+        this.planKey(mutation.next.taskId, String(mutation.plan.planId), Number(mutation.plan.planRevision)),
+        copy(mutation.plan)
+      )
+    }
     if (mutation.authorization) {
       this.authorizations.set(String(mutation.authorization.decision.decisionId), {
         taskId: mutation.next.taskId,
@@ -224,6 +235,51 @@ export class InMemoryTaskStore implements TaskStore {
       this.outbox.delete(mutation.completeOutbox.outboxId)
     }
     return copy(mutation.next)
+  }
+
+  async findExecutionReceipt(outboxId: string): Promise<ExecutionReceipt | null> {
+    const receipt = this.executionReceipts.get(outboxId)
+    return receipt ? copy(receipt) : null
+  }
+
+  async saveExecutionReceipt(receipt: ExecutionReceipt, claimToken: string, now = new Date()): Promise<ExecutionReceipt> {
+    const message = this.outbox.get(receipt.outboxId)
+    if (
+      !message ||
+      message.claimToken !== claimToken ||
+      !message.lockedUntil ||
+      Date.parse(message.lockedUntil) <= now.getTime()
+    ) {
+      throw new Error('Lease da outbox nao permite persistir o recibo de execucao.')
+    }
+    const existing = this.executionReceipts.get(receipt.outboxId)
+    if (existing) {
+      if (existing.payloadFingerprint.value !== receipt.payloadFingerprint.value) {
+        throw new Error(`Recibo da outbox ${receipt.outboxId} possui outro conteudo.`)
+      }
+      return copy(existing)
+    }
+    this.executionReceipts.set(receipt.outboxId, copy(receipt))
+    return copy(receipt)
+  }
+
+  async extendOutboxLease(
+    outboxId: string,
+    claimToken: string,
+    leaseMs: number,
+    now = new Date()
+  ): Promise<void> {
+    const message = this.outbox.get(outboxId)
+    if (
+      !message ||
+      message.claimToken !== claimToken ||
+      !message.lockedUntil ||
+      Date.parse(message.lockedUntil) <= now.getTime()
+    ) {
+      throw new Error('Lease da outbox nao pode ser renovado.')
+    }
+    message.lockedUntil = new Date(now.getTime() + leaseMs).toISOString()
+    this.outbox.set(outboxId, copy(message))
   }
 
   async claimOutbox(workerId: string, leaseMs: number, now = new Date()): Promise<ClaimedMessage | null> {

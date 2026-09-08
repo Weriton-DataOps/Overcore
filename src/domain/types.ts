@@ -221,6 +221,16 @@ export interface ClaimedMessage extends OutboxMessage {
   lockedUntil: string
 }
 
+export interface ExecutionReceipt {
+  receiptId: string
+  outboxId: string
+  taskId: string
+  executionEpoch: number
+  payload: JsonObject
+  payloadFingerprint: Fingerprint
+  recordedAt: string
+}
+
 export interface InspectionEvidence {
   repositoryUri: string
   schemaCount: number

@@ -606,12 +606,18 @@ export class TaskManager {
       'Task State está ligado a outro conteúdo de TaskRequest.'
     )
     const planAt = String(task.state.lifecycle.enteredAt)
+    const priorPlanRefs = Array.isArray(task.state.ledger.planRefs)
+      ? task.state.ledger.planRefs as JsonObject[]
+      : []
+    const planRevision = priorPlanRefs.length + 1
     const plan = await buildInspectionPlan(
       task.taskId,
       task.request,
       requestFingerprint,
       task.stateRevision,
-      planAt
+      planAt,
+      planRevision,
+      priorPlanRefs.at(-1)
     )
     this.validator.assert('execution-plan', plan)
     assertFingerprint(plan, 'planFingerprint')
@@ -748,6 +754,7 @@ export class TaskManager {
         payload: {
           repositoryUri: repositoryUri(task.request),
           objective: task.request.objective,
+          strategyRevision: planRevision,
           budget: task.request.budget,
           runtimeAuthorization: {
             enforcementId: String(authorization.enforcement.enforcementId),

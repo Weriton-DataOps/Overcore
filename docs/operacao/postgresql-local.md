@@ -75,6 +75,10 @@ A migration `004_reconciliation_backoff.sql` guarda contagem, código, fingerpri
 `retryAt` quando uma coordenação precisa esperar. Esses dados ficam fora do JSON do `Task State`, são
 visíveis na leitura da tarefa e desaparecem depois do primeiro ciclo bem-sucedido.
 
+A migration `005_execution_receipts.sql` guarda um recibo imutável por mensagem da outbox. O recibo
+é escrito somente pelo worker que ainda possui o lease, antes de `verifying`, e permite terminar uma
+tarefa retomada sem chamar novamente um executor que já havia concluído.
+
 ## Por que não existe SQLite nem broker agora
 
 PostgreSQL já entrega transação, JSONB, CAS e reivindicação concorrente da outbox com

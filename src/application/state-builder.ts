@@ -131,7 +131,10 @@ export function bindReadyState(previous: TaskState, binding: PlanBinding, now: s
     activatedAtRevision: next.stateRevision,
     authorizationBinding
   }
-  ledger(next).planRefs = [{
+  const rawPlanRefs = ledger(next).planRefs
+  const planRefs = Array.isArray(rawPlanRefs) ? rawPlanRefs as JsonObject[] : []
+  ledger(next).planRefs = planRefs
+  planRefs.push({
     planId: binding.planId,
     planRevision: binding.planRevision,
     planFingerprint: binding.planFingerprint,
@@ -141,7 +144,7 @@ export function bindReadyState(previous: TaskState, binding: PlanBinding, now: s
     activationTransitionId: next.lifecycle.lastTransitionId,
     activatedAt: now,
     authorizationBinding
-  }]
+  })
   return next
 }
 
@@ -244,13 +247,19 @@ export function resumeBlockedState(previous: TaskState, now: string): TaskState 
 }
 
 export function startAttempt(previous: TaskState, planId: string, planRevision: number, strategyFingerprint: Fingerprint, now: string): TaskState {
-  const attemptId = stableId('attempt', `${previous.taskId}:${previous.executionEpoch}:1`)
+  const attempts = arrayAt(ledger(previous), 'attempts')
+  const ordinal = attempts.length + 1
+  const attemptId = stableId('attempt', `${previous.taskId}:${previous.executionEpoch}:${ordinal}`)
   const next = transition(previous, 'running', 'execution-started', now, attemptId)
   next.activeAttemptId = attemptId
-  next.usage = { attemptCount: 1, maxParallelismObserved: 1, activeDurationMs: 0 }
-  ledger(next).attempts = [{
+  next.usage = {
+    ...next.usage,
+    attemptCount: ordinal,
+    maxParallelismObserved: Math.max(1, Number(next.usage.maxParallelismObserved ?? 0))
+  }
+  arrayAt(ledger(next), 'attempts').push({
     attemptId,
-    ordinal: 1,
+    ordinal,
     status: 'active',
     planRef: { planId, planRevision },
     strategyFingerprint,
@@ -259,7 +268,102 @@ export function startAttempt(previous: TaskState, planId: string, planRevision: 
     lastUpdatedRevision: next.stateRevision,
     effectRefs: [],
     evidenceRefs: []
-  }]
+  })
+  return next
+}
+
+export function scheduleRetry(
+  previous: TaskState,
+  failureEvidenceRef: string,
+  now: string
+): TaskState {
+  if (previous.lifecycle.state !== 'running' && previous.lifecycle.state !== 'verifying') {
+    throw new Error(`Retry nao pode ser agendado a partir de ${previous.lifecycle.state}.`)
+  }
+  const attemptId = previous.activeAttemptId
+  if (typeof attemptId !== 'string') throw new Error('Retry sem tentativa ativa.')
+  const next = transition(previous, 'planning', 'retry-scheduled', now, attemptId)
+  const attempts = arrayAt(ledger(next), 'attempts')
+  const attempt = attempts.find((item) => item.attemptId === attemptId)
+  if (!attempt) throw new Error('Tentativa ativa nao foi encontrada para o retry.')
+  attempt.status = 'failed'
+  attempt.endedAt = now
+  attempt.lastUpdatedRevision = next.stateRevision
+  attempt.evidenceRefs = [...new Set([
+    ...(Array.isArray(attempt.evidenceRefs) ? attempt.evidenceRefs.map(String) : []),
+    failureEvidenceRef
+  ])]
+  const evidenceRefs = ledger(next).evidenceRefs
+  if (!Array.isArray(evidenceRefs)) throw new Error('Ledger sem evidenceRefs.')
+  if (!evidenceRefs.includes(failureEvidenceRef)) evidenceRefs.push(failureEvidenceRef)
+  const lastTransition = arrayAt(ledger(next), 'transitions').at(-1)
+  if (!lastTransition) throw new Error('Transicao de retry ausente.')
+  lastTransition.evidenceRefs = [failureEvidenceRef]
+  next.executionEpoch = previous.executionEpoch + 1
+  next.usage = {
+    ...next.usage,
+    activeDurationMs: Number(next.usage.activeDurationMs ?? 0)
+      + Math.max(0, Date.parse(now) - Date.parse(String(attempt.startedAt)))
+  }
+  delete next.activeAttemptId
+  delete next.activeStepRunRef
+  delete next.activePlanBinding
+  return next
+}
+
+export function failTask(
+  previous: TaskState,
+  resultId: string,
+  resultFingerprint: Fingerprint,
+  evidenceRef: string,
+  now: string
+): TaskState {
+  if (previous.lifecycle.state !== 'running' && previous.lifecycle.state !== 'verifying') {
+    throw new Error(`Falha terminal nao pode ser registrada a partir de ${previous.lifecycle.state}.`)
+  }
+  const attemptId = previous.activeAttemptId
+  if (typeof attemptId !== 'string') throw new Error('Falha terminal sem tentativa ativa.')
+  const next = transition(previous, 'failed', 'recovery-exhausted', now, attemptId)
+  const attempts = arrayAt(ledger(next), 'attempts')
+  const attempt = attempts.find((item) => item.attemptId === attemptId)
+  if (!attempt) throw new Error('Tentativa ativa nao foi encontrada na falha terminal.')
+  attempt.status = 'failed'
+  attempt.endedAt = now
+  attempt.lastUpdatedRevision = next.stateRevision
+  attempt.evidenceRefs = [...new Set([
+    ...(Array.isArray(attempt.evidenceRefs) ? attempt.evidenceRefs.map(String) : []),
+    evidenceRef
+  ])]
+  const evidenceRefs = ledger(next).evidenceRefs
+  if (!Array.isArray(evidenceRefs)) throw new Error('Ledger sem evidenceRefs.')
+  if (!evidenceRefs.includes(evidenceRef)) evidenceRefs.push(evidenceRef)
+  const lastTransition = arrayAt(ledger(next), 'transitions').at(-1)
+  if (!lastTransition) throw new Error('Transicao terminal ausente.')
+  lastTransition.resultRef = resultId
+  lastTransition.evidenceRefs = [evidenceRef]
+  next.criterionProgress = next.criterionProgress.map((criterion, index) => ({
+    criterionId: String(criterion.criterionId),
+    status: index === 0 ? 'failed' : 'not-run',
+    evidenceRefs: index === 0 ? [evidenceRef] : []
+  }))
+  delete next.activeAttemptId
+  delete next.activeStepRunRef
+  next.terminalResultRef = resultId
+  next.usage = {
+    ...next.usage,
+    activeDurationMs: Number(next.usage.activeDurationMs ?? 0)
+      + Math.max(0, Date.parse(now) - Date.parse(String(attempt.startedAt)))
+  }
+  const resultRefs = arrayAt(ledger(next), 'resultRefs')
+  resultRefs.push({
+    resultId,
+    stateRevision: next.stateRevision,
+    transitionId: next.lifecycle.lastTransitionId,
+    emissionSequence: resultRefs.length + 1,
+    status: 'failed',
+    resultFingerprint,
+    emittedAt: now
+  })
   return next
 }
 

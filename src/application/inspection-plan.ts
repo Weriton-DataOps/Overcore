@@ -26,27 +26,33 @@ export async function buildInspectionPlan(
   request: TaskRequest,
   requestFingerprint: Fingerprint,
   basisStateRevision: number,
-  now: string
+  now: string,
+  planRevision = 1,
+  supersedesPlanRef?: JsonObject
 ): Promise<JsonObject> {
   const reference = repositoryReference(request)
   const digest = await contextDigest(reference.uri)
   const planId = stableId('plan-inspection', `${taskId}:1`)
+  const revisionKey = `${planId}:r${planRevision}`
+  const recoverySuffix = planRevision === 1
+    ? ''
+    : ` Recuperacao ${planRevision}: abra uma sessao nova do motor, valide o snapshot local primeiro e amplie a verificacao antes de concluir.`
   const steps: JsonObject[] = [
     {
-      stepId: stableId('step-enumerate', planId),
+      stepId: stableId('step-enumerate', revisionKey),
       sequence: 1,
       kind: 'prepare',
-      objective: 'Enumerar os contratos JSON Schema do repositório sem alterar arquivos.',
+      objective: `Enumerar os contratos JSON Schema do repositorio sem alterar arquivos.${recoverySuffix}`,
       dependsOnStepRefs: [],
       inputs: [{ kind: 'context-reference', ref: reference.refId }],
       actions: [{
-        actionId: stableId('action-enumerate', planId),
+        actionId: stableId('action-enumerate', revisionKey),
         scope: 'request-resource',
         resourceRef: reference.refId,
         operation: 'filesystem.read',
         effectPolicy: { mode: 'none' }
       }],
-      outputs: [{ outputId: stableId('output-contract-list', planId), kind: 'observation', mediaType: 'application/json' }],
+      outputs: [{ outputId: stableId('output-contract-list', revisionKey), kind: 'observation', mediaType: 'application/json' }],
       constraintRefs: request.constraints.map((item) => String(item.id)),
       assumptionRefs: request.context.assumptions.map((item) => String(item.id)),
       criterionRefs: [],
@@ -54,49 +60,49 @@ export async function buildInspectionPlan(
       checkpointPolicy: 'none'
     },
     {
-      stepId: stableId('step-inspect', planId),
+      stepId: stableId('step-inspect', revisionKey),
       sequence: 2,
       kind: 'verify',
-      objective: 'Analisar cada contrato e comprovar leitura e fechamento do objeto raiz.',
-      dependsOnStepRefs: [stableId('step-enumerate', planId)],
+      objective: `Analisar cada contrato e comprovar leitura e fechamento do objeto raiz.${recoverySuffix}`,
+      dependsOnStepRefs: [stableId('step-enumerate', revisionKey)],
       inputs: [
-        { kind: 'step-output', ref: stableId('output-contract-list', planId) },
+        { kind: 'step-output', ref: stableId('output-contract-list', revisionKey) },
         { kind: 'context-reference', ref: reference.refId }
       ],
       actions: [{
-        actionId: stableId('action-inspect', planId),
+        actionId: stableId('action-inspect', revisionKey),
         scope: 'request-resource',
         resourceRef: reference.refId,
         operation: 'filesystem.read',
         effectPolicy: { mode: 'none' }
       }],
       outputs: [
-        { outputId: stableId('evidence-json-readable', planId), kind: 'evidence', mediaType: 'application/json' },
-        { outputId: stableId('evidence-contract-closed', planId), kind: 'evidence', mediaType: 'application/json' }
+        { outputId: stableId('evidence-json-readable', revisionKey), kind: 'evidence', mediaType: 'application/json' },
+        { outputId: stableId('evidence-contract-closed', revisionKey), kind: 'evidence', mediaType: 'application/json' }
       ],
       constraintRefs: request.constraints.map((item) => String(item.id)),
       assumptionRefs: request.context.assumptions.map((item) => String(item.id)),
       criterionRefs: request.acceptanceCriteria.map((criterion) => criterion.id),
-      timeoutMs: Math.min(60_000, request.budget.maxDurationMs),
+      timeoutMs: Math.min(60_000 + ((planRevision - 1) * 30_000), request.budget.maxDurationMs),
       checkpointPolicy: 'none'
     },
     {
-      stepId: stableId('step-deliver', planId),
+      stepId: stableId('step-deliver', revisionKey),
       sequence: 3,
       kind: 'deliver',
       objective: 'Montar o relatório verificável a partir das evidências da inspeção.',
-      dependsOnStepRefs: [stableId('step-inspect', planId)],
+      dependsOnStepRefs: [stableId('step-inspect', revisionKey)],
       inputs: [
-        { kind: 'step-output', ref: stableId('evidence-json-readable', planId) },
-        { kind: 'step-output', ref: stableId('evidence-contract-closed', planId) }
+        { kind: 'step-output', ref: stableId('evidence-json-readable', revisionKey) },
+        { kind: 'step-output', ref: stableId('evidence-contract-closed', revisionKey) }
       ],
       actions: [{
-        actionId: stableId('action-deliver', planId),
+        actionId: stableId('action-deliver', revisionKey),
         scope: 'runtime-internal',
         operation: 'runtime.assemble-report',
         effectPolicy: { mode: 'none' }
       }],
-      outputs: [{ outputId: stableId('output-inspection-report', planId), kind: 'delivery', mediaType: 'application/json' }],
+      outputs: [{ outputId: stableId('output-inspection-report', revisionKey), kind: 'delivery', mediaType: 'application/json' }],
       constraintRefs: request.constraints.map((item) => String(item.id)),
       assumptionRefs: request.context.assumptions.map((item) => String(item.id)),
       criterionRefs: [],
@@ -108,7 +114,15 @@ export async function buildInspectionPlan(
   const base: JsonObject = {
     modelVersion: '1.0',
     planId,
-    planRevision: 1,
+    planRevision,
+    ...(planRevision > 1 && supersedesPlanRef ? {
+      supersedesPlanRef: {
+        planId: String(supersedesPlanRef.planId),
+        planRevision: Number(supersedesPlanRef.planRevision),
+        planFingerprint: supersedesPlanRef.planFingerprint,
+        strategyFingerprint: supersedesPlanRef.strategyFingerprint
+      }
+    } : {}),
     taskBinding: {
       taskId,
       requestId: request.requestId,
@@ -128,18 +142,18 @@ export async function buildInspectionPlan(
     steps,
     criterionCoverage: request.acceptanceCriteria.map((criterion) => ({
       criterionId: criterion.id,
-      verificationStepRefs: [stableId('step-inspect', planId)],
+      verificationStepRefs: [stableId('step-inspect', revisionKey)],
       evidenceOutputRefs: [
         criterion.verification.method === 'schema'
-          ? stableId('evidence-contract-closed', planId)
-          : stableId('evidence-json-readable', planId)
+          ? stableId('evidence-contract-closed', revisionKey)
+          : stableId('evidence-json-readable', revisionKey)
       ]
     })),
     outputBinding: {
       kind: request.expectedOutput.kind,
       mediaType: String(request.expectedOutput.mediaType ?? 'application/json'),
-      producerStepRef: stableId('step-deliver', planId),
-      outputRefs: [stableId('output-inspection-report', planId)]
+      producerStepRef: stableId('step-deliver', revisionKey),
+      outputRefs: [stableId('output-inspection-report', revisionKey)]
     }
   }
   return { ...base, planFingerprint: fingerprint(base) }
