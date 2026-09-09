@@ -152,6 +152,11 @@ A posição e a autenticação do motor estão na
   vencida, `TaskResult blocked` e retomada explícita para uma fase segura;
 - recovery da execução somente leitura com heartbeat do lease, recibo durável, reentrega com backoff,
   plano revisado, nova autorização, retry por orçamento e `TaskResult failed` terminal;
+- Harness de efeitos para arquivo UTF-8 com `effectKey`, checkpoint externo ao Git, journal
+  PostgreSQL, CAS, revalidação anterior à escrita, gravação atômica, readback e reconciliação;
+- recuperação comprovada nas quedas antes e depois da escrita, sem duplicar efeito nem sobrescrever
+  conteúdo concorrente;
+- migrador protegido por advisory lock para duas instâncias iniciarem sobre o mesmo banco;
 - rejeição das 14 mutações adversariais declaradas para o domínio do Preflight;
 - build e typecheck estritos.
 
@@ -186,11 +191,14 @@ implementação.
 
 ## Próximo passo
 
-O Preflight, o handoff idempotente, a retomada da coordenação e o recovery da primeira execução
-somente leitura estão fechados. O próximo desenho é o **Harness de efeitos v1**: journal,
-`effectKey`, checkpoint, confirmação e reconciliação de efeito incerto antes da primeira ferramenta
-que possa escrever. Essa fronteira será discutida antes de virar código. Agentes, skills, Registry e
-Graph Engine continuam fora.
+O núcleo do **Harness de efeitos v1** está implementado e explicado no
+[`mapa didático`](docs/arquitetura/03-harness-de-efeitos-v1.md) e na
+[`ADR-014`](docs/decisoes/ADR-014-harness-de-efeitos-v1.md). Ele já realizou mutações em arquivos
+descartáveis sob testes de queda e reinício.
+
+O próximo passo é ligar uma única tarefa mutável ponta a ponta: `Execution Plan -> autorização e
+revalidação real do Omni -> outbox -> Harness -> Task State -> TaskResult`. Até esse gate passar, o
+runtime público permanece somente leitura. Agentes, skills, Registry e Graph Engine continuam fora.
 
 O futuro Agente de Discovery continua reservado pela
 [`ADR-008`](docs/decisoes/ADR-008-discovery-adaptativa-no-preflight.md). Agentes, skills, modelos, Graph

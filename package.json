@@ -12,7 +12,7 @@
     "check": "tsc --noEmit",
     "build": "tsc -p tsconfig.build.json",
     "test": "tsc -p tsconfig.test.json && node --test .test-dist/test/*.test.js",
-    "test:postgres": "tsc -p tsconfig.test.json && node --test .test-dist/integration/postgres.test.js",
+    "test:postgres": "tsc -p tsconfig.test.json && node --test .test-dist/integration/postgres.test.js .test-dist/integration/effect-journal-postgres.test.js",
     "test:sdk-live": "tsc -p tsconfig.test.json && node --test .test-dist/integration/anthropic-login.test.js",
     "test:e2e-live": "tsc -p tsconfig.test.json && node --test .test-dist/integration/omni-postgres-claude.test.js",
     "verify": "npm run check && npm test && npm run build",

@@ -79,6 +79,11 @@ A migration `005_execution_receipts.sql` guarda um recibo imutável por mensagem
 é escrito somente pelo worker que ainda possui o lease, antes de `verifying`, e permite terminar uma
 tarefa retomada sem chamar novamente um executor que já havia concluído.
 
+A migration `006_effect_journal.sql` guarda a identidade e o ciclo de vida de cada efeito mutável.
+O conteúdo anterior fica no armazenamento operacional de checkpoints; o banco guarda a URI interna,
+os hashes, o estado e a revisão CAS. O migrador usa um advisory lock, portanto duas instâncias podem
+iniciar juntas sem disputar a criação das mesmas tabelas.
+
 ## Por que não existe SQLite nem broker agora
 
 PostgreSQL já entrega transação, JSONB, CAS e reivindicação concorrente da outbox com
