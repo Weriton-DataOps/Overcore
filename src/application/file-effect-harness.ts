@@ -26,6 +26,8 @@ export interface FileMutationAuthorization {
   expiresAt: string
   operations: string[]
   requiredControls: string[]
+  authorizationRequest?: JsonObject
+  actionId?: string
 }
 
 export interface FileMutationIntent {
@@ -190,7 +192,11 @@ export class FileEffectHarness {
       intentFingerprint: record.intentFingerprint,
       enforcementId: intent.authorization.enforcementId,
       expiresAt: intent.authorization.expiresAt,
-      requiredControls: intent.authorization.requiredControls
+      requiredControls: intent.authorization.requiredControls,
+      ...(intent.authorization.authorizationRequest
+        ? { authorizationRequest: intent.authorization.authorizationRequest }
+        : {}),
+      ...(intent.authorization.actionId ? { actionId: intent.authorization.actionId } : {})
     })
 
     const observedBeforeWrite = sha256(await readFile(path))

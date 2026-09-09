@@ -1,4 +1,4 @@
-import type { Fingerprint } from '../domain/types.js'
+import type { Fingerprint, JsonObject } from '../domain/types.js'
 
 export type EffectJournalState =
   | 'reserved'
@@ -78,6 +78,10 @@ export interface EffectAuthorizationCheck {
   enforcementId: string
   expiresAt: string
   requiredControls: string[]
+  /** Pedido original, preservado pelo Task Manager; o guardiao HTTP o vincula ao efeito. */
+  authorizationRequest?: JsonObject
+  /** Acao journaled exata dentro do pedido original. */
+  actionId?: string
 }
 
 export interface EffectAuthorizationEvidence {
