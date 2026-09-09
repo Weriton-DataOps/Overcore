@@ -1,10 +1,11 @@
 import { fingerprint, sha256, stableId } from '../domain/fingerprint.js'
 import type { ClaimedMessage, ExecutionReceipt, InspectionEvidence, JsonObject, StoredTask } from '../domain/types.js'
-import { ExecutionFailure, type InspectionExecutor, type TaskStore } from '../ports/task-store.js'
+import { ExecutionFailure, type FileReplacementExecutor, type InspectionExecutor, type TaskStore } from '../ports/task-store.js'
 import { ContractValidator } from '../contracts/validator.js'
 import { beginVerification, failTask, scheduleRetry, succeed } from './state-builder.js'
 import type { Clock } from './task-manager.js'
 import { systemClock } from './task-manager.js'
+import { EffectStateUncertainError, type FileMutationResult } from './file-effect-harness.js'
 
 function record(previous: StoredTask, state: StoredTask['state'], result?: JsonObject): StoredTask {
   const next: StoredTask = {
@@ -94,11 +95,34 @@ function inspectionFrom(value: unknown): InspectionEvidence {
   return found
 }
 
+function fileMutationFrom(value: unknown): FileMutationResult {
+  const found = object(value, 'resultado da substituição de arquivo')
+  const projection = object(found.taskResultProjection, 'projeção do resultado da substituição')
+  if (!Array.isArray(projection.evidence) || !Array.isArray(projection.artifacts) || !Array.isArray(projection.effects)) {
+    throw new ExecutionFailure(
+      'file-replacement-invalid-result',
+      'internal',
+      false,
+      'O executor de substituição não devolveu evidências, artefatos e efeitos completos.'
+    )
+  }
+  if (typeof projection.checkpointArtifactRef !== 'string' || projection.checkpointArtifactRef.length === 0) {
+    throw new ExecutionFailure('file-replacement-invalid-result', 'internal', false, 'O executor não devolveu o checkpoint.')
+  }
+  return found as unknown as FileMutationResult
+}
+
 function classifyExecutionFailure(error: unknown): ExecutionFailure {
   if (error instanceof ExecutionFailure) return error
+  if (error instanceof EffectStateUncertainError) {
+    return new ExecutionFailure('effect-state-uncertain', 'verification', false, error.message, undefined, true)
+  }
   const message = error instanceof Error ? error.message : String(error)
   if (/ENOENT|nao existe|nao encontrou contratos/i.test(message)) {
     return new ExecutionFailure('inspection-resource-not-found', 'resource', false, message)
+  }
+  if (/precondi[çc][ãa]o declarada|n[aã]o corresponde [àa] precondi/i.test(message)) {
+    return new ExecutionFailure('effect-precondition-diverged', 'verification', false, message)
   }
   if (/ileg.vel|objeto raiz|JSON|contrato/i.test(message)) {
     return new ExecutionFailure('inspection-verification-failed', 'verification', false, message)
@@ -131,7 +155,8 @@ export class TaskWorker {
     private readonly store: TaskStore,
     private readonly validator: ContractValidator,
     private readonly executor: InspectionExecutor,
-    private readonly clock: Clock = systemClock
+    private readonly clock: Clock = systemClock,
+    private readonly fileReplacementExecutor?: FileReplacementExecutor
   ) {}
 
   async runOnce(): Promise<StoredTask | null> {
@@ -143,6 +168,10 @@ export class TaskWorker {
       if (task.status !== 'running' && task.status !== 'verifying') {
         throw new Error(`Tarefa ${task.taskId} não pode consumir inspeção em ${task.status}.`)
       }
+      if (claimed.kind === 'execute-file-replacement') {
+        return this.runFileReplacement(task, claimed)
+      }
+      if (claimed.kind !== 'execute-inspection') throw new Error(`Mensagem de execução desconhecida: ${claimed.kind}.`)
       const repositoryUri = String(claimed.payload.repositoryUri)
       const budget = object(claimed.payload.budget, 'budget da outbox')
       const authorization = object(claimed.payload.runtimeAuthorization, 'autorização de runtime')
@@ -152,6 +181,9 @@ export class TaskWorker {
       const persistedReceipt = await this.store.findExecutionReceipt(claimed.outboxId)
       if (persistedReceipt) {
         this.assertReceipt(persistedReceipt, task, claimed.outboxId)
+        if (persistedReceipt.payload.kind !== 'inspection-completed') {
+          throw new Error('Recibo de execução não pertence a uma inspeção.')
+        }
         inspection = inspectionFrom(persistedReceipt.payload.inspection)
       } else {
         try {
@@ -336,9 +368,159 @@ export class TaskWorker {
     if (fingerprint(receipt.payload).value !== receipt.payloadFingerprint.value) {
       throw new Error('Fingerprint do recibo de execucao nao corresponde ao payload persistido.')
     }
-    if (receipt.payload.kind !== 'inspection-completed') {
-      throw new Error('Recibo de execucao possui kind inesperado.')
+  }
+
+  private async runFileReplacement(task: StoredTask, claimed: ClaimedMessage): Promise<StoredTask> {
+    const execution = object(claimed.payload.execution, 'execução de arquivo da outbox')
+    const authorization = object(claimed.payload.runtimeAuthorization, 'autorização de runtime')
+    const authorizationRequest = object(authorization.authorizationRequest, 'pedido original de autorização')
+    let mutation: FileMutationResult
+    const persistedReceipt = await this.store.findExecutionReceipt(claimed.outboxId)
+    if (persistedReceipt) {
+      this.assertReceipt(persistedReceipt, task, claimed.outboxId)
+      if (persistedReceipt.payload.kind !== 'file-replacement-completed') {
+        throw new Error('Recibo de execução não pertence a uma substituição de arquivo.')
+      }
+      mutation = fileMutationFrom(persistedReceipt.payload.mutation)
+    } else {
+      if (!this.fileReplacementExecutor) {
+        return this.handleExecutionFailure(task, claimed, new ExecutionFailure(
+          'file-replacement-executor-unavailable',
+          'internal',
+          false,
+          'O runtime não recebeu o executor de substituição de arquivo.'
+        ))
+      }
+      try {
+        mutation = fileMutationFrom(await this.executeFileReplacementWithLeaseHeartbeat(claimed, {
+          taskId: task.taskId,
+          effectKey: String(claimed.payload.effectKey),
+          actionId: String(claimed.payload.actionId),
+          resourceRef: String(execution.resourceRef),
+          targetUri: String(claimed.payload.targetUri),
+          desiredContent: String(execution.desiredContent),
+          expectedBeforeDigest: String(execution.expectedBeforeDigest) as `sha256:${string}`,
+          authorization: {
+            enforcementId: String(authorization.enforcementId),
+            expiresAt: String(authorization.expiresAt),
+            operations: Array.isArray(authorization.operations) ? authorization.operations.map(String) : [],
+            requiredControls: Array.isArray(authorization.requiredControls)
+              ? authorization.requiredControls.map(String)
+              : [],
+            authorizationRequest
+          }
+        }))
+      } catch (error) {
+        return this.handleExecutionFailure(task, claimed, classifyExecutionFailure(error))
+      }
+      const receiptPayload: JsonObject = {
+        kind: 'file-replacement-completed',
+        mutation: mutation as unknown as JsonObject
+      }
+      await this.store.saveExecutionReceipt({
+        receiptId: stableId('execution-receipt', claimed.outboxId),
+        outboxId: claimed.outboxId,
+        taskId: task.taskId,
+        executionEpoch: task.executionEpoch,
+        payload: receiptPayload,
+        payloadFingerprint: fingerprint(receiptPayload),
+        recordedAt: this.clock.now().toISOString()
+      }, claimed.claimToken, this.clock.now())
     }
+
+    const projection = mutation.taskResultProjection
+    const evidence = projection.evidence as JsonObject[]
+    const evidenceRefs = evidence.map((item) => String(item.evidenceId)).filter(Boolean)
+    if (evidenceRefs.length === 0) {
+      return this.handleExecutionFailure(task, claimed, new ExecutionFailure(
+        'file-replacement-missing-readback', 'verification', false, 'A substituição não produziu evidência de leitura posterior.'
+      ))
+    }
+    let verifyingTask = task
+    if (task.status === 'running') {
+      const verifyingAt = this.clock.now().toISOString()
+      const verifyingState = beginVerification(task.state, evidenceRefs, verifyingAt)
+      this.validator.taskState(verifyingState)
+      verifyingTask = await this.store.compareAndSwap({
+        expectedRevision: task.stateRevision,
+        next: record(task, verifyingState),
+        event: {
+          eventId: stableId('event-file-verifying', `${task.taskId}:${verifyingState.stateRevision}`),
+          kind: 'verification-started',
+          occurredAt: verifyingAt,
+          payload: { evidenceRefs, effectKey: mutation.journal.effectKey }
+        }
+      })
+    }
+    const finishedAt = this.clock.now().toISOString()
+    const resultId = stableId('result-file-replacement', `${task.taskId}:${verifyingTask.stateRevision + 1}`)
+    const transitionId = stableId('transition-succeeded', `${task.taskId}:${verifyingTask.stateRevision + 1}:file-readback-passed`)
+    const criterionEvidence = new Map<string, string[]>()
+    for (const criterion of verifyingTask.request.acceptanceCriteria) criterionEvidence.set(criterion.id, evidenceRefs)
+    const startedAt = String((verifyingTask.state.ledger.attempts as JsonObject[])[0]?.startedAt ?? verifyingTask.createdAt)
+    const previousResultRefs = Array.isArray(verifyingTask.state.ledger.resultRefs)
+      ? verifyingTask.state.ledger.resultRefs as JsonObject[]
+      : []
+    const previousResultId = previousResultRefs.at(-1)?.resultId
+    const result: JsonObject = {
+      contractVersion: '1.0',
+      resultId,
+      requestId: verifyingTask.requestId,
+      requestFingerprint: verifyingTask.state.requestBinding.requestFingerprint as never,
+      taskId: verifyingTask.taskId,
+      stateRef: {
+        stateRevision: verifyingTask.stateRevision + 1,
+        transitionId,
+        emissionSequence: previousResultRefs.length + 1,
+        ...(typeof previousResultId === 'string' ? { supersedesResultId: previousResultId } : {})
+      },
+      reportedAt: finishedAt,
+      status: 'succeeded',
+      summary: mutation.wrote
+        ? 'O arquivo autorizado foi substituído uma vez, recebeu checkpoint e foi confirmado por leitura posterior.'
+        : 'O arquivo já possuía o conteúdo declarado; o estado foi confirmado sem nova escrita.',
+      criteria: verifyingTask.request.acceptanceCriteria.map((criterion) => ({
+        criterionId: criterion.id,
+        status: 'passed',
+        evidenceRefs: criterionEvidence.get(criterion.id) ?? []
+      })),
+      evidence,
+      artifacts: projection.artifacts,
+      effects: projection.effects,
+      execution: {
+        attemptCount: Number(verifyingTask.state.usage.attemptCount ?? 1),
+        maxParallelismObserved: 1,
+        durationMs: Math.max(0, Date.parse(finishedAt) - Date.parse(startedAt)),
+        startedAt,
+        finishedAt,
+        lastTransitionAt: finishedAt,
+        checkpointArtifactRef: projection.checkpointArtifactRef
+      }
+    }
+    this.validator.assert('task-result', result)
+    const resultFingerprint = fingerprint(result)
+    const succeededState = succeed(verifyingTask.state, resultId, criterionEvidence, resultFingerprint, finishedAt)
+    this.validator.taskState(succeededState)
+    return this.store.compareAndSwap({
+      expectedRevision: verifyingTask.stateRevision,
+      next: record(verifyingTask, succeededState, result),
+      event: {
+        eventId: stableId('event-file-succeeded', `${task.taskId}:${succeededState.stateRevision}`),
+        kind: 'task-succeeded',
+        occurredAt: finishedAt,
+        payload: { resultId, resultFingerprint, effectKey: mutation.journal.effectKey }
+      },
+      completeOutbox: { outboxId: claimed.outboxId, claimToken: claimed.claimToken }
+    })
+  }
+
+  private async executeFileReplacementWithLeaseHeartbeat(
+    claimed: ClaimedMessage,
+    input: Parameters<FileReplacementExecutor['execute']>[0]
+  ): Promise<JsonObject> {
+    if (!this.fileReplacementExecutor) throw new Error('Executor de substituição de arquivo indisponível.')
+    await this.store.extendOutboxLease(claimed.outboxId, claimed.claimToken, OUTBOX_LEASE_MS, this.clock.now())
+    return this.fileReplacementExecutor.execute(input)
   }
 
   private async executeWithLeaseHeartbeat(

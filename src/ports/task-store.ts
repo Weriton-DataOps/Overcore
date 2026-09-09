@@ -105,3 +105,22 @@ export interface InspectionExecutor {
     authorization: AgentRuntimeAuthorization
   }): Promise<JsonObject>
 }
+
+export interface FileReplacementExecutor {
+  execute(input: {
+    taskId: string
+    effectKey: string
+    actionId: string
+    resourceRef: string
+    targetUri: string
+    desiredContent: string
+    expectedBeforeDigest: `sha256:${string}`
+    authorization: {
+      enforcementId: string
+      expiresAt: string
+      operations: string[]
+      requiredControls: string[]
+      authorizationRequest: JsonObject
+    }
+  }): Promise<JsonObject>
+}

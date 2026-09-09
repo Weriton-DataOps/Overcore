@@ -423,6 +423,13 @@ test('migration de execução persiste recibo idempotente antes da verificação
   assert.match(sql, /execution_epoch/i)
 })
 
+test('migração de recibos admite a projeção de substituição reversível sem alterar estados', async () => {
+  const sql = await readFile(join(root, 'migrations', '007_file_replacement_receipts.sql'), 'utf8')
+  assert.match(sql, /DROP CONSTRAINT IF EXISTS overcore_task_execution_receipts_payload_check/i)
+  assert.match(sql, /file-replacement-completed/i)
+  assert.doesNotMatch(sql, /overcore_tasks\s+SET|UPDATE\s+overcore_tasks/i)
+})
+
 test('fixture da primeira tarefa continua válida no contrato público', async () => {
   const validator: ContractValidator = await ContractValidator.create(root)
   const request: unknown = await requestFixture()

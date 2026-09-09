@@ -205,6 +205,9 @@
         },
         "expectedOutputKind": {
           "enum": ["text", "json", "report", "file", "repository-change", "artifact-set", "no-artifact"]
+        },
+        "fileReplacement": {
+          "$ref": "#/$defs/fileReplacementHint"
         }
       }
     }
@@ -229,6 +232,17 @@
         "value": {
           "$ref": "#/$defs/sha256"
         }
+      }
+    },
+    "fileReplacementHint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "resourceRef", "desiredContent", "expectedBeforeDigest"],
+      "properties": {
+        "kind": { "const": "replace-file-content" },
+        "resourceRef": { "$ref": "#/$defs/identifier" },
+        "desiredContent": { "type": "string", "maxLength": 1048576 },
+        "expectedBeforeDigest": { "$ref": "#/$defs/sha256" }
       }
     },
     "operationToken": {

@@ -157,6 +157,7 @@ function buildRequest(
   const hints = object(draft.executionHints)
   const priority = String(hints.priority ?? 'normal') as TaskRequest['priority']
   const expectedOutputKind = String(hints.expectedOutputKind)
+  const replacementHint = object(hints.fileReplacement)
   const criteria = draft.knownAcceptanceCriteria.map((criterion) => {
     const hint = criterion.verificationHint
     const method = typeof hint === 'string' ? hint : 'inspection'
@@ -195,7 +196,18 @@ function buildRequest(
     authority: structuredClone(draft.availableExecutionAuthority),
     acceptanceCriteria: criteria,
     budget: structuredClone(draft.executionBudget.limits),
-    expectedOutput: { kind: expectedOutputKind }
+    expectedOutput: {
+      kind: expectedOutputKind,
+      ...(Object.keys(replacementHint).length > 0 ? { destinationRef: String(replacementHint.resourceRef) } : {})
+    }
+  }
+  if (Object.keys(replacementHint).length > 0) {
+    request.execution = {
+      kind: 'replace-file-content',
+      resourceRef: String(replacementHint.resourceRef),
+      desiredContent: String(replacementHint.desiredContent),
+      expectedBeforeDigest: String(replacementHint.expectedBeforeDigest) as `sha256:${string}`
+    }
   }
   if (draft.correlationId !== undefined) request.correlationId = draft.correlationId
   return request

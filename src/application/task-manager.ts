@@ -12,6 +12,8 @@ import {
 import { ContractValidator } from '../contracts/validator.js'
 import { buildAuthorizationRequest, buildEnforcement } from './authorization.js'
 import { buildInspectionPlan, repositoryUri } from './inspection-plan.js'
+import { buildFileReplacementPlan } from './file-replacement-plan.js'
+import { fileReplacementFrom, replacementPayloadFromPlan } from './file-replacement.js'
 import {
   acceptedState,
   attachResultReference,
@@ -610,15 +612,26 @@ export class TaskManager {
       ? task.state.ledger.planRefs as JsonObject[]
       : []
     const planRevision = priorPlanRefs.length + 1
-    const plan = await buildInspectionPlan(
-      task.taskId,
-      task.request,
-      requestFingerprint,
-      task.stateRevision,
-      planAt,
-      planRevision,
-      priorPlanRefs.at(-1)
-    )
+    const replacement = fileReplacementFrom(task.request)
+    const plan = replacement
+      ? buildFileReplacementPlan(
+          task.taskId,
+          task.request,
+          requestFingerprint,
+          task.stateRevision,
+          planAt,
+          planRevision,
+          priorPlanRefs.at(-1)
+        )
+      : await buildInspectionPlan(
+          task.taskId,
+          task.request,
+          requestFingerprint,
+          task.stateRevision,
+          planAt,
+          planRevision,
+          priorPlanRefs.at(-1)
+        )
     this.validator.assert('execution-plan', plan)
     assertFingerprint(plan, 'planFingerprint')
     const authRequest = buildAuthorizationRequest(
@@ -737,12 +750,50 @@ export class TaskManager {
       runningAt
     )
     this.validator.taskState(runningState)
-    const outboxId = stableId('outbox-inspection', `${task.taskId}:${runningState.executionEpoch}`)
+    const replacement = fileReplacementFrom(task.request)
+    const outboxId = stableId(
+      replacement ? 'outbox-file-replacement' : 'outbox-inspection',
+      `${task.taskId}:${runningState.executionEpoch}`
+    )
     const authorizedActions = authorization.request.actions as JsonObject[]
     const actionDecisions = authorization.decision.actionDecisions as JsonObject[]
     const permittedActionIds = new Set(
       actionDecisions.filter((item) => item.outcome === 'permit').map((item) => String(item.actionId))
     )
+    const runtimeAuthorization: JsonObject = {
+      enforcementId: String(authorization.enforcement.enforcementId),
+      enforcementFingerprint: fingerprintValue(authorization.enforcement.recordFingerprint, 'recordFingerprint'),
+      expiresAt: String(authorization.enforcement.expiresAt),
+      operations: [...new Set(authorizedActions
+        .filter((item) => permittedActionIds.has(String(item.actionId)))
+        .map((item) => String(item.operation)))],
+      requiredControls: [...new Set(actionDecisions.flatMap((item) =>
+        Array.isArray(item.requiredControls) ? item.requiredControls.map(String) : []
+      ))]
+    }
+    const payload: JsonObject = replacement
+      ? (() => {
+          const binding = replacementPayloadFromPlan(plan)
+          return {
+            objective: task.request.objective,
+            budget: task.request.budget,
+            execution: replacement.execution,
+            targetUri: replacement.targetUri,
+            effectKey: binding.effectKey,
+            actionId: binding.actionId,
+            runtimeAuthorization: {
+              ...runtimeAuthorization,
+              authorizationRequest: authorization.request
+            }
+          }
+        })()
+      : {
+          repositoryUri: repositoryUri(task.request),
+          objective: task.request.objective,
+          strategyRevision: planRevision,
+          budget: task.request.budget,
+          runtimeAuthorization
+        }
     return this.store.compareAndSwap({
       expectedRevision: task.stateRevision,
       next: record(task, runningState),
@@ -750,24 +801,8 @@ export class TaskManager {
       outbox: {
         outboxId,
         taskId: task.taskId,
-        kind: 'execute-inspection',
-        payload: {
-          repositoryUri: repositoryUri(task.request),
-          objective: task.request.objective,
-          strategyRevision: planRevision,
-          budget: task.request.budget,
-          runtimeAuthorization: {
-            enforcementId: String(authorization.enforcement.enforcementId),
-            enforcementFingerprint: fingerprintValue(authorization.enforcement.recordFingerprint, 'recordFingerprint'),
-            expiresAt: String(authorization.enforcement.expiresAt),
-            operations: [...new Set(authorizedActions
-              .filter((item) => permittedActionIds.has(String(item.actionId)))
-              .map((item) => String(item.operation)))],
-            requiredControls: [...new Set(actionDecisions.flatMap((item) =>
-              Array.isArray(item.requiredControls) ? item.requiredControls.map(String) : []
-            ))]
-          }
-        },
+        kind: replacement ? 'execute-file-replacement' : 'execute-inspection',
+        payload,
         availableAt: runningAt,
         attempts: 0
       }

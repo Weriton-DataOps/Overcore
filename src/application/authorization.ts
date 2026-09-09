@@ -37,21 +37,38 @@ export function buildAuthorizationRequest(
       const action = object(rawAction, 'action')
       position += 1
       const resourceRef = action.resourceRef
+      const effectPolicy = object(action.effectPolicy, 'effectPolicy')
+      const journaled = effectPolicy.mode === 'journaled'
       const item: JsonObject = {
         actionId: string(action.actionId, 'actionId'),
         stepRef: string(step.stepId, 'stepRef'),
         position,
         scope: string(action.scope, 'scope'),
         operation: string(action.operation, 'operation'),
-        effectMode: 'none',
-        effectClass: action.scope === 'runtime-internal' ? 'runtime-internal' : 'read-only',
-        riskLevel: 'low',
-        requestedControls: action.scope === 'runtime-internal' ? [] : ['sanitize-output']
+        effectMode: journaled ? 'journaled' : 'none',
+        effectClass: action.scope === 'runtime-internal'
+          ? 'runtime-internal'
+          : journaled
+            ? 'reversible-change'
+            : 'read-only',
+        riskLevel: journaled ? 'medium' : 'low',
+        requestedControls: action.scope === 'runtime-internal'
+          ? []
+          : journaled
+            ? [
+                'checkpoint-before-mutation',
+                'verify-after-effect',
+                'reconcile-before-retry',
+                'revocation-check-before-effect'
+              ]
+            : ['sanitize-output']
       }
       if (typeof resourceRef === 'string') item.resourceRef = resourceRef
+      if (journaled) item.effectKey = string(effectPolicy.effectKey, 'effectKey')
       actions.push(item)
     }
   }
+  const journaledActions = actions.filter((item) => item.effectMode === 'journaled')
   const base: JsonObject = {
     contractVersion: '1.0',
     authorizationRequestId: stableId(
@@ -77,10 +94,10 @@ export function buildAuthorizationRequest(
     authorityCeiling: request.authority,
     actions,
     riskSummary: {
-      maximumRisk: 'low',
+      maximumRisk: journaledActions.length > 0 ? 'medium' : 'low',
       triggeredBoundaries: [],
       requestResourceActionCount: actions.filter((item) => item.scope === 'request-resource').length,
-      journaledEffectCount: 0
+      journaledEffectCount: journaledActions.length
     }
   }
   return { ...base, authorizationRequestFingerprint: fingerprint(base) }
@@ -159,7 +176,16 @@ export function permittingDecision(authorizationRequest: JsonObject, now = new D
         actionId: string(action.actionId, 'actionId'),
         outcome: 'permit',
         reasonCode: 'within-delegated-authority',
-        requiredControls: action.scope === 'runtime-internal' ? [] : ['sanitize-output']
+        requiredControls: action.scope === 'runtime-internal'
+          ? []
+          : action.effectMode === 'journaled'
+            ? [
+                'checkpoint-before-mutation',
+                'verify-after-effect',
+                'reconcile-before-retry',
+                'revocation-check-before-effect'
+              ]
+            : ['sanitize-output']
       }
     }),
     limits: {

@@ -5,15 +5,20 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { ContractValidator } from './contracts/validator.js'
 import { TaskManager } from './application/task-manager.js'
 import { TaskWorker } from './application/task-worker.js'
+import { FileEffectHarness } from './application/file-effect-harness.js'
+import { HarnessFileReplacementExecutor } from './application/file-replacement-executor.js'
 import {
   AgentAssistedContractInspectionExecutor,
   ReadOnlyContractInspectionExecutor
 } from './application/inspection-executor.js'
 import type { JsonObject } from './domain/types.js'
 import { HttpAuthorityProvider } from './infrastructure/authority/http-authority-provider.js'
+import { HttpEffectAuthorityGuard } from './infrastructure/authority/http-effect-authority-guard.js'
 import { AnthropicAgentSdkRuntime } from './infrastructure/agent-runtime/anthropic-agent-sdk.js'
 import { createPostgresPool, migrate } from './infrastructure/database/postgres.js'
 import { PostgresTaskStore } from './infrastructure/database/postgres-task-store.js'
+import { PostgresEffectJournalStore } from './infrastructure/database/postgres-effect-journal-store.js'
+import { FileCheckpointStore } from './infrastructure/checkpoints/file-checkpoint-store.js'
 import { createLocalServer } from './infrastructure/http/local-server.js'
 import { loadRuntimeConfig } from './infrastructure/runtime/config.js'
 import { removeRuntimeDescriptor, writeRuntimeDescriptor } from './infrastructure/runtime/descriptor.js'
@@ -37,7 +42,16 @@ async function serve(): Promise<void> {
     `worker-${process.pid}`,
     store,
     validator,
-    new AgentAssistedContractInspectionExecutor(new AnthropicAgentSdkRuntime())
+    new AgentAssistedContractInspectionExecutor(new AnthropicAgentSdkRuntime()),
+    undefined,
+    new HarnessFileReplacementExecutor(new FileEffectHarness(
+      new PostgresEffectJournalStore(pool),
+      new FileCheckpointStore(join(config.runtimeDirectory, 'checkpoints')),
+      new HttpEffectAuthorityGuard(
+        new URL('/v1/authority/revalidate-effect', config.authorityProviderUrl),
+        config.authorityProviderToken
+      )
+    ))
   )
   const server = createLocalServer(manager, worker, config.localToken)
   await new Promise<void>((resolve, reject) => {

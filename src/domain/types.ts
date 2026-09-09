@@ -25,6 +25,19 @@ export interface AcceptanceCriterion {
   }
 }
 
+/**
+ * A primeira operação material suportada pelo Task Manager.
+ *
+ * O conteúdo inteiro e a precondição são congelados no TaskRequest; o
+ * executor nunca deduz uma alteração a partir do objetivo em linguagem natural.
+ */
+export interface FileReplacementExecution {
+  kind: 'replace-file-content'
+  resourceRef: string
+  desiredContent: string
+  expectedBeforeDigest: `sha256:${string}`
+}
+
 export interface TaskRequest extends JsonObject {
   contractVersion: '1.0'
   requestId: string
@@ -59,6 +72,7 @@ export interface TaskRequest extends JsonObject {
     maxCostUsd?: number
   }
   expectedOutput: JsonObject & { kind: string }
+  execution?: FileReplacementExecution
 }
 
 export interface TaskDraft extends JsonObject {
@@ -186,7 +200,7 @@ export interface StoredTask {
 export interface OutboxMessage {
   outboxId: string
   taskId: string
-  kind: 'execute-inspection'
+  kind: 'execute-inspection' | 'execute-file-replacement'
   payload: JsonObject
   availableAt: string
   attempts: number

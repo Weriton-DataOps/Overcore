@@ -196,6 +196,9 @@
           "$ref": "#/$defs/identifier"
         }
       }
+    },
+    "execution": {
+      "$ref": "#/$defs/fileReplacementExecution"
     }
   },
   "$defs": {
@@ -241,6 +244,17 @@
       "type": "string",
       "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z][a-z0-9]*)+$",
       "maxLength": 100
+    },
+    "fileReplacementExecution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "resourceRef", "desiredContent", "expectedBeforeDigest"],
+      "properties": {
+        "kind": { "const": "replace-file-content" },
+        "resourceRef": { "$ref": "#/$defs/identifier" },
+        "desiredContent": { "type": "string", "maxLength": 1048576 },
+        "expectedBeforeDigest": { "$ref": "#/$defs/sha256" }
+      }
     },
     "contextReference": {
       "type": "object",
