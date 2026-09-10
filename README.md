@@ -189,16 +189,21 @@ organizados antecipadamente. Quando uma dessas camadas se tornar necessária, su
 responsabilidade, contrato, diretórios e Definition of Done serão discutidos passo a passo antes da
 implementação.
 
-## Próximo passo
+## Marco 1 concluído — primeira mutação controlada
 
-O núcleo do **Harness de efeitos v1** está implementado e explicado no
+O **Harness de efeitos v1** está implementado e explicado no
 [`mapa didático`](docs/arquitetura/03-harness-de-efeitos-v1.md) e na
-[`ADR-014`](docs/decisoes/ADR-014-harness-de-efeitos-v1.md). Ele já realizou mutações em arquivos
-descartáveis sob testes de queda e reinício.
+[`ADR-014`](docs/decisoes/ADR-014-harness-de-efeitos-v1.md). A primeira tarefa mutável também está
+ligada ponta a ponta: `Execution Plan -> autorização e revalidação real do Omni -> outbox -> Harness
+-> Task State -> TaskResult`.
 
-O próximo passo é ligar uma única tarefa mutável ponta a ponta: `Execution Plan -> autorização e
-revalidação real do Omni -> outbox -> Harness -> Task State -> TaskResult`. Até esse gate passar, o
-runtime público permanece somente leitura. Agentes, skills, Registry e Graph Engine continuam fora.
+Ela substitui conteúdo de um arquivo UTF-8 descartável, exclusivamente dentro do recurso declarado,
+com checkpoint, journal PostgreSQL, revalidação imediatamente antes da escrita, readback e
+reconciliação. O gate `npm run test:omni-effect-live` prova a cadeia usando PostgreSQL e Omni reais.
+
+O próximo trabalho não é adicionar componentes por antecipação. Depois do fechamento deste marco,
+devemos escolher, por contrato, uma segunda capacidade executável ou desenhar o Agente de Discovery
+para o Preflight. Agentes, skills, Registry e Graph Engine continuam fora até essa decisão.
 
 O futuro Agente de Discovery continua reservado pela
 [`ADR-008`](docs/decisoes/ADR-008-discovery-adaptativa-no-preflight.md). Agentes, skills, modelos, Graph

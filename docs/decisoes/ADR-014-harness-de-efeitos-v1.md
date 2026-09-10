@@ -74,13 +74,14 @@ mesmo objeto de schema ao mesmo tempo sem reduzir a concorrência normal dos wor
 
 ## Limite da entrega
 
-O núcleo do Harness, o adaptador PostgreSQL, o armazenamento de checkpoints e a projeção pronta para
-`TaskResult` estão implementados. A primeira mutação foi executada somente em arquivos descartáveis de
-teste.
+O núcleo do Harness, o adaptador PostgreSQL, o armazenamento de checkpoints e a projeção para
+`TaskResult` estão implementados. O dispatch mutável do Task Manager também está ligado para uma única
+intenção explícita: `replace-file-content` em arquivo UTF-8 declarado no `TaskRequest`.
 
-Ainda não há dispatch mutável no `Task Manager`. A próxima etapa é conectar um plano mutável, a
-revalidação real do Omni e o resultado do Harness à outbox/Task State. Até essa ligação existir, o
-runtime público continua executando apenas a inspeção somente leitura.
+A cadeia passa por plano, autorização, outbox, revalidação HTTP real do Omni, Harness, Task State e
+TaskResult. A prova de integração usa PostgreSQL e Omni reais, mas altera apenas um arquivo temporário
+criado pelo próprio teste. Tipos adicionais de efeito continuam fora desta ADR e exigirão contrato,
+controle e prova próprios.
 
 ## Provas
 

@@ -60,13 +60,15 @@ O `FileEffectHarness` altera um arquivo descartável real e produz:
 - projeção de `effects`, `evidence`, `artifacts` e `checkpointArtifactRef` pronta para compor um
   `TaskResult`.
 
-## O que ainda não está ligado
+## Integração concluída
 
 ```text
-Task Manager/outbox ---- X ----> FileEffectHarness
-Omni real              ---- X ----> EffectAuthorityGuard
-Task State/TaskResult   <--- projeção pronta, integração pendente
+Task Manager/outbox --------> FileEffectHarness
+Omni real ------------------> EffectAuthorityGuard
+Task State/TaskResult <------ projeção de efeitos, evidências e artefatos
 ```
 
-Portanto, o Harness existe e foi provado, mas nenhuma tarefa normal do runtime ganhou poder de escrita
-ainda. A próxima etapa fecha exatamente essas três conexões para uma única operação controlada.
+As três conexões foram fechadas para uma única operação controlada: substituição reversível de conteúdo
+em arquivo UTF-8. O Task Manager agenda a execução, o worker entrega a intenção ao Harness, o Omni
+revalida o efeito antes da escrita e o resultado confirmado é projetado no Task State e no TaskResult.
+O escopo permanece estrito: nenhum outro tipo de mutação é liberado por essa integração.
