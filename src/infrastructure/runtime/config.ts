@@ -8,6 +8,8 @@ export interface RuntimeConfig {
   authorityProviderUrl: URL
   authorityProviderToken: string
   runtimeDirectory: string
+  /** baseline não chama modelo; advisor inclui todos os perfis estruturais. */
+  discoveryMode: 'baseline' | 'advisor'
 }
 
 function required(env: NodeJS.ProcessEnv, name: string): string {
@@ -25,6 +27,10 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
   if (!Number.isInteger(port) || port < 0 || port > 65_535) throw new Error('OVERCORE_PORT inválida.')
   const localToken = required(env, 'OVERCORE_LOCAL_TOKEN')
   const authorityProviderToken = required(env, 'OVERCORE_AUTHORITY_PROVIDER_TOKEN')
+  const discoveryMode = env.OVERCORE_DISCOVERY_MODE ?? 'baseline'
+  if (discoveryMode !== 'baseline' && discoveryMode !== 'advisor') {
+    throw new Error('OVERCORE_DISCOVERY_MODE precisa ser baseline ou advisor.')
+  }
   if (localToken.length < 16 || authorityProviderToken.length < 16) throw new Error('Tokens locais precisam de ao menos 16 caracteres.')
   return {
     databaseUrl: required(env, 'OVERCORE_DATABASE_URL'),
@@ -33,6 +39,7 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
     localToken,
     authorityProviderUrl: new URL(required(env, 'OVERCORE_AUTHORITY_PROVIDER_URL')),
     authorityProviderToken,
-    runtimeDirectory: join(localAppData, 'Overcore')
+    runtimeDirectory: join(localAppData, 'Overcore'),
+    discoveryMode
   }
 }

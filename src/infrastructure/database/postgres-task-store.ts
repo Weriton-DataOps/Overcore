@@ -26,6 +26,7 @@ import {
   type StoredPreflightRevision
 } from '../../ports/preflight-store.js'
 import type { PostgresPool } from './postgres.js'
+import { ExecutionInterruptedError } from '../../ports/execution-control.js'
 
 interface TaskRow {
   task_id: string
@@ -50,7 +51,7 @@ interface TaskRow {
 interface OutboxRow {
   outbox_id: string
   task_id: string
-  kind: 'execute-inspection'
+  kind: 'execute-inspection' | 'execute-file-replacement' | 'execute-postgres-table-probe'
   payload: JsonObject
   available_at: Date
   attempts: number
@@ -320,9 +321,17 @@ export class PostgresTaskStore implements TaskStore {
     } catch (error) {
       await client.query('ROLLBACK')
       const pgError = error as { code?: string; constraint?: string }
-      if (pgError.code === '23505' && pgError.constraint?.includes('idempotency')) {
-        const existing = await this.findByIdempotencyKey(task.idempotencyKey)
-        if (existing) throw new DuplicateTaskError(existing.taskId)
+      if (pgError.code === '23505' && [
+        'overcore_tasks_pkey', 'overcore_tasks_request_id_key', 'overcore_tasks_idempotency_key_key'
+      ].includes(pgError.constraint ?? '')) {
+        // taskId/requestId are deterministic too: PostgreSQL can report any of
+        // these constraints first. Confirm the SAME idempotency key after rollback.
+        // Reuse this connection so a concurrent admission burst cannot exhaust
+        // the pool while every failed insert waits for another connection.
+        const existing = await client.query<{ task_id: string }>(
+          'SELECT task_id FROM overcore_tasks WHERE idempotency_key = $1', [task.idempotencyKey]
+        )
+        if (existing.rows[0]) throw new DuplicateTaskError(existing.rows[0].task_id)
       }
       throw error
     } finally {
@@ -374,7 +383,7 @@ export class PostgresTaskStore implements TaskStore {
   async listReconciliationCandidates(limit: number, now = new Date()): Promise<StoredTask[]> {
     const result = await this.pool.query<TaskRow>(
       `SELECT * FROM overcore_tasks
-       WHERE status IN ('accepted', 'planning', 'ready')
+       WHERE status IN ('accepted', 'planning', 'ready', 'cancelling')
          AND (reconciliation_until IS NULL OR reconciliation_until <= $1)
          AND (reconciliation_retry_at IS NULL OR reconciliation_retry_at <= $1)
        ORDER BY updated_at, task_id
@@ -447,6 +456,31 @@ export class PostgresTaskStore implements TaskStore {
        WHERE task_id=$1 AND reconciliation_token=$2`,
       [taskId, claimToken]
     )
+  }
+
+  async withExecutionFence<T>(claim: ClaimedMessage, epoch: number, mode: 'execute' | 'reconcile', operation: () => Promise<T>, now = new Date()): Promise<T> {
+    const client = await this.pool.connect()
+    try {
+      await client.query('BEGIN')
+      // Same ordering as completion CAS: outbox, then task. Locks also fence expired workers.
+      const lease = await client.query(
+        `SELECT 1 FROM overcore_task_outbox WHERE outbox_id=$1 AND task_id=$2 AND claim_token=$3
+           AND processed_at IS NULL AND locked_until>$4 FOR UPDATE`,
+        [claim.outboxId, claim.taskId, claim.claimToken, now]
+      )
+      const task = await client.query<TaskRow>('SELECT * FROM overcore_tasks WHERE task_id=$1 FOR UPDATE', [claim.taskId])
+      const row = task.rows[0]
+      if (lease.rowCount !== 1 || !row || row.execution_epoch !== epoch ||
+          !(mode === 'execute' ? ['running', 'verifying'] : ['cancelling']).includes(row.status)) {
+        throw new ExecutionInterruptedError()
+      }
+      const value = await operation()
+      await client.query('COMMIT')
+      return value
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined)
+      throw error
+    } finally { client.release() }
   }
 
   async compareAndSwap(mutation: CasMutation): Promise<StoredTask> {

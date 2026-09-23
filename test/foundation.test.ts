@@ -88,6 +88,26 @@ test('a mesma chave idempotente devolve a tarefa existente sem duplicar execuç�
   assert.equal(store.outbox.size, 1)
 })
 
+test('cancelamento antes do dispatch emite TaskResult e não cria outbox', async () => {
+  const validator: ContractValidator = await ContractValidator.create(root)
+  const store = new FailOnceTaskStore('planning-started')
+  const request = await requestFixture()
+  request.requestId = 'req-cancel-before-dispatch-0001'
+  request.idempotencyKey = 'cancel-before-dispatch-0001'
+  const manager = new TaskManager(store, validator, new PermittingAuthorityProvider())
+  const pending = await manager.submit(request)
+  assert.equal(pending.status, 'accepted')
+  const cancelled = await manager.cancel(pending.taskId)
+  assert.equal(cancelled?.status, 'cancelled')
+  assert.equal(cancelled?.result?.status, 'cancelled')
+  assert.equal(cancelled?.state.executionEpoch, 2)
+  assert.equal((cancelled?.state.cancellation as JsonObject | undefined)?.status, 'quiesced')
+  assert.equal(store.outbox.size, 0)
+  if (!cancelled?.result) throw new Error('Cancelamento não gerou TaskResult.')
+  validator.taskState(cancelled.state)
+  validator.assert('task-result', cancelled.result)
+})
+
 for (const scenario of [
   { eventKind: 'planning-started', partialStatus: 'accepted' },
   { eventKind: 'plan-authorized', partialStatus: 'planning' },

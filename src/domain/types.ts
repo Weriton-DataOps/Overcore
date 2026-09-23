@@ -38,6 +38,17 @@ export interface FileReplacementExecution {
   expectedBeforeDigest: `sha256:${string}`
 }
 
+/**
+ * Sonda transacional restrita ao banco de testes local. Ela não recebe SQL
+ * livre: cria e remove a mesma tabela efêmera de prefixo reservado.
+ */
+export interface PostgresTableProbeExecution {
+  kind: 'postgres-create-drop-table'
+  resourceRef: string
+  databaseName: 'overcore_test'
+  tableName: string
+}
+
 export interface TaskRequest extends JsonObject {
   contractVersion: '1.0'
   requestId: string
@@ -72,7 +83,7 @@ export interface TaskRequest extends JsonObject {
     maxCostUsd?: number
   }
   expectedOutput: JsonObject & { kind: string }
-  execution?: FileReplacementExecution
+  execution?: FileReplacementExecution | PostgresTableProbeExecution
 }
 
 export interface TaskDraft extends JsonObject {
@@ -200,7 +211,7 @@ export interface StoredTask {
 export interface OutboxMessage {
   outboxId: string
   taskId: string
-  kind: 'execute-inspection' | 'execute-file-replacement'
+  kind: 'execute-inspection' | 'execute-file-replacement' | 'execute-postgres-table-probe'
   payload: JsonObject
   availableAt: string
   attempts: number

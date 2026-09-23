@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 
 import { fingerprint, sha256, stableId } from '../domain/fingerprint.js'
 import type { Fingerprint, JsonObject } from '../domain/types.js'
+import { guardedEffect, type ExecutionControl, type CancellationProjection } from '../ports/execution-control.js'
 import type {
   CheckpointArtifact,
   CheckpointStore,
@@ -134,7 +135,8 @@ export class FileEffectHarness {
     private readonly hooks: FileEffectHarnessHooks = {}
   ) {}
 
-  async apply(intent: FileMutationIntent): Promise<FileMutationResult> {
+  async apply(intent: FileMutationIntent, control?: ExecutionControl): Promise<FileMutationResult> {
+    await control?.assertActive()
     this.assertIntent(intent)
     const path = fileURLToPath(intent.targetUri)
     const desired = Buffer.from(intent.desiredContent, 'utf8')
@@ -150,31 +152,34 @@ export class FileEffectHarness {
       }
       const effectId = stableId('effect', intent.effectKey)
       const checkpointRef = stableId('checkpoint', `${intent.taskId}:${intent.effectKey}`)
-      const checkpoint = await this.checkpoints.save(checkpointRef, before)
-      const reservedAt = this.now().toISOString()
-      record = await this.journal.reserveEffect({
-        effectId,
-        effectKey: intent.effectKey,
-        taskId: intent.taskId,
-        resourceRef: intent.resourceRef,
-        targetUri: intent.targetUri,
-        operation: 'filesystem.modify',
-        intentFingerprint: logicalFingerprint,
-        beforeDigest,
-        afterDigest,
-        checkpointRef: checkpoint.checkpointRef,
-        checkpointUri: checkpoint.uri,
-        checkpointDigest: checkpoint.digest,
-        state: 'reserved',
-        revision: 1,
-        applyCount: 0,
-        reservedAt,
-        updatedAt: reservedAt
+      record = await guardedEffect(control, async () => {
+        const checkpoint = await this.checkpoints.save(checkpointRef, before)
+        const reservedAt = this.now().toISOString()
+        return this.journal.reserveEffect({
+          effectId,
+          effectKey: intent.effectKey,
+          taskId: intent.taskId,
+          resourceRef: intent.resourceRef,
+          targetUri: intent.targetUri,
+          operation: 'filesystem.modify',
+          intentFingerprint: logicalFingerprint,
+          beforeDigest,
+          afterDigest,
+          checkpointRef: checkpoint.checkpointRef,
+          checkpointUri: checkpoint.uri,
+          checkpointDigest: checkpoint.digest,
+          state: 'reserved',
+          revision: 1,
+          applyCount: 0,
+          reservedAt,
+          updatedAt: reservedAt
+        })
       })
     }
     assertSameIntent(record, logicalFingerprint)
 
-    record = await this.reconcile(record, path)
+    const reserved = record
+    record = await guardedEffect(control, () => this.reconcile(reserved, path))
     if (record.state === 'confirmed') return this.result(record, false)
     if (record.state === 'unknown') throw new EffectStateUncertainError(record.effectKey)
     if (record.state === 'rolled-back') throw new Error(`O efeito ${record.effectKey} já foi revertido.`)
@@ -199,65 +204,93 @@ export class FileEffectHarness {
       ...(intent.authorization.actionId ? { actionId: intent.authorization.actionId } : {})
     })
 
-    const observedBeforeWrite = sha256(await readFile(path))
-    if (observedBeforeWrite !== record.beforeDigest) {
-      record = await this.markFromObserved(record, observedBeforeWrite)
-      if (record.state === 'confirmed') return this.result(record, false, authorizationEvidence)
-      throw new EffectStateUncertainError(record.effectKey)
-    }
+    // A cancellation CAS and this complete atomic effect share a persistent fence.
+    // Once the write starts it is allowed to reach readback; cancellation reports its actual outcome.
+    const prepared = record
+    return guardedEffect(control, async () => {
+      let record = prepared
+      this.assertAuthorizationFresh(intent.authorization)
+      const observedBeforeWrite = sha256(await readFile(path))
+      if (observedBeforeWrite !== record.beforeDigest) {
+        record = await this.markFromObserved(record, observedBeforeWrite)
+        if (record.state === 'confirmed') return this.result(record, false, authorizationEvidence)
+        throw new EffectStateUncertainError(record.effectKey)
+      }
 
-    record = await this.journal.transitionEffect({
-      effectKey: record.effectKey,
-      expectedRevision: record.revision,
-      expectedStates: ['reserved', 'not-applied'],
-      nextState: 'applying',
-      updatedAt: this.now().toISOString(),
-      incrementApplyCount: true,
-      lastObservedDigest: observedBeforeWrite
-    })
-    await this.hooks.afterMarkedApplying?.(record)
-
-    try {
-      await atomicWrite(path, desired)
-      await this.hooks.afterAtomicWrite?.(record)
-    } catch (error) {
-      const observed = sha256(await readFile(path))
-      if (observed === record.afterDigest) throw error
-      await this.journal.transitionEffect({
+      record = await this.journal.transitionEffect({
         effectKey: record.effectKey,
         expectedRevision: record.revision,
-        expectedStates: ['applying'],
-        nextState: observed === record.beforeDigest ? 'not-applied' : 'unknown',
+        expectedStates: ['reserved', 'not-applied'],
+        nextState: 'applying',
         updatedAt: this.now().toISOString(),
-        lastObservedDigest: observed,
-        lastErrorFingerprint: sha256(error instanceof Error ? `${error.name}:${error.message}` : String(error))
+        incrementApplyCount: true,
+        lastObservedDigest: observedBeforeWrite
       })
-      throw error
-    }
+      await this.hooks.afterMarkedApplying?.(record)
 
-    const observedAfterWrite = sha256(await readFile(path))
-    if (observedAfterWrite !== record.afterDigest) {
-      await this.journal.transitionEffect({
+      try {
+        await atomicWrite(path, desired)
+        await this.hooks.afterAtomicWrite?.(record)
+      } catch (error) {
+        const observed = sha256(await readFile(path))
+        if (observed === record.afterDigest) throw error
+        await this.journal.transitionEffect({
+          effectKey: record.effectKey,
+          expectedRevision: record.revision,
+          expectedStates: ['applying'],
+          nextState: observed === record.beforeDigest ? 'not-applied' : 'unknown',
+          updatedAt: this.now().toISOString(),
+          lastObservedDigest: observed,
+          lastErrorFingerprint: sha256(error instanceof Error ? `${error.name}:${error.message}` : String(error))
+        })
+        throw error
+      }
+
+      const observedAfterWrite = sha256(await readFile(path))
+      if (observedAfterWrite !== record.afterDigest) {
+        await this.journal.transitionEffect({
+          effectKey: record.effectKey,
+          expectedRevision: record.revision,
+          expectedStates: ['applying'],
+          nextState: 'unknown',
+          updatedAt: this.now().toISOString(),
+          lastObservedDigest: observedAfterWrite
+        })
+        throw new EffectStateUncertainError(record.effectKey)
+      }
+      const confirmedAt = this.now().toISOString()
+      record = await this.journal.transitionEffect({
         effectKey: record.effectKey,
         expectedRevision: record.revision,
         expectedStates: ['applying'],
-        nextState: 'unknown',
-        updatedAt: this.now().toISOString(),
+        nextState: 'confirmed',
+        updatedAt: confirmedAt,
+        confirmedAt,
         lastObservedDigest: observedAfterWrite
       })
-      throw new EffectStateUncertainError(record.effectKey)
-    }
-    const confirmedAt = this.now().toISOString()
-    record = await this.journal.transitionEffect({
-      effectKey: record.effectKey,
-      expectedRevision: record.revision,
-      expectedStates: ['applying'],
-      nextState: 'confirmed',
-      updatedAt: confirmedAt,
-      confirmedAt,
-      lastObservedDigest: observedAfterWrite
+      return this.result(record, true, authorizationEvidence)
     })
-    return this.result(record, true, authorizationEvidence)
+  }
+
+  async reconcileCancellation(input: { taskId: string; effectKey: string; targetUri: string }): Promise<CancellationProjection> {
+    let record = await this.journal.findEffect(input.effectKey)
+    if (!record) return { evidence: [], artifacts: [], effects: [] }
+    if (record.taskId !== input.taskId || record.targetUri !== input.targetUri) throw new Error('Efeito pertence a outro alvo ou tarefa.')
+    if (record.state !== 'rolled-back') {
+      const observed = await readFile(fileURLToPath(record.targetUri)).then(sha256).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== 'ENOENT') throw error
+        return sha256('target-missing')
+      })
+      if (record.state === 'confirmed' && observed !== record.afterDigest) {
+        record = await this.journal.transitionEffect({ effectKey: record.effectKey, expectedRevision: record.revision,
+          expectedStates: ['confirmed'], nextState: 'unknown', updatedAt: this.now().toISOString(), lastObservedDigest: observed })
+      } else record = await this.markFromObserved(record, observed)
+    }
+    const projection = this.result(record, false).taskResultProjection
+    projection.effects[0]!.status = record.state
+    projection.evidence[0]!.digest = record.lastObservedDigest ?? record.beforeDigest
+    projection.evidence[0]!.summary = `Cancelamento: arquivo reconciliado como ${record.state}; nenhuma nova escrita foi iniciada.`
+    return projection
   }
 
   private assertIntent(intent: FileMutationIntent): void {
@@ -313,6 +346,7 @@ export class FileEffectHarness {
       : observed === record.beforeDigest
         ? 'not-applied'
         : 'unknown'
+    if (record.state === nextState && record.lastObservedDigest === observed) return record
     const at = this.now().toISOString()
     return this.journal.transitionEffect({
       effectKey: record.effectKey,

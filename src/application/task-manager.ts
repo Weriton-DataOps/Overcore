@@ -14,11 +14,14 @@ import { buildAuthorizationRequest, buildEnforcement } from './authorization.js'
 import { buildInspectionPlan, repositoryUri } from './inspection-plan.js'
 import { buildFileReplacementPlan } from './file-replacement-plan.js'
 import { fileReplacementFrom, replacementPayloadFromPlan } from './file-replacement.js'
+import { buildPostgresTableProbePlan } from './postgres-table-probe-plan.js'
+import { postgresTableProbeFrom, probePayloadFromPlan } from './postgres-table-probe.js'
 import {
   acceptedState,
   attachResultReference,
   bindReadyState,
   blockTaskState,
+  requestCancellation,
   refreshReadyAuthorization,
   resumeBlockedState,
   startAttempt,
@@ -26,6 +29,7 @@ import {
 } from './state-builder.js'
 import { BaselineDiscovery } from './baseline-discovery.js'
 import { TaskPreflight } from './task-preflight.js'
+import { finishCancellation } from './task-cancellation.js'
 
 export interface Clock {
   now(): Date
@@ -33,7 +37,7 @@ export interface Clock {
 
 export const systemClock: Clock = { now: () => new Date() }
 
-const RECONCILABLE_STATUSES = new Set<TaskStatus>(['accepted', 'planning', 'ready'])
+const RECONCILABLE_STATUSES = new Set<TaskStatus>(['accepted', 'planning', 'ready', 'cancelling'])
 const RECONCILIATION_LEASE_MS = 30_000
 const MAX_RECONCILIATION_TRANSITIONS = 3
 
@@ -302,6 +306,7 @@ export class TaskManager {
   async reconcile(taskId: string): Promise<StoredTask | null> {
     let current = await this.store.findById(taskId)
     if (!current || !RECONCILABLE_STATUSES.has(current.status)) return current
+    if (current.status === 'cancelling') return this.cancel(taskId)
 
     const claimToken = await this.store.claimReconciliation(
       taskId,
@@ -317,6 +322,7 @@ export class TaskManager {
         current = await this.store.findById(taskId)
         if (!current || !RECONCILABLE_STATUSES.has(current.status)) return current
         try {
+          if (current.status === 'cancelling') return await this.cancel(current.taskId)
           if (current.status === 'accepted') current = await this.advanceAccepted(current)
           else if (current.status === 'planning') current = await this.advancePlanning(current)
           else current = await this.advanceReady(current)
@@ -407,6 +413,30 @@ export class TaskManager {
       if (!(error instanceof ConcurrentTaskUpdateError)) throw error
     }
     return this.reconcile(taskId)
+  }
+
+  async cancel(taskId: string): Promise<StoredTask | null> {
+    for (let retry = 0; retry < 8; retry += 1) {
+      let task = await this.store.findById(taskId)
+      if (!task || ['succeeded', 'failed', 'cancelled'].includes(task.status)) return task
+      try {
+        if (task.status !== 'cancelling') {
+          const at = this.clock.now().toISOString()
+          const evidenceRef = stableId('evidence-cancel-request', `${taskId}:${task.stateRevision}`)
+          const state = requestCancellation(task.state, evidenceRef, 'client', at)
+          this.validator.taskState(state)
+          task = await this.store.compareAndSwap({ expectedRevision: task.stateRevision, next: record(task, state),
+            event: { eventId: stableId('event-cancellation-requested', `${taskId}:${state.stateRevision}`),
+              kind: 'cancellation-requested', occurredAt: at, payload: { evidenceRef, initiatedBy: 'client' } } })
+        }
+        // Any dispatched attempt is settled by the owning worker, including recovery after a crash.
+        if ((task.state.ledger.attempts as JsonObject[]).some((attempt) => attempt.status !== 'failed')) return task
+        return await finishCancellation(this.store, this.validator, task, () => this.clock.now())
+      } catch (error) {
+        if (!(error instanceof ConcurrentTaskUpdateError)) throw error
+      }
+    }
+    throw new Error('Cancelamento disputou várias revisões; repita o mesmo pedido idempotente.')
   }
 
   private recoveryCode(error: unknown): string {
@@ -613,6 +643,7 @@ export class TaskManager {
       : []
     const planRevision = priorPlanRefs.length + 1
     const replacement = fileReplacementFrom(task.request)
+    const postgresProbe = postgresTableProbeFrom(task.request)
     const plan = replacement
       ? buildFileReplacementPlan(
           task.taskId,
@@ -623,6 +654,16 @@ export class TaskManager {
           planRevision,
           priorPlanRefs.at(-1)
         )
+      : postgresProbe
+        ? buildPostgresTableProbePlan(
+            task.taskId,
+            task.request,
+            requestFingerprint,
+            task.stateRevision,
+            planAt,
+            planRevision,
+            priorPlanRefs.at(-1)
+          )
       : await buildInspectionPlan(
           task.taskId,
           task.request,
@@ -644,7 +685,7 @@ export class TaskManager {
     this.validator.assert('authorization-request', authRequest)
     assertFingerprint(authRequest, 'authorizationRequestFingerprint')
     const decision = await this.evaluateAuthorization(authRequest)
-    assertDecisionMatches(task.request, authRequest, decision, this.clock.now())
+    this.assertAuthorizationMatches(task.request, authRequest, decision)
     const enforcementAt = this.clock.now().toISOString()
     const enforcement = buildEnforcement(
       task.taskId,
@@ -699,6 +740,20 @@ export class TaskManager {
     return decision
   }
 
+  private assertAuthorizationMatches(request: TaskRequest, authRequest: JsonObject, decision: JsonObject): void {
+    try {
+      assertDecisionMatches(request, authRequest, decision, this.clock.now())
+    } catch (error) {
+      if (error instanceof AuthorizationDeniedError || error instanceof AuthorizationNotYetValidError || error instanceof AuthorizationExpiredError) throw error
+      // A well-formed but incompatible decision will not repair itself by retrying
+      // the same plan. Expose the exact contract problem instead of a backoff loop.
+      throw new AuthorityProviderError(
+        'authority-provider-incompatible-decision', false,
+        `Decisão incompatível com a tarefa: ${error instanceof Error ? error.message : String(error)}`
+      )
+    }
+  }
+
   private async advanceReady(task: StoredTask): Promise<StoredTask> {
     const binding = object(task.state.activePlanBinding, 'activePlanBinding')
     const planId = String(binding.planId)
@@ -720,7 +775,7 @@ export class TaskManager {
     if (Date.parse(String(authorization.enforcement.expiresAt)) <= this.clock.now().getTime()) {
       return this.refreshAuthorization(task, plan)
     }
-    assertDecisionMatches(task.request, authorization.request, authorization.decision, this.clock.now())
+    this.assertAuthorizationMatches(task.request, authorization.request, authorization.decision)
 
     assertEqual(plan.planFingerprint, binding.planFingerprint, 'Fingerprint do plano persistido diverge do Task State.')
     assertEqual(plan.strategyFingerprint, binding.strategyFingerprint, 'Estratégia persistida diverge do Task State.')
@@ -751,8 +806,9 @@ export class TaskManager {
     )
     this.validator.taskState(runningState)
     const replacement = fileReplacementFrom(task.request)
+    const postgresProbe = postgresTableProbeFrom(task.request)
     const outboxId = stableId(
-      replacement ? 'outbox-file-replacement' : 'outbox-inspection',
+      replacement ? 'outbox-file-replacement' : postgresProbe ? 'outbox-postgres-table-probe' : 'outbox-inspection',
       `${task.taskId}:${runningState.executionEpoch}`
     )
     const authorizedActions = authorization.request.actions as JsonObject[]
@@ -787,6 +843,22 @@ export class TaskManager {
             }
           }
         })()
+      : postgresProbe
+        ? (() => {
+            const binding = probePayloadFromPlan(plan)
+            return {
+              objective: task.request.objective,
+              budget: task.request.budget,
+              execution: postgresProbe.execution,
+              targetUri: postgresProbe.targetUri,
+              effectKey: binding.effectKey,
+              actionId: binding.actionId,
+              runtimeAuthorization: {
+                ...runtimeAuthorization,
+                authorizationRequest: authorization.request
+              }
+            }
+          })()
       : {
           repositoryUri: repositoryUri(task.request),
           objective: task.request.objective,
@@ -801,7 +873,7 @@ export class TaskManager {
       outbox: {
         outboxId,
         taskId: task.taskId,
-        kind: replacement ? 'execute-file-replacement' : 'execute-inspection',
+        kind: replacement ? 'execute-file-replacement' : postgresProbe ? 'execute-postgres-table-probe' : 'execute-inspection',
         payload,
         availableAt: runningAt,
         attempts: 0
@@ -823,7 +895,7 @@ export class TaskManager {
     this.validator.assert('authorization-request', authRequest)
     assertFingerprint(authRequest, 'authorizationRequestFingerprint')
     const decision = await this.evaluateAuthorization(authRequest)
-    assertDecisionMatches(task.request, authRequest, decision, this.clock.now())
+    this.assertAuthorizationMatches(task.request, authRequest, decision)
     const enforcementAt = this.clock.now().toISOString()
     const enforcement = buildEnforcement(
       task.taskId,

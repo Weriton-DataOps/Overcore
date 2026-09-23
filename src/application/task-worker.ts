@@ -1,11 +1,15 @@
 import { fingerprint, sha256, stableId } from '../domain/fingerprint.js'
 import type { ClaimedMessage, ExecutionReceipt, InspectionEvidence, JsonObject, StoredTask } from '../domain/types.js'
-import { ExecutionFailure, type FileReplacementExecutor, type InspectionExecutor, type TaskStore } from '../ports/task-store.js'
+import { ExecutionFailure, type FileReplacementExecutor, type InspectionExecutor, type PostgresTableProbeExecutor, type TaskStore } from '../ports/task-store.js'
 import { ContractValidator } from '../contracts/validator.js'
 import { beginVerification, failTask, scheduleRetry, succeed } from './state-builder.js'
 import type { Clock } from './task-manager.js'
 import { systemClock } from './task-manager.js'
 import { EffectStateUncertainError, type FileMutationResult } from './file-effect-harness.js'
+import type { PostgresTableProbeResult } from './postgres-table-probe-harness.js'
+import { ExecutorCapabilityCatalog, localExecutorCapabilities } from './executor-capability.js'
+import { ExecutionInterruptedError, type ExecutionControl, type CancellationProjection } from '../ports/execution-control.js'
+import { finishCancellation } from './task-cancellation.js'
 
 function record(previous: StoredTask, state: StoredTask['state'], result?: JsonObject): StoredTask {
   const next: StoredTask = {
@@ -112,6 +116,16 @@ function fileMutationFrom(value: unknown): FileMutationResult {
   return found as unknown as FileMutationResult
 }
 
+function postgresProbeMutationFrom(value: unknown): PostgresTableProbeResult {
+  const found = object(value, 'resultado da sonda PostgreSQL')
+  const projection = object(found.taskResultProjection, 'projeção do resultado da sonda PostgreSQL')
+  if (!Array.isArray(projection.evidence) || !Array.isArray(projection.artifacts) || !Array.isArray(projection.effects) ||
+    typeof projection.checkpointArtifactRef !== 'string' || projection.checkpointArtifactRef.length === 0) {
+    throw new ExecutionFailure('postgres-table-probe-invalid-result', 'internal', false, 'A sonda PostgreSQL não devolveu a projeção verificável completa.')
+  }
+  return found as unknown as PostgresTableProbeResult
+}
+
 function classifyExecutionFailure(error: unknown): ExecutionFailure {
   if (error instanceof ExecutionFailure) return error
   if (error instanceof EffectStateUncertainError) {
@@ -156,7 +170,12 @@ export class TaskWorker {
     private readonly validator: ContractValidator,
     private readonly executor: InspectionExecutor,
     private readonly clock: Clock = systemClock,
-    private readonly fileReplacementExecutor?: FileReplacementExecutor
+    private readonly fileReplacementExecutor?: FileReplacementExecutor,
+    private readonly postgresTableProbeExecutor?: PostgresTableProbeExecutor,
+    private readonly executorCapabilities = new ExecutorCapabilityCatalog(localExecutorCapabilities({
+      hasFileReplacement: fileReplacementExecutor !== undefined,
+      hasPostgresTableProbe: postgresTableProbeExecutor !== undefined
+    }))
   ) {}
 
   async runOnce(): Promise<StoredTask | null> {
@@ -165,11 +184,22 @@ export class TaskWorker {
     try {
       const task = await this.store.findById(claimed.taskId)
       if (!task) throw new Error(`Tarefa ${claimed.taskId} da outbox não existe.`)
+      if (['cancelled', 'failed', 'succeeded'].includes(task.status)) {
+        await this.store.completeOutbox(claimed.outboxId, claimed.claimToken)
+        return task
+      }
+      if (task.status === 'cancelling') return await this.cancelClaimed(task, claimed)
       if (task.status !== 'running' && task.status !== 'verifying') {
         throw new Error(`Tarefa ${task.taskId} não pode consumir inspeção em ${task.status}.`)
       }
+      // A escolha é feita por capacidade declarada antes de tocar o executor.
+      // O Worker ainda possui os três adaptadores v1; agentes e skills seguem fora.
+      this.executorCapabilities.select(claimed.kind)
       if (claimed.kind === 'execute-file-replacement') {
-        return this.runFileReplacement(task, claimed)
+        return await this.runFileReplacement(task, claimed)
+      }
+      if (claimed.kind === 'execute-postgres-table-probe') {
+        return await this.runPostgresTableProbe(task, claimed)
       }
       if (claimed.kind !== 'execute-inspection') throw new Error(`Mensagem de execução desconhecida: ${claimed.kind}.`)
       const repositoryUri = String(claimed.payload.repositoryUri)
@@ -206,7 +236,7 @@ export class TaskWorker {
             ...(maxCostUsd === undefined ? {} : { maxCostUsd })
           }))
         } catch (error) {
-          return this.handleExecutionFailure(task, claimed, classifyExecutionFailure(error))
+          return await this.handleExecutionFailure(task, claimed, classifyExecutionFailure(error))
         }
         const receiptPayload: JsonObject = { kind: 'inspection-completed', inspection: inspection as never }
         await this.store.saveExecutionReceipt({
@@ -225,7 +255,7 @@ export class TaskWorker {
           throw new Error('A inspecao encontrou contrato ilegivel ou aberto no objeto raiz.')
         }
       } catch (error) {
-        return this.handleExecutionFailure(task, claimed, classifyExecutionFailure(error))
+        return await this.handleExecutionFailure(task, claimed, classifyExecutionFailure(error))
       }
       const evidence = evidenceDocuments(task, inspection)
       const evidenceRefs = [evidence.readableId, evidence.closedId]
@@ -347,13 +377,20 @@ export class TaskWorker {
       })
       return completed
     } catch (error) {
+      const current = await this.store.findById(claimed.taskId)
+      if (current?.status === 'cancelling') {
+        try { return await this.cancelClaimed(current, claimed) } catch (reconciliationError) { error = reconciliationError }
+      } else if (current && ['cancelled', 'succeeded', 'failed'].includes(current.status)) {
+        await this.store.completeOutbox(claimed.outboxId, claimed.claimToken).catch(() => undefined)
+        return current
+      }
       const message = error instanceof Error ? `${error.name}:${error.message}` : String(error)
       await this.store.releaseOutbox(
         claimed.outboxId,
         claimed.claimToken,
         sha256(message),
         new Date(this.clock.now().getTime() + 5_000)
-      )
+      ).catch(() => undefined) // Another worker may already own an expired claim.
       throw error
     }
   }
@@ -384,7 +421,7 @@ export class TaskWorker {
       mutation = fileMutationFrom(persistedReceipt.payload.mutation)
     } else {
       if (!this.fileReplacementExecutor) {
-        return this.handleExecutionFailure(task, claimed, new ExecutionFailure(
+        return await this.handleExecutionFailure(task, claimed, new ExecutionFailure(
           'file-replacement-executor-unavailable',
           'internal',
           false,
@@ -411,7 +448,7 @@ export class TaskWorker {
           }
         }))
       } catch (error) {
-        return this.handleExecutionFailure(task, claimed, classifyExecutionFailure(error))
+        return await this.handleExecutionFailure(task, claimed, classifyExecutionFailure(error))
       }
       const receiptPayload: JsonObject = {
         kind: 'file-replacement-completed',
@@ -432,7 +469,7 @@ export class TaskWorker {
     const evidence = projection.evidence as JsonObject[]
     const evidenceRefs = evidence.map((item) => String(item.evidenceId)).filter(Boolean)
     if (evidenceRefs.length === 0) {
-      return this.handleExecutionFailure(task, claimed, new ExecutionFailure(
+      return await this.handleExecutionFailure(task, claimed, new ExecutionFailure(
         'file-replacement-missing-readback', 'verification', false, 'A substituição não produziu evidência de leitura posterior.'
       ))
     }
@@ -514,49 +551,181 @@ export class TaskWorker {
     })
   }
 
+  private async runPostgresTableProbe(task: StoredTask, claimed: ClaimedMessage): Promise<StoredTask> {
+    const execution = object(claimed.payload.execution, 'execução PostgreSQL da outbox')
+    const authorization = object(claimed.payload.runtimeAuthorization, 'autorização de runtime')
+    const authorizationRequest = object(authorization.authorizationRequest, 'pedido original de autorização')
+    let mutation: PostgresTableProbeResult
+    const persistedReceipt = await this.store.findExecutionReceipt(claimed.outboxId)
+    if (persistedReceipt) {
+      this.assertReceipt(persistedReceipt, task, claimed.outboxId)
+      if (persistedReceipt.payload.kind !== 'postgres-table-probe-completed') throw new Error('Recibo não pertence à sonda PostgreSQL.')
+      mutation = postgresProbeMutationFrom(persistedReceipt.payload.mutation)
+    } else {
+      if (!this.postgresTableProbeExecutor) {
+        return await this.handleExecutionFailure(task, claimed, new ExecutionFailure('postgres-table-probe-executor-unavailable', 'internal', false, 'O runtime não recebeu o executor da sonda PostgreSQL.'))
+      }
+      try {
+        mutation = postgresProbeMutationFrom(await this.executePostgresTableProbeWithLeaseHeartbeat(claimed, {
+          taskId: task.taskId,
+          effectKey: String(claimed.payload.effectKey),
+          actionId: String(claimed.payload.actionId),
+          resourceRef: String(execution.resourceRef),
+          targetUri: String(claimed.payload.targetUri),
+          databaseName: 'overcore_test',
+          tableName: String(execution.tableName),
+          authorization: {
+            enforcementId: String(authorization.enforcementId),
+            expiresAt: String(authorization.expiresAt),
+            operations: Array.isArray(authorization.operations) ? authorization.operations.map(String) : [],
+            requiredControls: Array.isArray(authorization.requiredControls) ? authorization.requiredControls.map(String) : [],
+            authorizationRequest,
+            actionId: String(claimed.payload.actionId)
+          }
+        }))
+      } catch (error) {
+        return await this.handleExecutionFailure(task, claimed, classifyExecutionFailure(error))
+      }
+      const receiptPayload: JsonObject = { kind: 'postgres-table-probe-completed', mutation: mutation as unknown as JsonObject }
+      await this.store.saveExecutionReceipt({
+        receiptId: stableId('execution-receipt', claimed.outboxId), outboxId: claimed.outboxId,
+        taskId: task.taskId, executionEpoch: task.executionEpoch, payload: receiptPayload,
+        payloadFingerprint: fingerprint(receiptPayload), recordedAt: this.clock.now().toISOString()
+      }, claimed.claimToken, this.clock.now())
+    }
+    return this.completePostgresTableProbe(task, claimed, mutation)
+  }
+
+  private async completePostgresTableProbe(task: StoredTask, claimed: ClaimedMessage, mutation: PostgresTableProbeResult): Promise<StoredTask> {
+    const projection = mutation.taskResultProjection
+    const evidence = projection.evidence as JsonObject[]
+    const evidenceRefs = evidence.map((item) => String(item.evidenceId)).filter(Boolean)
+    if (evidenceRefs.length === 0) return await this.handleExecutionFailure(task, claimed, new ExecutionFailure('postgres-table-probe-missing-readback', 'verification', false, 'A sonda PostgreSQL não produziu evidência de leitura posterior.'))
+    let verifyingTask = task
+    if (task.status === 'running') {
+      const verifyingAt = this.clock.now().toISOString()
+      const verifyingState = beginVerification(task.state, evidenceRefs, verifyingAt)
+      this.validator.taskState(verifyingState)
+      verifyingTask = await this.store.compareAndSwap({
+        expectedRevision: task.stateRevision, next: record(task, verifyingState),
+        event: { eventId: stableId('event-postgres-probe-verifying', `${task.taskId}:${verifyingState.stateRevision}`), kind: 'verification-started', occurredAt: verifyingAt, payload: { evidenceRefs, effectKey: mutation.journal.effectKey } }
+      })
+    }
+    const finishedAt = this.clock.now().toISOString()
+    const resultId = stableId('result-postgres-table-probe', `${task.taskId}:${verifyingTask.stateRevision + 1}`)
+    const transitionId = stableId('transition-succeeded', `${task.taskId}:${verifyingTask.stateRevision + 1}:postgres-probe-passed`)
+    const criterionEvidence = new Map<string, string[]>()
+    for (const criterion of verifyingTask.request.acceptanceCriteria) criterionEvidence.set(criterion.id, evidenceRefs)
+    const startedAt = String((verifyingTask.state.ledger.attempts as JsonObject[])[0]?.startedAt ?? verifyingTask.createdAt)
+    const previousResultRefs = Array.isArray(verifyingTask.state.ledger.resultRefs) ? verifyingTask.state.ledger.resultRefs as JsonObject[] : []
+    const previousResultId = previousResultRefs.at(-1)?.resultId
+    const result: JsonObject = {
+      contractVersion: '1.0', resultId, requestId: verifyingTask.requestId,
+      requestFingerprint: verifyingTask.state.requestBinding.requestFingerprint as never, taskId: verifyingTask.taskId,
+      stateRef: { stateRevision: verifyingTask.stateRevision + 1, transitionId, emissionSequence: previousResultRefs.length + 1, ...(typeof previousResultId === 'string' ? { supersedesResultId: previousResultId } : {}) },
+      reportedAt: finishedAt, status: 'succeeded',
+      summary: mutation.wrote ? 'A tabela temporária autorizada foi criada, confirmada, apagada e confirmada ausente.' : 'A ausência final da tabela temporária foi confirmada sem repetir a operação.',
+      criteria: verifyingTask.request.acceptanceCriteria.map((criterion) => ({ criterionId: criterion.id, status: 'passed', evidenceRefs: criterionEvidence.get(criterion.id) ?? [] })),
+      evidence, artifacts: projection.artifacts, effects: projection.effects,
+      execution: { attemptCount: Number(verifyingTask.state.usage.attemptCount ?? 1), maxParallelismObserved: 1, durationMs: Math.max(0, Date.parse(finishedAt) - Date.parse(startedAt)), startedAt, finishedAt, lastTransitionAt: finishedAt, checkpointArtifactRef: projection.checkpointArtifactRef }
+    }
+    this.validator.assert('task-result', result)
+    const resultFingerprint = fingerprint(result)
+    const succeededState = succeed(verifyingTask.state, resultId, criterionEvidence, resultFingerprint, finishedAt)
+    this.validator.taskState(succeededState)
+    return this.store.compareAndSwap({
+      expectedRevision: verifyingTask.stateRevision, next: record(verifyingTask, succeededState, result),
+      event: { eventId: stableId('event-postgres-probe-succeeded', `${task.taskId}:${succeededState.stateRevision}`), kind: 'task-succeeded', occurredAt: finishedAt, payload: { resultId, resultFingerprint, effectKey: mutation.journal.effectKey } },
+      completeOutbox: { outboxId: claimed.outboxId, claimToken: claimed.claimToken }
+    })
+  }
+
   private async executeFileReplacementWithLeaseHeartbeat(
     claimed: ClaimedMessage,
     input: Parameters<FileReplacementExecutor['execute']>[0]
   ): Promise<JsonObject> {
     if (!this.fileReplacementExecutor) throw new Error('Executor de substituição de arquivo indisponível.')
-    await this.store.extendOutboxLease(claimed.outboxId, claimed.claimToken, OUTBOX_LEASE_MS, this.clock.now())
-    return this.fileReplacementExecutor.execute(input)
+    const executor = this.fileReplacementExecutor
+    return this.executeControlled(claimed, (control) => executor.execute(input, control))
+  }
+
+  private async executePostgresTableProbeWithLeaseHeartbeat(
+    claimed: ClaimedMessage,
+    input: Parameters<PostgresTableProbeExecutor['execute']>[0]
+  ): Promise<JsonObject> {
+    if (!this.postgresTableProbeExecutor) throw new Error('Executor da sonda PostgreSQL indisponível.')
+    const executor = this.postgresTableProbeExecutor
+    return this.executeControlled(claimed, (control) => executor.execute(input, control))
   }
 
   private async executeWithLeaseHeartbeat(
     claimed: ClaimedMessage,
     input: Parameters<InspectionExecutor['execute']>[0]
   ): Promise<JsonObject> {
-    await this.store.extendOutboxLease(
-      claimed.outboxId,
-      claimed.claimToken,
-      OUTBOX_LEASE_MS,
-      this.clock.now()
-    )
-    let heartbeatError: unknown
-    let renewing = false
-    const heartbeat = setInterval(() => {
-      if (renewing || heartbeatError) return
-      renewing = true
-      void this.store.extendOutboxLease(
-        claimed.outboxId,
-        claimed.claimToken,
-        OUTBOX_LEASE_MS,
-        this.clock.now()
-      ).catch((error: unknown) => {
-        heartbeatError = error
-      }).finally(() => {
-        renewing = false
-      })
-    }, OUTBOX_HEARTBEAT_MS)
-    heartbeat.unref()
+    return this.executeControlled(claimed, (control) => this.executor.execute(input, control))
+  }
+
+  private async executeControlled(claimed: ClaimedMessage, execute: (control: ExecutionControl) => Promise<JsonObject>): Promise<JsonObject> {
+    await this.store.extendOutboxLease(claimed.outboxId, claimed.claimToken, OUTBOX_LEASE_MS, this.clock.now())
+    const task = await this.store.findById(claimed.taskId)
+    if (!task || !['running', 'verifying'].includes(task.status)) throw new ExecutionInterruptedError()
+    const epoch = task.executionEpoch
+    const controller = new AbortController()
+    let renewedAt = this.clock.now().getTime()
+    const assertActive = async () => {
+      controller.signal.throwIfAborted()
+      const current = await this.store.findById(claimed.taskId)
+      if (!current || current.executionEpoch !== epoch || !['running', 'verifying'].includes(current.status)) throw new ExecutionInterruptedError()
+    }
+    const control: ExecutionControl = {
+      signal: controller.signal, assertActive,
+      runEffect: async (operation) => {
+        controller.signal.throwIfAborted()
+        return this.store.withExecutionFence(claimed, epoch, 'execute', operation, this.clock.now())
+      }
+    }
+    let checking = false
+    let pending = Promise.resolve()
+    const monitor = setInterval(() => {
+      if (checking || controller.signal.aborted) return
+      checking = true
+      pending = (async () => {
+        await assertActive()
+        if (this.clock.now().getTime() - renewedAt >= OUTBOX_HEARTBEAT_MS) {
+          await this.store.extendOutboxLease(claimed.outboxId, claimed.claimToken, OUTBOX_LEASE_MS, this.clock.now())
+          renewedAt = this.clock.now().getTime()
+        }
+      })().catch((error: unknown) => controller.abort(error)).finally(() => { checking = false })
+    }, 200)
+    monitor.unref()
     try {
-      const result = await this.executor.execute(input)
-      if (heartbeatError) throw heartbeatError
+      const result = await execute(control)
+      await pending
+      controller.signal.throwIfAborted()
       return result
     } finally {
-      clearInterval(heartbeat)
+      clearInterval(monitor)
+      await pending
     }
+  }
+
+  private async cancelClaimed(task: StoredTask, claimed: ClaimedMessage): Promise<StoredTask> {
+    await this.store.extendOutboxLease(claimed.outboxId, claimed.claimToken, OUTBOX_LEASE_MS, this.clock.now())
+    const projection = await this.store.withExecutionFence(claimed, task.executionEpoch, 'reconcile', async (): Promise<CancellationProjection> => {
+      const input = { taskId: task.taskId, effectKey: String(claimed.payload.effectKey), targetUri: String(claimed.payload.targetUri) }
+      if (claimed.kind === 'execute-file-replacement') {
+        if (!this.fileReplacementExecutor?.reconcileCancellation) throw new Error('Executor sem reconciliação de cancelamento de arquivo.')
+        return this.fileReplacementExecutor.reconcileCancellation(input)
+      }
+      if (claimed.kind === 'execute-postgres-table-probe') {
+        if (!this.postgresTableProbeExecutor?.reconcileCancellation) throw new Error('Executor sem reconciliação de cancelamento PostgreSQL.')
+        const execution = object(claimed.payload.execution, 'execução da sonda')
+        return this.postgresTableProbeExecutor.reconcileCancellation({ ...input, tableName: String(execution.tableName) })
+      }
+      if (claimed.kind !== 'execute-inspection') throw new Error('Cancelamento de executor desconhecido.')
+      return { evidence: [], artifacts: [], effects: [] }
+    }, this.clock.now())
+    return finishCancellation(this.store, this.validator, task, () => this.clock.now(), projection, claimed)
   }
 
   private async handleExecutionFailure(
@@ -564,6 +733,9 @@ export class TaskWorker {
     claimed: ClaimedMessage,
     failure: ExecutionFailure
   ): Promise<StoredTask> {
+    const current = await this.store.findById(task.taskId)
+    if (current?.status === 'cancelling') return this.cancelClaimed(current, claimed)
+    if (current && ['cancelled', 'failed', 'succeeded'].includes(current.status)) return current
     const delayMs = Math.max(1_000, failure.retryAfterMs ?? 5_000)
     if (failure.retryable && claimed.attempts < MAX_DELIVERY_ATTEMPTS_PER_STRATEGY) {
       await this.store.releaseOutbox(

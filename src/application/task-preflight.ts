@@ -158,6 +158,10 @@ function buildRequest(
   const priority = String(hints.priority ?? 'normal') as TaskRequest['priority']
   const expectedOutputKind = String(hints.expectedOutputKind)
   const replacementHint = object(hints.fileReplacement)
+  const postgresProbeHint = object(hints.postgresTableProbe)
+  if (Object.keys(replacementHint).length > 0 && Object.keys(postgresProbeHint).length > 0) {
+    throw new Error('O draft pode declarar somente uma operação material por vez.')
+  }
   const criteria = draft.knownAcceptanceCriteria.map((criterion) => {
     const hint = criterion.verificationHint
     const method = typeof hint === 'string' ? hint : 'inspection'
@@ -198,7 +202,11 @@ function buildRequest(
     budget: structuredClone(draft.executionBudget.limits),
     expectedOutput: {
       kind: expectedOutputKind,
-      ...(Object.keys(replacementHint).length > 0 ? { destinationRef: String(replacementHint.resourceRef) } : {})
+      ...(Object.keys(replacementHint).length > 0
+        ? { destinationRef: String(replacementHint.resourceRef) }
+        : Object.keys(postgresProbeHint).length > 0
+          ? { destinationRef: String(postgresProbeHint.resourceRef) }
+          : {})
     }
   }
   if (Object.keys(replacementHint).length > 0) {
@@ -207,6 +215,14 @@ function buildRequest(
       resourceRef: String(replacementHint.resourceRef),
       desiredContent: String(replacementHint.desiredContent),
       expectedBeforeDigest: String(replacementHint.expectedBeforeDigest) as `sha256:${string}`
+    }
+  }
+  if (Object.keys(postgresProbeHint).length > 0) {
+    request.execution = {
+      kind: 'postgres-create-drop-table',
+      resourceRef: String(postgresProbeHint.resourceRef),
+      databaseName: 'overcore_test',
+      tableName: String(postgresProbeHint.tableName)
     }
   }
   if (draft.correlationId !== undefined) request.correlationId = draft.correlationId

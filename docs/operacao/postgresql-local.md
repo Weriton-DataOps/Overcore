@@ -84,6 +84,10 @@ O conteúdo anterior fica no armazenamento operacional de checkpoints; o banco g
 os hashes, o estado e a revisão CAS. O migrador usa um advisory lock, portanto duas instâncias podem
 iniciar juntas sem disputar a criação das mesmas tabelas.
 
+A migration `008_postgres_table_probe_effect.sql` amplia o journal para a sonda PostgreSQL v1. Ela
+aceita a operação `database.schema.modify` e o recibo `postgres-table-probe-completed`; não abre uma
+porta para SQL livre.
+
 ## Por que não existe SQLite nem broker agora
 
 PostgreSQL já entrega transação, JSONB, CAS e reivindicação concorrente da outbox com

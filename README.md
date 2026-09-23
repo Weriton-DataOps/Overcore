@@ -8,7 +8,7 @@ chamador.
 ## Fronteira principal
 
 ```text
-cliente (Omni será o primeiro)
+cliente (Omni é o primeiro)
         |
         v
 TaskDraft v1
@@ -36,8 +36,9 @@ cliente
 Antes do `TaskRequest`, o Task Manager recebe um `TaskDraft v1` e executa o Preflight. Decisões
 previsíveis são agrupadas em `TaskReadinessReport v1`; somente um relatório `ready` contém o
 `TaskRequest` congelado que pode seguir para admissão. O Preflight executável, a validação de domínio
-e a porta neutra de Discovery já estão ligados. A implementação atual de Discovery é determinística e
-somente de leitura; ela não é o futuro Agente de Discovery. Drafts e relatórios ficam persistidos no
+e a porta neutra de Discovery já estão ligados. O modo padrão usa regras determinísticas; o modo
+`advisor` acrescenta leitura semântica via Claude OAuth, sem ferramentas. A avaliação inicial está na
+[`ADR-019`](docs/decisoes/ADR-019-avaliacao-discovery-v1.md). Isso ainda não é o futuro Agente de Discovery. Drafts e relatórios ficam persistidos no
 PostgreSQL em revisões imutáveis, de acordo com a
 [`ADR-009`](docs/decisoes/ADR-009-preflight-persistente-append-only.md).
 O handoff explícito por `reportId`, sem transportar novamente o request, está registrado na
@@ -85,6 +86,10 @@ O contrato de saída está explicado em
 [`docs/contratos/task-result-v1.md`](docs/contratos/task-result-v1.md).
 O processo que transforma um rascunho em tarefa pronta está em
 [`docs/contratos/task-preflight-v1.md`](docs/contratos/task-preflight-v1.md).
+O gate multirrevisão por HTTP, PostgreSQL e autoridade Omni está descrito na
+[`ADR-020`](docs/decisoes/ADR-020-preflight-multirrevisao-http.md), incluindo a distinção entre
+cliente de teste e conversa. A ligação do cliente produtivo Omni (plugin e Desktop), a operação
+local e as validações estão na [ADR-021](docs/decisoes/ADR-021-fluxo-conversacional-omni.md).
 As mutações adversariais que comprovam as fronteiras do Preflight estão em
 [`contratos/testes/preflight-domain-mutations.json`](contratos/testes/preflight-domain-mutations.json).
 
@@ -134,8 +139,9 @@ A posição e a autenticação do motor estão na
 - API local autenticada e adaptador do Authority Provider restrito a loopback;
 - `AgentRuntimePort` com adaptador real para o Claude Agent SDK TypeScript;
 - autenticação contratada exclusivamente por login OAuth, com chaves de API removidas do subprocesso;
-- autorização do Omni propagada até `tools` e `canUseTool`, com `allowedTools` vazio para impedir
-  autoaprovação antes do crachá;
+- autorização do Omni propagada até `tools` e `PreToolUse`: cada chamada revalida validade e conjunto
+  de ferramentas, inclusive leituras que o SDK aprova sem consultar `canUseTool`; sem autoaprovação
+  ampla nem substituição das permissões de caminho do SDK;
 - sessão, versão, modelo, consumo, custo estimado e evidência do SDK ligados ao Task State/TaskResult;
 - `TaskDraft → Preflight → TaskReadinessReport`, com os sete checks, decisões agrupadas e emissão de
   `TaskRequest` somente quando todos passam;
@@ -152,6 +158,9 @@ A posição e a autenticação do motor estão na
   vencida, `TaskResult blocked` e retomada explícita para uma fase segura;
 - recovery da execução somente leitura com heartbeat do lease, recibo durável, reentrega com backoff,
   plano revisado, nova autorização, retry por orçamento e `TaskResult failed` terminal;
+- cancelamento cooperativo durante execução: sinal até o SDK, fence persistente antes de efeitos,
+  reconciliação de arquivos/sonda PostgreSQL, quiescência persistida e encerramento da fila com
+  `TaskResult cancelled`, conforme a [ADR-018](docs/decisoes/ADR-018-cancelamento-cooperativo-e-reconciliacao-v1.md);
 - Harness de efeitos para arquivo UTF-8 com `effectKey`, checkpoint externo ao Git, journal
   PostgreSQL, CAS, revalidação anterior à escrita, gravação atômica, readback e reconciliação;
 - recuperação comprovada nas quedas antes e depois da escrita, sem duplicar efeito nem sobrescrever
@@ -201,13 +210,19 @@ Ela substitui conteúdo de um arquivo UTF-8 descartável, exclusivamente dentro 
 com checkpoint, journal PostgreSQL, revalidação imediatamente antes da escrita, readback e
 reconciliação. O gate `npm run test:omni-effect-live` prova a cadeia usando PostgreSQL e Omni reais.
 
-O próximo trabalho não é adicionar componentes por antecipação. Depois do fechamento deste marco,
-devemos escolher, por contrato, uma segunda capacidade executável ou desenhar o Agente de Discovery
-para o Preflight. Agentes, skills, Registry e Graph Engine continuam fora até essa decisão.
+## Marco 2 concluído — sonda PostgreSQL temporária
 
-O futuro Agente de Discovery continua reservado pela
-[`ADR-008`](docs/decisoes/ADR-008-discovery-adaptativa-no-preflight.md). Agentes, skills, modelos, Graph
-Engine, Registry e routing permanecem fora desta etapa.
+A segunda capacidade executável está definida na
+[`ADR-015`](docs/decisoes/ADR-015-sonda-postgresql-controlada-v1.md). Ela não executa SQL arbitrário:
+no banco de integração `overcore_test`, cria e remove uma única tabela de prefixo exclusivo na mesma
+transação, com autorização e revalidação reais do Omni, journal PostgreSQL e readback de existência e
+ausência. O gate `npm run test:postgres-probe-live` comprova a cadeia inteira.
+
+Agentes, skills, Registry e Graph Engine continuam fora até serem definidos por contrato próprio.
+
+O assessor de Discovery está implementado como complemento opcional do Baseline, conforme a
+[`ADR-008`](docs/decisoes/ADR-008-discovery-adaptativa-no-preflight.md). Agentes, skills, Graph Engine,
+Registry e routing permanecem fora desta etapa.
 
 ## Operação local
 
@@ -219,7 +234,13 @@ Com o servidor ativo, o cliente usa a persistência real por:
 node dist/main.js preflight contratos/exemplos/task-draft-incompleto.json
 node dist/main.js admit <report-id-ready>
 node dist/main.js resume <task-id-bloqueada>
+node dist/main.js cancel <task-id>
 ```
+
+O cancelamento pode responder `cancelling` enquanto o executor encerra e os efeitos são conferidos.
+Consulte `node dist/main.js status <task-id>` para obter `cancelled` e seu relatório. Uma alteração
+já aplicada permanece registrada no resultado. O gate `npm run test:cancellation-postgres` valida
+esse fluxo no banco `overcore_test`, incluindo retomada e disputa de locks.
 
 Pela API local, envie somente `{ "draft": ... }` para `POST /v1/preflight`. Quando o resultado for
 `ready`, envie somente o identificador para `POST /v1/preflight/{reportId}/admit`. O Overcore encontra

@@ -198,7 +198,10 @@
       }
     },
     "execution": {
-      "$ref": "#/$defs/fileReplacementExecution"
+      "oneOf": [
+        { "$ref": "#/$defs/fileReplacementExecution" },
+        { "$ref": "#/$defs/postgresTableProbeExecution" }
+      ]
     }
   },
   "$defs": {
@@ -254,6 +257,21 @@
         "resourceRef": { "$ref": "#/$defs/identifier" },
         "desiredContent": { "type": "string", "maxLength": 1048576 },
         "expectedBeforeDigest": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "postgresTableProbeExecution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "resourceRef", "databaseName", "tableName"],
+      "properties": {
+        "kind": { "const": "postgres-create-drop-table" },
+        "resourceRef": { "$ref": "#/$defs/identifier" },
+        "databaseName": { "const": "overcore_test" },
+        "tableName": {
+          "type": "string",
+          "pattern": "^overcore_controlled_probe_[a-z0-9_]{8,64}$",
+          "maxLength": 96
+        }
       }
     },
     "contextReference": {

@@ -3,6 +3,7 @@ import { isAbsolute } from 'node:path'
 import type {
   AccountInfo,
   CanUseTool,
+  HookCallback,
   Options,
   Query,
   SDKMessage,
@@ -66,11 +67,18 @@ function validateRequest(request: AgentRuntimeRequest, now: Date): void {
   if (Date.parse(request.authorization.expiresAt) <= now.getTime()) {
     throw new Error('Autorização expirou antes de iniciar o Claude Agent SDK.')
   }
-  if (!request.authorization.operations.includes('filesystem.read')) {
-    throw new Error('A execução do SDK não recebeu autorização para filesystem.read.')
-  }
-  if (request.tools.length === 0 || request.tools.some((tool) => !READ_ONLY_TOOLS.has(tool))) {
-    throw new Error('A primeira integração do SDK aceita somente Read, Glob e Grep.')
+  if (request.purpose === 'discovery') {
+    if (!request.authorization.operations.includes('discovery.analyze')) {
+      throw new Error('A Discovery assistida não recebeu autorização para discovery.analyze.')
+    }
+    if (request.tools.length !== 0) throw new Error('A Discovery assistida não recebe ferramentas.')
+  } else {
+    if (!request.authorization.operations.includes('filesystem.read')) {
+      throw new Error('A execução do SDK não recebeu autorização para filesystem.read.')
+    }
+    if (request.tools.length === 0 || request.tools.some((tool) => !READ_ONLY_TOOLS.has(tool))) {
+      throw new Error('A primeira integração do SDK aceita somente Read, Glob e Grep.')
+    }
   }
   if (!request.authorization.requiredControls.includes('sanitize-output')) {
     throw new Error('A autorização do SDK não contém o controle sanitize-output.')
@@ -143,34 +151,50 @@ export class AnthropicAgentSdkRuntime implements AgentRuntimePort {
     timeout.unref()
 
     const allowed = new Set(request.tools)
-    const canUseTool: CanUseTool = async (toolName, input) => {
-      await emit('tool-requested', { toolName })
+    const assessTool = async (toolName: string, source: string) => {
+      await emit('tool-requested', { toolName, source })
       if (Date.parse(request.authorization.expiresAt) <= this.now().getTime()) {
-        await emit('tool-denied', { toolName, reason: 'authorization-expired' })
-        return { behavior: 'deny', message: 'A autorização do Omni expirou durante a execução.' }
+        await emit('tool-denied', { toolName, source, reason: 'authorization-expired' })
+        return 'A autorização do Omni expirou durante a execução.'
       }
       if (!allowed.has(toolName as AgentRuntimeTool)) {
-        await emit('tool-denied', { toolName, reason: 'outside-authorized-tool-set' })
-        return { behavior: 'deny', message: `Ferramenta ${toolName} não pertence à autorização do plano.` }
+        await emit('tool-denied', { toolName, source, reason: 'outside-authorized-tool-set' })
+        return `Ferramenta ${toolName} não pertence à autorização do plano.`
       }
       await emit('tool-allowed', {
-        toolName,
+        toolName, source,
         enforcementId: request.authorization.enforcementId,
         enforcementFingerprint: request.authorization.enforcementFingerprint
       })
+      return undefined
+    }
+    const canUseTool: CanUseTool = async (toolName, input) => {
+      const denial = await assessTool(toolName, 'permission-callback')
+      if (denial) return { behavior: 'deny', message: denial }
       return { behavior: 'allow', updatedInput: input }
+    }
+    // Built-in reads inside cwd may bypass canUseTool, including in dontAsk.
+    // This hook checks the badge first, then leaves the SDK's path permissions intact.
+    const beforeTool: HookCallback = async (input) => {
+      if (input.hook_event_name !== 'PreToolUse') return {}
+      const denial = await assessTool(input.tool_name, 'pre-tool-use')
+      return denial ? {
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: denial
+        }
+      } : {}
     }
 
     const options: Options = {
       abortController: controller,
       cwd: request.cwd,
       tools: [...request.tools],
-      // `allowedTools` autoaprova as ferramentas antes de `canUseTool` ser
-      // consultado. A lista fica vazia para que toda chamada atravesse o
-      // cracha emitido pelo Omni e seja revalidada inclusive durante o turno.
+      // No broad auto-approval. PreToolUse validates authorization even when
+      // a built-in tool would approve its own read without invoking canUseTool.
       allowedTools: [],
       disallowedTools: NEVER_AVAILABLE,
       canUseTool,
+      hooks: { PreToolUse: [{ hooks: [beforeTool] }] },
       permissionMode: 'dontAsk',
       settingSources: [],
       persistSession: true,
@@ -242,6 +266,11 @@ export class AnthropicAgentSdkRuntime implements AgentRuntimePort {
         throw new Error(`Claude Agent SDK não concluiu: ${final.subtype}: ${details}`)
       }
       const usage = usageOf(final)
+      // SDK denials can happen before canUseTool is called (for example dontAsk).
+      // Keep tool names observable without retaining inputs, file contents or secrets.
+      for (const denial of final.permission_denials) {
+        await emit('tool-denied', { toolName: denial.tool_name, reason: 'sdk-permission-denial' })
+      }
       await emit('runtime-result', {
         status: 'succeeded',
         turns: final.num_turns,

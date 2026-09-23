@@ -87,6 +87,12 @@ export function createLocalServer(manager: TaskManager, worker: TaskWorker, toke
         send(response, task ? 202 : 404, task ?? { error: 'not-found' })
         return
       }
+      const cancelMatch = url.pathname.match(/^\/v1\/tasks\/([A-Za-z0-9._:-]+)\/cancel$/)
+      if (request.method === 'POST' && cancelMatch?.[1]) {
+        const task = await manager.cancel(cancelMatch[1])
+        send(response, task ? 202 : 404, task ?? { error: 'not-found' })
+        return
+      }
       if (request.method === 'POST' && url.pathname === '/v1/work-once') {
         const reconciliation = await manager.reconcilePending()
         const task = await worker.runOnce()

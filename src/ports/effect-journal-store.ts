@@ -14,7 +14,7 @@ export interface EffectJournalRecord {
   taskId: string
   resourceRef: string
   targetUri: string
-  operation: 'filesystem.modify'
+  operation: 'filesystem.modify' | 'database.schema.modify'
   intentFingerprint: Fingerprint
   beforeDigest: `sha256:${string}`
   afterDigest: `sha256:${string}`
@@ -73,7 +73,7 @@ export interface EffectAuthorizationCheck {
   effectId: string
   resourceRef: string
   targetUri: string
-  operation: 'filesystem.modify'
+  operation: 'filesystem.modify' | 'database.schema.modify'
   intentFingerprint: Fingerprint
   enforcementId: string
   expiresAt: string

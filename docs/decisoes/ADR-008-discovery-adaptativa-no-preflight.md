@@ -1,6 +1,6 @@
 # ADR-008 — Discovery adaptativa no Preflight
 
-- Estado: direção aceita; desenho do agente pendente
+- Estado: implementada em modo assessor opcional; avaliação inicial registrada na ADR-019
 - Data: 2026-08-31
 
 ## Contexto
@@ -15,7 +15,7 @@ curtos são simples nem transformar toda solicitação em uma investigação pes
 1. O Preflight continua responsável por conduzir a preparação e produzir o `TaskReadinessReport`.
 2. Ele terá uma porta neutra de Discovery para solicitar compreensão adicional quando a natureza do
    pedido exigir.
-3. O futuro **Agente de Discovery** será uma implementação especializada dessa capacidade.
+3. O **Assessor de Discovery** é uma implementação especializada opcional: recebe o `TaskDraft` serializado e o resumo das decisões validadas/pendentes, e devolve no máximo três perguntas materiais adicionais.
 4. A profundidade será adaptativa: pode ir de uma inspeção breve para um pequeno ajuste até uma
    descoberta ampla para a construção de um sistema.
 5. Discovery procura intenção, alvo, contexto, dependências, restrições, critérios, decisões
@@ -28,8 +28,9 @@ curtos são simples nem transformar toda solicitação em uma investigação pes
    realmente precisarem de resposta.
 9. Checks determinísticos permanecem obrigatórios. O Agente de Discovery os complementa; não os
    substitui.
-10. Critérios de ativação, contrato próprio, modelo, ferramentas, skills, orçamento, organização física
-    e evals do Agente de Discovery serão discutidos com o proprietário antes da implementação.
+10. O assessor usa Claude Agent SDK com login OAuth somente quando `OVERCORE_DISCOVERY_MODE=advisor`; o padrão é `baseline`, sem chamada de modelo. Ele não recebe ferramentas nem acesso a recursos do projeto.
+11. A avaliação inicial de qualidade está na ADR-019. Escolha definitiva de modelo e eventual especialização em agente permanecem decisões futuras.
+12. No modo assistido, pedidos `light` também recebem leitura semântica. Contar campos não prova clareza. As perguntas locais existentes são enviadas ao assessor para evitar repetição; duplicatas textuais são consolidadas, mas perguntas diferentes do mesmo tópico permanecem.
 
 ## Fluxo previsto
 
@@ -59,7 +60,7 @@ TaskReadinessReport
 ## Consequências
 
 - o próximo Preflight executável não pode acoplar compreensão a um modelo ou agente específico;
-- a porta preserva espaço para o Agente de Discovery sem criá-lo prematuramente;
+- a porta permite o assessor sem acoplar a segurança ou a conclusão do Preflight a uma resposta do modelo;
 - pedidos pequenos e grandes usam o mesmo contrato, mas não precisam pagar o mesmo custo de análise;
 - a execução começa apenas depois que a compreensão necessária e as decisões previsíveis estiverem
   suficientemente resolvidas.

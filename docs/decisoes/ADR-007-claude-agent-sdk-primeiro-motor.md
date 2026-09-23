@@ -59,13 +59,16 @@ critérios continua baseada em evidência reproduzível.
 ## Enforcement
 
 O Omni decide o plano. O Overcore transforma a decisão validada em um envelope de runtime e o SDK
-aplica esse envelope em três níveis:
+aplica esse envelope nos seguintes pontos (corrigidos pela ADR-020 em 2026-09-23):
 
 - `tools`: remove ferramentas fora da superfície autorizada;
-- `allowedTools`: permanece vazio, pois qualquer nome nessa lista autoaprova a ferramenta antes do
-  callback;
-- `canUseTool`: verifica cada pedido contra o enforcement já emitido pelo Omni e sua validade no
-  instante da chamada.
+- `allowedTools`: permanece vazio, sem autoaprovação ampla por nome de ferramenta;
+- `PreToolUse`: verifica validade do crachá e conjunto autorizado antes de cada chamada, inclusive
+  leituras aprovadas nativamente pelo SDK; devolve `{}` quando válido, preservando permissões de caminho;
+- `canUseTool`: mantém a checagem quando consultado, mas não é a garantia de interceptação universal.
+
+O gate real e a correção da suposição anterior sobre o callback estão na
+[`ADR-020`](ADR-020-preflight-multirrevisao-http.md).
 
 Nesta fase, `settingSources` é vazio e não são enviados agents, skills, plugins ou MCP. Essas camadas
 continuam fora até discussão própria.

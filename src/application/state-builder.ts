@@ -311,6 +311,97 @@ export function scheduleRetry(
   return next
 }
 
+/** Persist intent first; the worker reconciles in-flight effects before settling. */
+export function requestCancellation(
+  previous: TaskState,
+  evidenceRef: string,
+  initiatedBy: 'client' | 'policy' | 'runtime' | 'deadline',
+  now: string
+): TaskState {
+  if (!['accepted', 'planning', 'ready', 'blocked', 'running', 'verifying'].includes(previous.lifecycle.state)) {
+    throw new Error(`Cancelamento não pode ser solicitado a partir de ${previous.lifecycle.state}.`)
+  }
+  const cancellationId = stableId('cancellation', `${previous.taskId}:${previous.stateRevision}:${initiatedBy}`)
+  const requested = transition(previous, 'cancelling', 'cancellation-requested', now, cancellationId)
+  requested.executionEpoch = previous.executionEpoch + 1
+  const cancellation: JsonObject = {
+    cancellationId,
+    initiatedBy,
+    requestedAt: now,
+    status: 'requested',
+    lastUpdatedRevision: requested.stateRevision,
+    evidenceRefs: [evidenceRef]
+  }
+  requested.cancellation = cancellation
+  delete requested.activeBlockRef
+  return requested
+}
+
+export function markCancellationQuiesced(previous: TaskState, evidenceRefs: string[], artifactRefs: string[], now: string): TaskState {
+  if (previous.lifecycle.state !== 'cancelling') throw new Error('Tarefa não está cancelando.')
+  const next = structuredClone(previous)
+  next.stateRevision += 1
+  next.updatedAt = now
+  next.cancellation = { ...(next.cancellation as JsonObject), status: 'quiesced', lastUpdatedRevision: next.stateRevision, evidenceRefs }
+  for (const key of ['attempts', 'stepRuns']) {
+    for (const item of (Array.isArray(next.ledger[key]) ? next.ledger[key] : []) as JsonObject[]) {
+      if (['active', 'awaiting-verification', 'suspended'].includes(String(item.status))) {
+        item.status = 'cancelled'
+        item.endedAt = now
+        item.lastUpdatedRevision = next.stateRevision
+        item.evidenceRefs = [...new Set([...(Array.isArray(item.evidenceRefs) ? item.evidenceRefs.map(String) : []), ...evidenceRefs])]
+      }
+    }
+  }
+  delete next.activeAttemptId
+  next.ledger.evidenceRefs = [...new Set([...(next.ledger.evidenceRefs as string[]), ...evidenceRefs])]
+  next.ledger.artifactRefs = [...new Set([...(next.ledger.artifactRefs as string[]), ...artifactRefs])]
+  return next
+}
+
+export function settleCancellation(
+  previous: TaskState,
+  resultId: string,
+  resultFingerprint: Fingerprint,
+  evidenceRef: string,
+  now: string
+): TaskState {
+  if (previous.lifecycle.state !== 'cancelling' || !previous.cancellation || typeof previous.cancellation !== 'object' || Array.isArray(previous.cancellation)) {
+    throw new Error('Cancelamento pendente não foi encontrado para estabilização.')
+  }
+  const cancellation = previous.cancellation as JsonObject
+  if (cancellation.status !== 'quiesced') throw new Error('Cancelamento exige quiescência persistida antes do resultado.')
+  const next = transition(previous, 'cancelled', 'cancellation-settled', now, String(cancellation.cancellationId))
+  next.cancellation = {
+    ...cancellation,
+    status: 'quiesced',
+    lastUpdatedRevision: next.stateRevision
+  }
+  const rawEvidenceRefs = ledger(next).evidenceRefs
+  if (!Array.isArray(rawEvidenceRefs)) throw new Error('Ledger sem evidenceRefs.')
+  const evidenceRefs = rawEvidenceRefs as string[]
+  if (!evidenceRefs.includes(evidenceRef)) evidenceRefs.push(evidenceRef)
+  const lastTransition = arrayAt(ledger(next), 'transitions').at(-1)
+  if (!lastTransition) throw new Error('Transição de cancelamento ausente.')
+  lastTransition.resultRef = resultId
+  lastTransition.evidenceRefs = [evidenceRef]
+  next.criterionProgress = next.criterionProgress.map((criterion) => ({
+    criterionId: String(criterion.criterionId), status: 'not-run', evidenceRefs: []
+  }))
+  next.terminalResultRef = resultId
+  const resultRefs = arrayAt(ledger(next), 'resultRefs')
+  resultRefs.push({
+    resultId,
+    stateRevision: next.stateRevision,
+    transitionId: next.lifecycle.lastTransitionId,
+    emissionSequence: resultRefs.length + 1,
+    status: 'cancelled',
+    resultFingerprint,
+    emittedAt: now
+  })
+  return next
+}
+
 export function failTask(
   previous: TaskState,
   resultId: string,

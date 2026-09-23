@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { sha256 } from '../domain/fingerprint.js'
 import type { InspectionEvidence, JsonObject } from '../domain/types.js'
 import type { AgentRuntimePort } from '../ports/agent-runtime.js'
+import type { ExecutionControl } from '../ports/execution-control.js'
 import { ExecutionFailure, type InspectionExecutor } from '../ports/task-store.js'
 
 function runtimeFailure(error: unknown): ExecutionFailure {
@@ -21,13 +22,15 @@ function runtimeFailure(error: unknown): ExecutionFailure {
 }
 
 export class ReadOnlyContractInspectionExecutor implements InspectionExecutor {
-  async execute(input: Parameters<InspectionExecutor['execute']>[0]): Promise<JsonObject> {
+  async execute(input: Parameters<InspectionExecutor['execute']>[0], control?: ExecutionControl): Promise<JsonObject> {
+    await control?.assertActive()
     const { repositoryUri } = input
     if (!repositoryUri.startsWith('file:')) throw new Error('Executor de inspeção aceita somente file://.')
     const contracts = join(fileURLToPath(repositoryUri), 'contratos')
     const names = (await readdir(contracts)).filter((name) => name.endsWith('.schema.json')).sort()
     const files: InspectionEvidence['files'] = []
     for (const name of names) {
+      control?.signal.throwIfAborted()
       const raw = await readFile(join(contracts, name), 'utf8')
       let parsed: unknown
       let readable = true
@@ -56,14 +59,16 @@ export class AgentAssistedContractInspectionExecutor implements InspectionExecut
     private readonly deterministic = new ReadOnlyContractInspectionExecutor()
   ) {}
 
-  async execute(input: Parameters<InspectionExecutor['execute']>[0]): Promise<JsonObject> {
+  async execute(input: Parameters<InspectionExecutor['execute']>[0], control?: ExecutionControl): Promise<JsonObject> {
+    await control?.assertActive()
     const root = fileURLToPath(input.repositoryUri)
     const prevalidated = input.strategyRevision > 1
-      ? await this.deterministic.execute(input) as unknown as InspectionEvidence
+      ? await this.deterministic.execute(input, control) as unknown as InspectionEvidence
       : undefined
     let result
     try {
       result = await this.runtime.run({
+      purpose: 'execution',
       runId: input.runId,
       cwd: root,
       objective: [
@@ -82,12 +87,12 @@ export class AgentAssistedContractInspectionExecutor implements InspectionExecut
       timeoutMs: input.timeoutMs,
       authorization: input.authorization,
       ...(input.maxCostUsd === undefined ? {} : { maxCostUsd: input.maxCostUsd })
-      })
+      }, undefined, control?.signal)
     } catch (error) {
       throw runtimeFailure(error)
     }
     const inspection = prevalidated
-      ?? await this.deterministic.execute(input) as unknown as InspectionEvidence
+      ?? await this.deterministic.execute(input, control) as unknown as InspectionEvidence
     inspection.agentRuntime = {
       engine: result.engine,
       sdkVersion: result.sdkVersion,

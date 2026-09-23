@@ -128,11 +128,78 @@ test('adaptador rejeita qualquer fonte de autenticação diferente do login OAut
   await assert.rejects(runtime.run(runtimeRequest()), AnthropicLoginRequiredError)
 })
 
+test('PreToolUse verifica o crachá mesmo sem callback e preserva as permissões de caminho do SDK', async () => {
+  let captured: Options | undefined
+  let now = new Date('2026-09-23T12:00:00.000Z')
+  const runtime = new AnthropicAgentSdkRuntime(({ options }) => {
+    captured = options
+    return fakeQuery(messages())
+  }, {}, () => now)
+  const request = runtimeRequest()
+  request.authorization.expiresAt = '2026-09-23T12:01:00.000Z'
+  const result = await runtime.run(request)
+  const hook = captured?.hooks?.PreToolUse?.[0]?.hooks[0]
+  assert.ok(hook)
+  const input = {
+    hook_event_name: 'PreToolUse' as const, tool_name: 'Read', tool_input: { file_path: 'private-path' },
+    tool_use_id: 'read-0001', session_id: 'test-session', transcript_path: '', cwd: root
+  }
+  const context = { signal: new AbortController().signal }
+  // Empty output defers to normal SDK path rules; it must not force allow.
+  assert.deepEqual(await hook(input, input.tool_use_id, context), {})
+  assert.deepEqual(await hook({ ...input, tool_name: 'Bash' }, 'bash-0001', context), {
+    hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'Ferramenta Bash não pertence à autorização do plano.' }
+  })
+  now = new Date(request.authorization.expiresAt)
+  assert.deepEqual(await hook(input, 'read-expired', context), {
+    hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'A autorização do Omni expirou durante a execução.' }
+  })
+  assert.ok(result.events.some((event) => event.type === 'tool-allowed' && event.data.source === 'pre-tool-use'))
+  assert.ok(result.events.some((event) => event.type === 'tool-denied' && event.data.reason === 'authorization-expired'))
+  assert.doesNotMatch(JSON.stringify(result.events), /private-path/)
+})
+
+test('negação interna do SDK registra ferramenta sem copiar entrada privada para eventos', async () => {
+  const source = messages()
+  const final = source.find((message) => message.type === 'result')!
+  assert.equal(final.type, 'result')
+  final.permission_denials = [{ tool_name: 'Read', tool_use_id: 'tool-denied-example', tool_input: { file_path: 'private-secret-path' } }]
+  const runtime = new AnthropicAgentSdkRuntime(() => fakeQuery(source))
+  const result = await runtime.run(runtimeRequest())
+  assert.equal(result.permissionDenials, 1)
+  assert.ok(result.events.some((event) => event.type === 'tool-denied' && event.data.toolName === 'Read' && event.data.reason === 'sdk-permission-denial'))
+  assert.doesNotMatch(JSON.stringify(result.events), /private-secret-path/)
+})
+
 test('adaptador comprova login Claude Max quando o init do SDK informa none', async () => {
   const runtime = new AnthropicAgentSdkRuntime(() => fakeQuery(messages('none')))
   const result = await runtime.run(runtimeRequest())
   assert.equal(result.authSource, 'oauth-login')
   assert.equal(result.events[0]?.data.authProof, 'account-first-party-subscription')
+})
+
+test('Discovery assistida usa OAuth, mas nÃ£o recebe ferramenta nem permissÃ£o de leitura', async () => {
+  let captured: Options | undefined
+  const runtime = new AnthropicAgentSdkRuntime(({ options }) => {
+    captured = options
+    return fakeQuery(messages())
+  })
+  const request = runtimeRequest()
+  request.purpose = 'discovery'
+  request.tools = []
+  request.authorization.operations = ['discovery.analyze']
+  await runtime.run(request)
+  assert.ok(captured)
+  assert.deepEqual(captured.tools, [])
+  assert.deepEqual(captured.allowedTools, [])
+})
+
+test('Discovery assistida rejeita qualquer ferramenta antes de chamar o SDK', async () => {
+  const runtime = new AnthropicAgentSdkRuntime(() => fakeQuery(messages()))
+  const request = runtimeRequest()
+  request.purpose = 'discovery'
+  request.authorization.operations = ['discovery.analyze']
+  await assert.rejects(runtime.run(request), /Discovery assistida/)
 })
 
 class FakeAgentRuntime implements AgentRuntimePort {

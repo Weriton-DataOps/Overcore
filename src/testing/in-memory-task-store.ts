@@ -20,12 +20,40 @@ import {
   type StoredPreflightRevision
 } from '../ports/preflight-store.js'
 import type { TaskReadinessReport } from '../domain/types.js'
+import { ExecutionInterruptedError } from '../ports/execution-control.js'
 
 function copy<T>(value: T): T {
   return structuredClone(value)
 }
 
 export class InMemoryTaskStore implements TaskStore {
+  private readonly executionLocks = new Map<string, Promise<void>>()
+
+  private async locked<T>(taskId: string, operation: () => Promise<T>): Promise<T> {
+    const previous = this.executionLocks.get(taskId) ?? Promise.resolve()
+    let release!: () => void
+    const pending = new Promise<void>((resolve) => { release = resolve })
+    const tail = previous.then(() => pending)
+    this.executionLocks.set(taskId, tail)
+    await previous
+    try { return await operation() } finally {
+      release()
+      if (this.executionLocks.get(taskId) === tail) this.executionLocks.delete(taskId)
+    }
+  }
+
+  async withExecutionFence<T>(claim: ClaimedMessage, epoch: number, mode: 'execute' | 'reconcile', operation: () => Promise<T>, now = new Date()): Promise<T> {
+    return this.locked(claim.taskId, async () => {
+      const task = this.tasks.get(claim.taskId)
+      const message = this.outbox.get(claim.outboxId)
+      if (!task || task.executionEpoch !== epoch ||
+          !(mode === 'execute' ? ['running', 'verifying'] : ['cancelling']).includes(task.status) ||
+          message?.claimToken !== claim.claimToken || !message.lockedUntil || Date.parse(message.lockedUntil) <= now.getTime()) {
+        throw new ExecutionInterruptedError()
+      }
+      return operation()
+    })
+  }
   readonly tasks = new Map<string, StoredTask>()
   readonly plans = new Map<string, JsonObject>()
   readonly authorizations = new Map<string, { taskId: string; request: JsonObject; decision: JsonObject; enforcement: JsonObject }>()
@@ -134,7 +162,7 @@ export class InMemoryTaskStore implements TaskStore {
 
   async listReconciliationCandidates(limit: number, now = new Date()): Promise<StoredTask[]> {
     return [...this.tasks.values()]
-      .filter((task) => task.status === 'accepted' || task.status === 'planning' || task.status === 'ready')
+      .filter((task) => task.status === 'accepted' || task.status === 'planning' || task.status === 'ready' || task.status === 'cancelling')
       .filter((task) => {
         const lease = this.reconciliationLeases.get(task.taskId)
         return !lease || Date.parse(lease.until) <= now.getTime()
@@ -199,6 +227,10 @@ export class InMemoryTaskStore implements TaskStore {
   }
 
   async compareAndSwap(mutation: CasMutation): Promise<StoredTask> {
+    return this.locked(mutation.next.taskId, () => this.commitMutation(mutation))
+  }
+
+  private async commitMutation(mutation: CasMutation): Promise<StoredTask> {
     const current = this.tasks.get(mutation.next.taskId)
     if (!current || current.stateRevision !== mutation.expectedRevision) {
       throw new ConcurrentTaskUpdateError(mutation.next.taskId, mutation.expectedRevision)
@@ -288,14 +320,19 @@ export class InMemoryTaskStore implements TaskStore {
       .filter((item) => !item.lockedUntil || Date.parse(item.lockedUntil) <= now.getTime())
       .sort((a, b) => a.availableAt.localeCompare(b.availableAt))[0]
     if (!candidate) return null
-    const claimed: ClaimedMessage = {
-      ...copy(candidate),
-      attempts: candidate.attempts + 1,
-      claimToken: `${workerId}:${randomUUID()}`,
-      lockedUntil: new Date(now.getTime() + leaseMs).toISOString()
-    }
-    this.outbox.set(claimed.outboxId, copy(claimed))
-    return claimed
+    const result = await this.locked(candidate.taskId, async () => {
+      const current = this.outbox.get(candidate.outboxId)
+      if (!current || (current.lockedUntil && Date.parse(current.lockedUntil) > now.getTime())) return null
+      const claimed: ClaimedMessage = {
+        ...copy(current),
+        attempts: current.attempts + 1,
+        claimToken: `${workerId}:${randomUUID()}`,
+        lockedUntil: new Date(now.getTime() + leaseMs).toISOString()
+      }
+      this.outbox.set(claimed.outboxId, copy(claimed))
+      return claimed
+    })
+    return result ?? this.claimOutbox(workerId, leaseMs, now)
   }
 
   async completeOutbox(outboxId: string, claimToken: string): Promise<void> {

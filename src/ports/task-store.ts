@@ -7,6 +7,7 @@ import type {
 } from '../domain/types.js'
 import type { AgentRuntimeAuthorization } from './agent-runtime.js'
 import type { PreflightStore } from './preflight-store.js'
+import type { CancellationProjection, ExecutionControl } from './execution-control.js'
 
 export interface StoredTaskAuthorization {
   request: JsonObject
@@ -81,6 +82,7 @@ export interface TaskStore extends PreflightStore {
   deferReconciliation(taskId: string, claimToken: string, failure: ReconciliationFailure): Promise<void>
   releaseReconciliation(taskId: string, claimToken: string): Promise<void>
   compareAndSwap(mutation: CasMutation): Promise<StoredTask>
+  withExecutionFence<T>(claim: ClaimedMessage, epoch: number, mode: 'execute' | 'reconcile', operation: () => Promise<T>, now?: Date): Promise<T>
   findExecutionReceipt(outboxId: string): Promise<ExecutionReceipt | null>
   saveExecutionReceipt(receipt: ExecutionReceipt, claimToken: string, now?: Date): Promise<ExecutionReceipt>
   claimOutbox(workerId: string, leaseMs: number, now?: Date): Promise<ClaimedMessage | null>
@@ -103,10 +105,11 @@ export interface InspectionExecutor {
     maxTokens?: number
     maxCostUsd?: number
     authorization: AgentRuntimeAuthorization
-  }): Promise<JsonObject>
+  }, control?: ExecutionControl): Promise<JsonObject>
 }
 
 export interface FileReplacementExecutor {
+  reconcileCancellation?(input: { taskId: string; effectKey: string; targetUri: string }): Promise<CancellationProjection>
   execute(input: {
     taskId: string
     effectKey: string
@@ -122,5 +125,26 @@ export interface FileReplacementExecutor {
       requiredControls: string[]
       authorizationRequest: JsonObject
     }
-  }): Promise<JsonObject>
+  }, control?: ExecutionControl): Promise<JsonObject>
+}
+
+export interface PostgresTableProbeExecutor {
+  reconcileCancellation?(input: { taskId: string; effectKey: string; targetUri: string; tableName: string }): Promise<CancellationProjection>
+  execute(input: {
+    taskId: string
+    effectKey: string
+    actionId: string
+    resourceRef: string
+    targetUri: string
+    databaseName: 'overcore_test'
+    tableName: string
+    authorization: {
+      enforcementId: string
+      expiresAt: string
+      operations: string[]
+      requiredControls: string[]
+      authorizationRequest: JsonObject
+      actionId?: string
+    }
+  }, control?: ExecutionControl): Promise<JsonObject>
 }

@@ -43,7 +43,7 @@ qual autorização vale e quais evidências comprovam o resultado.
 memória da conversa da execução  → sessão do SDK
 verdade operacional da tarefa    → Task State no PostgreSQL
 permissão do proprietário        → decisão do Omni
-aplicação ferramenta por ferramenta → canUseTool do SDK
+aplicação ferramenta por ferramenta → PreToolUse + permissões nativas do SDK
 ```
 
 O identificador da sessão é guardado na tentativa do Task State. Isso permite retomar a conversa do

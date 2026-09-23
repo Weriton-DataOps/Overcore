@@ -25,7 +25,7 @@ export function fileReplacementFrom(request: TaskRequest): {
 } | null {
   if (!request.execution) return null
   const execution = request.execution
-  if (execution.kind !== 'replace-file-content') throw new Error('Tipo de execução material não suportado.')
+  if (execution.kind !== 'replace-file-content') return null
   if (!/^sha256:[a-f0-9]{64}$/.test(execution.expectedBeforeDigest)) {
     throw new Error('A substituição exige expectedBeforeDigest SHA-256 válido.')
   }

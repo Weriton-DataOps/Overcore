@@ -28,10 +28,11 @@ O Preflight não presume que o tamanho da frase corresponde ao tamanho do trabal
 pedido, ele pode solicitar compreensão adicional por uma porta neutra de Discovery: desde uma
 inspeção breve para um pequeno ajuste até uma descoberta ampla para um sistema inteiro.
 
-O futuro Agente de Discovery será uma implementação especializada dessa porta. Ele produzirá
-evidências estruturadas para os checks e para as decisões agrupadas; não executará a tarefa, não
-ampliará autoridade e não substituirá as validações determinísticas. Seu desenho será discutido
-separadamente, conforme a
+O assessor de Discovery é uma implementação opcional dessa porta. Ele recebe o `TaskDraft`
+serializado e o resumo das decisões já validadas ou pendentes. Pode produzir perguntas estruturadas
+adicionais para os checks e para as decisões agrupadas; não
+executa a tarefa, não amplia autoridade e não substitui as validações determinísticas. O modo padrão
+continua sem modelo; o modo `advisor` é habilitado explicitamente, conforme a
 [`ADR-008`](../decisoes/ADR-008-discovery-adaptativa-no-preflight.md).
 
 ## 3. Onde entra
@@ -205,7 +206,8 @@ validação JSON Schema
 TaskPreflight
    |
    +--> DiscoveryPort
-   |      `--> BaselineDiscovery: determinística, adaptativa e somente leitura
+   |      +--> BaselineDiscovery: determinística e somente leitura
+   |      `--> ClaudeDiscoveryAdvisor: opcional, sem ferramentas
    |
    +--> sete checks + decisões agrupadas + evidências
    |
@@ -235,7 +237,7 @@ admissão e converge repetições para a mesma tarefa, conforme a
 
 ## 10. O que fica para depois
 
-- contrato, ativação, modelo, ferramentas, skills e evals do futuro Agente de Discovery;
+- ampliar a avaliação inicial de qualidade e escolher o modelo definitivo do assessor de Discovery (ver ADR-019);
 - catálogo confiável de operações e seus efeitos;
 - interface do Omni para apresentar o pacote;
 - retomada automática de Task States interrompidos depois da admissão.

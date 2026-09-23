@@ -94,9 +94,9 @@ Compara o resultado real com os critérios de aceitação e as evidências exigi
 
 ## Definition of Done do primeiro marco executável
 
-Este DoD é do marco completo. A fundação entregue na ADR-006 prova hoje os itens 5, 6, 8 e 14 para a
-inspeção somente leitura, além de partes de 3, 7, 9, 12 e 13. Preflight, cancelamento, retry e retomada
-após reinício continuam abertos; não são considerados prontos pela existência dos contratos.
+Este DoD é do marco completo. A fundação passou a incluir Preflight persistente, retry, retomada e
+cancelamento cooperativo para os três executores existentes. As provas estão nos testes locais e
+gates de integração descritos no README; cada novo executor deverá comprovar essas propriedades.
 
 1. Receber um `TaskDraft v1` e mapear decisões previsíveis antes da execução.
 2. Produzir um `TaskRequest v1` somente quando os sete checks de prontidão passarem.
@@ -107,7 +107,8 @@ após reinício continuam abertos; não são considerados prontos pela existênc
 7. Pedir ao Omni uma decisão vinculada à revisão exata e persistir o enforcement.
 8. Ativar e executar uma tarefa representativa com um executor real.
 9. Bloquear um plano com ação negada, decisão expirada, revogada ou destinada a outro ambiente.
-10. Cancelar uma execução em andamento.
+10. Cancelar uma execução em andamento — implementado para os executores existentes, com
+   reconciliação e evidências pela [ADR-018](../decisoes/ADR-018-cancelamento-cooperativo-e-reconciliacao-v1.md).
 11. Fazer no máximo um retry com estratégia diferente e obter nova decisão para a nova revisão.
 12. Reiniciar o processo e retomar sem repetir um efeito confirmado.
 13. Verificar cada critério de aceitação com evidência.

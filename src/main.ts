@@ -4,9 +4,14 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { ContractValidator } from './contracts/validator.js'
 import { TaskManager } from './application/task-manager.js'
+import { TaskPreflight } from './application/task-preflight.js'
+import { BaselineDiscovery } from './application/baseline-discovery.js'
+import { AdaptiveDiscovery } from './application/adaptive-discovery.js'
 import { TaskWorker } from './application/task-worker.js'
 import { FileEffectHarness } from './application/file-effect-harness.js'
 import { HarnessFileReplacementExecutor } from './application/file-replacement-executor.js'
+import { HarnessPostgresTableProbeExecutor } from './application/postgres-table-probe-executor.js'
+import { PostgresTableProbeHarness } from './application/postgres-table-probe-harness.js'
 import {
   AgentAssistedContractInspectionExecutor,
   ReadOnlyContractInspectionExecutor
@@ -15,6 +20,7 @@ import type { JsonObject } from './domain/types.js'
 import { HttpAuthorityProvider } from './infrastructure/authority/http-authority-provider.js'
 import { HttpEffectAuthorityGuard } from './infrastructure/authority/http-effect-authority-guard.js'
 import { AnthropicAgentSdkRuntime } from './infrastructure/agent-runtime/anthropic-agent-sdk.js'
+import { ClaudeDiscoveryAdvisor } from './infrastructure/discovery/claude-discovery-advisor.js'
 import { createPostgresPool, migrate } from './infrastructure/database/postgres.js'
 import { PostgresTaskStore } from './infrastructure/database/postgres-task-store.js'
 import { PostgresEffectJournalStore } from './infrastructure/database/postgres-effect-journal-store.js'
@@ -37,7 +43,24 @@ async function serve(): Promise<void> {
     config.authorityProviderUrl,
     config.authorityProviderToken
   )
-  const manager = new TaskManager(store, validator, authority)
+  const discovery = config.discoveryMode === 'advisor'
+    ? new AdaptiveDiscovery(
+        new BaselineDiscovery(),
+        new ClaudeDiscoveryAdvisor(new AnthropicAgentSdkRuntime(), projectRoot)
+      )
+    : new AdaptiveDiscovery(new BaselineDiscovery())
+  const manager = new TaskManager(
+    store,
+    validator,
+    authority,
+    undefined,
+    new TaskPreflight(validator, discovery, store)
+  )
+  const effectJournal = new PostgresEffectJournalStore(pool)
+  const effectAuthority = new HttpEffectAuthorityGuard(
+    new URL('/v1/authority/revalidate-effect', config.authorityProviderUrl),
+    config.authorityProviderToken
+  )
   const worker = new TaskWorker(
     `worker-${process.pid}`,
     store,
@@ -45,13 +68,11 @@ async function serve(): Promise<void> {
     new AgentAssistedContractInspectionExecutor(new AnthropicAgentSdkRuntime()),
     undefined,
     new HarnessFileReplacementExecutor(new FileEffectHarness(
-      new PostgresEffectJournalStore(pool),
+      effectJournal,
       new FileCheckpointStore(join(config.runtimeDirectory, 'checkpoints')),
-      new HttpEffectAuthorityGuard(
-        new URL('/v1/authority/revalidate-effect', config.authorityProviderUrl),
-        config.authorityProviderToken
-      )
-    ))
+      effectAuthority
+    )),
+    new HarnessPostgresTableProbeExecutor(new PostgresTableProbeHarness(pool, effectJournal, effectAuthority))
   )
   const server = createLocalServer(manager, worker, config.localToken)
   await new Promise<void>((resolve, reject) => {
@@ -211,6 +232,11 @@ async function resume(taskId: string | undefined): Promise<void> {
   process.stdout.write(`${JSON.stringify(await api(`/v1/tasks/${encodeURIComponent(taskId)}/resume`, 'POST'), null, 2)}\n`)
 }
 
+async function cancel(taskId: string | undefined): Promise<void> {
+  if (!taskId) throw new Error('Uso: overcore cancel <task-id>')
+  process.stdout.write(`${JSON.stringify(await api(`/v1/tasks/${encodeURIComponent(taskId)}/cancel`, 'POST'), null, 2)}\n`)
+}
+
 async function main(): Promise<void> {
   const command = process.argv[2]
   if (command === 'serve') return serve()
@@ -221,11 +247,12 @@ async function main(): Promise<void> {
   if (command === 'demo-preflight') return demoPreflight(process.argv[3])
   if (command === 'status') return status(process.argv[3])
   if (command === 'resume') return resume(process.argv[3])
+  if (command === 'cancel') return cancel(process.argv[3])
   if (command === 'work-once') {
     process.stdout.write(`${JSON.stringify(await api('/v1/work-once', 'POST'), null, 2)}\n`)
     return
   }
-  throw new Error('Uso: overcore <serve|migrate|preflight|admit|status|resume|work-once|demo-preflight|demo-inspection>')
+  throw new Error('Uso: overcore <serve|migrate|preflight|admit|status|resume|cancel|work-once|demo-preflight|demo-inspection>')
 }
 
 await main().catch((error: unknown) => {
