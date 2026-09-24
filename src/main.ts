@@ -26,6 +26,7 @@ import { PostgresTaskStore } from './infrastructure/database/postgres-task-store
 import { PostgresEffectJournalStore } from './infrastructure/database/postgres-effect-journal-store.js'
 import { FileCheckpointStore } from './infrastructure/checkpoints/file-checkpoint-store.js'
 import { createLocalServer } from './infrastructure/http/local-server.js'
+import { readValidationEvidence } from './infrastructure/runtime/validation-evidence.js'
 import { loadRuntimeConfig } from './infrastructure/runtime/config.js'
 import { removeRuntimeDescriptor, writeRuntimeDescriptor } from './infrastructure/runtime/descriptor.js'
 import { InMemoryTaskStore } from './testing/in-memory-task-store.js'
@@ -78,7 +79,7 @@ async function serve(): Promise<void> {
     'inspection-report-sha256-v1',
     'inspection-independent-semantic-review-v1',
     'inspection-direct-entries-snapshot-and-tool-telemetry-v1'
-  ])
+  ], () => readValidationEvidence(projectRoot))
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject)
     server.listen(config.port, config.host, resolve)

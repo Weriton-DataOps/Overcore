@@ -117,6 +117,10 @@ test('porta local autentica e recusa a antiga admissão direta de TaskRequest', 
     const unauthorized = await fetch(`${baseUrl}/v1/tasks/task-inexistente`)
     assert.equal(unauthorized.status, 401)
     assert.equal((await fetch(`${baseUrl}/v1/capabilities`)).status, 401)
+    assert.equal((await fetch(`${baseUrl}/v1/validation-evidence`)).status, 401)
+    const historical = await fetch(`${baseUrl}/v1/validation-evidence`, { headers: { authorization: `Bearer ${token}` } })
+    assert.equal(historical.status, 200)
+    assert.deepEqual((await historical.json() as { evidence: unknown[] }).evidence, [])
     const capabilities = await fetch(`${baseUrl}/v1/capabilities`, {
       headers: { authorization: `Bearer ${token}` }
     })

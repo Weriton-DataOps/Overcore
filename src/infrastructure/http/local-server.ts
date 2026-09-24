@@ -32,7 +32,7 @@ async function jsonBody(request: IncomingMessage): Promise<unknown> {
 }
 
 export function createLocalServer(manager: TaskManager, worker: TaskWorker, token: string,
-  capabilities: readonly string[] = []) {
+  capabilities: readonly string[] = [], readValidationEvidence?: () => Promise<unknown>) {
   // This identity belongs to this process, not to a task completed by an older runtime.
   const startedAt = new Date().toISOString()
   return createServer(async (request, response) => {
@@ -51,6 +51,12 @@ export function createLocalServer(manager: TaskManager, worker: TaskWorker, toke
           service: 'overcore-task-manager', protocolVersion: 1, startedAt,
           observedAt: new Date().toISOString(), capabilities: [...capabilities],
           scope: 'runtime-capabilities-not-task-success'
+        })
+        return
+      }
+      if (request.method === 'GET' && url.pathname === '/v1/validation-evidence') {
+        send(response, 200, readValidationEvidence ? await readValidationEvidence() : {
+          protocolVersion: 1, status: 'unavailable', scope: 'historical-integration-evidence', evidence: []
         })
         return
       }
