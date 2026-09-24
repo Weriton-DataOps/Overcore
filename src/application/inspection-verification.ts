@@ -1,5 +1,6 @@
 import type { AcceptanceCriterion, InspectionEvidence, InspectionAssessment } from '../domain/types.js'
 import { sha256 } from '../domain/fingerprint.js'
+import { verifyNonMutation } from './inspection-non-mutation.js'
 
 const normalize = (text: string) => text.normalize('NFD').replace(/\p{Diacritic}/gu, '').trim().toLowerCase().replace(/\.$/, '')
 const readable = new Set([
@@ -12,11 +13,16 @@ const closed = new Set([
   'Todos declaram additionalProperties=false na raiz.',
   'Todos os contratos declaram additionalProperties=false na raiz.'
 ].map(normalize))
+const nonMutation = new Set([
+  'Nenhum arquivo da pasta contratos foi criado, alterado ou removido durante a execução.',
+  'Nenhum arquivo diretamente na pasta inspecionada foi criado, alterado ou removido durante a execução.'
+].map(normalize))
 
 // Exact assertions, never a guess based on the verification method or criterion ID.
-export function deterministicCheck(criterion: AcceptanceCriterion): 'readable' | 'rootClosed' | undefined {
+export function deterministicCheck(criterion: AcceptanceCriterion): 'readable' | 'rootClosed' | 'nonMutation' | undefined {
   if (criterion.verification.procedureRef) return undefined
   const expected = normalize(criterion.verification.expected)
+  if (['test', 'inspection'].includes(criterion.verification.method) && nonMutation.has(expected)) return 'nonMutation'
   if (criterion.verification.method === 'test' && readable.has(expected)) return 'readable'
   if (criterion.verification.method === 'schema' && closed.has(expected)) return 'rootClosed'
   return undefined
@@ -43,11 +49,14 @@ export function parseAssessment(output: string, criteria: AcceptanceCriterion[],
   })
 }
 
-export function verifyInspectionCriteria(criteria: AcceptanceCriterion[], inspection: InspectionEvidence): Map<string, 'readable' | 'rootClosed' | 'assessment'> {
-  const verified = new Map<string, 'readable' | 'rootClosed' | 'assessment'>()
+export function verifyInspectionCriteria(criteria: AcceptanceCriterion[], inspection: InspectionEvidence): Map<string, 'readable' | 'rootClosed' | 'nonMutation' | 'assessment'> {
+  const verified = new Map<string, 'readable' | 'rootClosed' | 'nonMutation' | 'assessment'>()
   for (const criterion of criteria) {
     const check = deterministicCheck(criterion)
-    if (check) {
+    if (check === 'nonMutation') {
+      verifyNonMutation(inspection.nonMutation)
+      verified.set(criterion.id, check)
+    } else if (check) {
       if (!inspection.files.length || inspection.files.some(file => !file[check])) throw new Error(`Critério ${criterion.id} reprovado: ${check}.`)
       verified.set(criterion.id, check)
     } else {

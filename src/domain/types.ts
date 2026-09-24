@@ -265,6 +265,12 @@ export interface InspectionAssessment {
 }
 
 export interface InspectionEvidence {
+  nonMutation?: {
+    scope: 'directory-top-level'
+    before: DirectorySnapshot
+    after: DirectorySnapshot
+    tools: { complete: boolean; allowed: string[]; denied: string[] }
+  }
   assessments?: InspectionAssessment[]
   assessmentRuntime?: { sessionId: string; outputDigest: string }
   repositoryUri: string
@@ -294,4 +300,11 @@ export interface InspectionEvidence {
     permissionDenials: number
     eventCount: number
   }
+}
+
+export interface DirectorySnapshot {
+  directory: string
+  capturedAt: string
+  complete: boolean
+  entries: Array<{ name: string; kind: string; digest: string; modified: string; changed: string }>
 }

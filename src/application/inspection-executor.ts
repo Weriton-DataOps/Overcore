@@ -8,6 +8,7 @@ import type { AgentRuntimePort } from '../ports/agent-runtime.js'
 import type { ExecutionControl } from '../ports/execution-control.js'
 import { ExecutionFailure, type InspectionExecutor } from '../ports/task-store.js'
 import { deterministicCheck, parseAssessment } from './inspection-verification.js'
+import { snapshotDirectory, inspectionToolAudit } from './inspection-non-mutation.js'
 
 function runtimeFailure(error: unknown): ExecutionFailure {
   if (error instanceof ExecutionFailure) return error
@@ -28,6 +29,7 @@ export class ReadOnlyContractInspectionExecutor implements InspectionExecutor {
     const { repositoryUri } = input
     if (!repositoryUri.startsWith('file:')) throw new Error('Executor de inspeção aceita somente file://.')
     const contracts = input.directory ?? inspectionDirectory(repositoryUri)
+    const before = await snapshotDirectory(contracts)
     const names = (await readdir(contracts)).filter((name) => name.endsWith('.schema.json')).sort()
     const files: InspectionEvidence['files'] = []
     for (const name of names) {
@@ -50,6 +52,7 @@ export class ReadOnlyContractInspectionExecutor implements InspectionExecutor {
       files,
       capturedAt: new Date().toISOString()
     }
+    evidence.nonMutation = { scope: 'directory-top-level', before, after: await snapshotDirectory(contracts), tools: { complete: true, allowed: [], denied: [] } }
     return evidence as unknown as JsonObject
   }
 }
@@ -64,6 +67,8 @@ export class AgentAssistedContractInspectionExecutor implements InspectionExecut
     await control?.assertActive()
     const root = input.directory ?? inspectionDirectory(input.repositoryUri)
     const started = Date.now()
+    const before = await snapshotDirectory(root)
+    const runtimeEvents = [] as import('../ports/agent-runtime.js').AgentRuntimeEvent[]
     const prevalidated = input.strategyRevision > 1
       ? await this.deterministic.execute(input, control) as unknown as InspectionEvidence
       : undefined
@@ -94,6 +99,7 @@ export class AgentAssistedContractInspectionExecutor implements InspectionExecut
     } catch (error) {
       throw runtimeFailure(error)
     }
+    runtimeEvents.push(...result.events)
     const inspection = prevalidated
       ?? await this.deterministic.execute(input, control) as unknown as InspectionEvidence
     inspection.agentRuntime = {
@@ -139,6 +145,7 @@ export class AgentAssistedContractInspectionExecutor implements InspectionExecut
         tools: [], maxTurns: 2, timeoutMs: remainingMs, authorization: input.authorization,
         ...(remainingCost === undefined ? {} : { maxCostUsd: remainingCost })
       }, undefined, control?.signal)
+      runtimeEvents.push(...review.events)
       inspection.assessmentRuntime = { sessionId: review.sessionId, outputDigest: sha256(review.output) }
       inspection.agentRuntime.inputTokens += review.usage.inputTokens
       inspection.agentRuntime.outputTokens += review.usage.outputTokens
@@ -152,6 +159,7 @@ export class AgentAssistedContractInspectionExecutor implements InspectionExecut
         inspection.assessments = semantic.map(criterion => ({criterionId:criterion.id,status:'unverified',reason:`Avaliação não concluída: ${error instanceof Error ? error.message : 'erro do avaliador'}`.slice(0,1500),reportQuotes:[],sourceQuotes:[]}))
       }
     }
+    inspection.nonMutation = { scope: 'directory-top-level', before, after: await snapshotDirectory(root), tools: inspectionToolAudit(runtimeEvents) }
     return inspection as unknown as JsonObject
   }
 }

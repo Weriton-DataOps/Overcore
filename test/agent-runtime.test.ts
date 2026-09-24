@@ -250,5 +250,6 @@ test('Task State e TaskResult recebem sessão, uso e evidência do Agent SDK', a
   assert.equal(binding.sessionId, 'session-agent-runtime-test-0001')
   assert.equal(completed?.state.usage.tokens, 120)
   assert.equal((completed?.result?.execution as Record<string, unknown>).costUsd, 0.02)
-  assert.equal((completed?.result?.evidence as unknown[]).length, 3)
+  assert.equal((completed?.result?.evidence as unknown[]).length, 4)
+  assert.ok((completed?.result?.evidence as Array<{evidenceId:string}>).some(item => item.evidenceId.startsWith('evidence-no-mutation')))
 })

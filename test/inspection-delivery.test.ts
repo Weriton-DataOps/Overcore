@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { readFile } from 'node:fs/promises'
+import { readFile, mkdtemp, writeFile, rm, rename } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { TaskManager } from '../src/application/task-manager.js'
@@ -22,6 +23,45 @@ async function fixture(): Promise<TaskRequest> {
   return request
 }
 const criterion = { id: 'criterion-map', description: 'Mapa das funções de todos os contratos.', verification: { method: 'inspection' as const, expected: 'Mapa das funções de todos os contratos.' } }
+const noMutation = { id: 'criterion-no-mutation', description: 'Nenhum arquivo da pasta contratos foi criado, alterado ou removido durante a execução.', verification: { method: 'inspection' as const, expected: 'Nenhum arquivo da pasta contratos foi criado, alterado ou removido durante a execução.' } }
+
+test('não mutação usa snapshots e telemetria: aprova leitura e reprova alteração/criação/remoção/renomeação ou registro ausente', async () => {
+  for (const scenario of ['read-only','modify','create','delete','rename','no-telemetry','write-tool'] as const) {
+    const directory = await mkdtemp(join(tmpdir(),'overcore-non-mutation-'))
+    try {
+      const file=join(directory,'a.schema.json')
+      await writeFile(file,'{"type":"object","additionalProperties":false}')
+      await writeFile(join(directory,'notes.txt'),'before')
+      const request=await fixture(); request.acceptanceCriteria=[noMutation]
+      request.context.references[0]!.uri=pathToFileURL(directory).href
+      let calls=0
+      const runtime: AgentRuntimePort={async run(input) {
+        calls++
+        assert.equal(input.purpose,'execution','Não delegar prova operacional ao revisor textual')
+        if(scenario==='modify') await writeFile(join(directory,'notes.txt'),'after')
+        if(scenario==='create') await writeFile(join(directory,'new.txt'),'new')
+        if(scenario==='delete') await rm(join(directory,'notes.txt'))
+        if(scenario==='rename') await rename(join(directory,'notes.txt'),join(directory,'renamed.txt'))
+        return {engine:'anthropic-claude-agent-sdk',sdkVersion:'test',authSource:'oauth-login',sessionId:'session-test',model:'test',output:'Relatório completo.',durationMs:1,turns:1,
+          usage:{inputTokens:1,outputTokens:1,cacheReadInputTokens:0,cacheCreationInputTokens:0,estimatedCostUsd:0.1},permissionDenials:0,
+          events:scenario==='no-telemetry'?[]:[
+            {sequence:1,type:'runtime-started',occurredAt:new Date().toISOString(),data:{}},
+            {sequence:2,type:'tool-allowed',occurredAt:new Date().toISOString(),data:{toolName:scenario==='write-tool'?'Write':'Read'}},
+            {sequence:3,type:'runtime-result',occurredAt:new Date().toISOString(),data:{status:'succeeded'}}
+          ]}
+      }}
+      const store=new InMemoryTaskStore(); const validator=await ContractValidator.create(root)
+      await new TaskManager(store,validator,new PermittingAuthorityProvider()).submit(request)
+      const worker=new TaskWorker('worker-proof',store,validator,new AgentAssistedContractInspectionExecutor(runtime))
+      const task=await worker.runOnce()
+      assert.equal(task?.status,scenario==='read-only'?'succeeded':'failed',scenario)
+      assert.equal(calls,1)
+      assert.equal((task?.result?.report as {content:string}).content,'Relatório completo.')
+      if(scenario==='read-only') assert.match((task?.result?.criteria as Array<{evidenceRefs:string[]}>)[0]!.evidenceRefs[0]!,/^evidence-no-mutation/)
+      assert.equal(await worker.runOnce(),null)
+    } finally {await rm(directory,{recursive:true,force:true})}
+  }
+})
 
 test('pasta exata atravessa admissão, plano, executor e TaskResult com relatório e hash', async () => {
   const validator = await ContractValidator.create(root)

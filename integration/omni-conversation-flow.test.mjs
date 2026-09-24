@@ -101,8 +101,10 @@ test('cliente produtivo Omni responde ao Preflight e recebe resultado da mesma t
       context.assumptions = [{id:'assumption-directory-scope',statement:'A análise se limita à pasta referenciada, sem recursão.',impactIfFalse:'O conjunto autorizado de arquivos mudaria.'}]
       input.objective = 'Entregar mapa curto dos contratos existentes, função de cada um e eventuais inconsistências encontradas, somente em leitura.'
       input.knownAcceptanceCriteria = [
+        {id:'criterion-inventory',description:'Lista exatamente os seis arquivos *.schema.json encontrados diretamente na pasta contratos.',verificationHint:'inspection'},
         {id:'criterion-map',description:'O relatório apresenta todos os seis arquivos e a função de cada contrato em mapa curto ou tabela.',verificationHint:'inspection'},
-        {id:'criterion-inconsistencies',description:'O relatório analisa inconsistências entre os contratos com fundamento em seus campos, distingue hipóteses e limita conclusões ao escopo inspecionado.',verificationHint:'inspection'}
+        {id:'criterion-inconsistencies',description:'O relatório analisa inconsistências entre os contratos com fundamento em seus campos, distingue hipóteses e limita conclusões ao escopo inspecionado.',verificationHint:'inspection'},
+        {id:'criterion-no-mutation',description:'Nenhum arquivo da pasta contratos foi criado, alterado ou removido durante a execução.',verificationHint:'inspection'}
       ]
       input.executionHints = {expectedOutputKind:'no-artifact'}
     }
@@ -134,7 +136,8 @@ test('cliente produtivo Omni responde ao Preflight e recebe resultado da mesma t
     assert.equal(report.digest, `sha256:${createHash('sha256').update(report.content).digest('hex')}`)
     if (reportCase) {
       for (const name of ['task-draft','task-request','task-readiness-report','task-result','authorization-request','authorization-decision']) assert.ok(report.content.includes(name), name)
-      assert.ok(observed.result.criteria.every(criterion => criterion.status === 'passed' && criterion.evidenceRefs.every(ref => ref.startsWith('evidence-criterion-review'))))
+      assert.equal(observed.result.criteria.length,4)
+      assert.ok(observed.result.criteria.every(criterion => criterion.status === 'passed' && criterion.evidenceRefs.every(ref => ref.startsWith(criterion.criterionId === 'criterion-no-mutation' ? 'evidence-no-mutation' : 'evidence-criterion-review'))))
       assert.equal(scheduled.revision,2)
     }
     evidence = { flowId: first.flowId, taskId: observed.taskId, statuses: [first.status, scheduled.status, observed.status], questions: first.decisions.length, runtimeCalls, report, criteria:observed.result.criteria, execution:observed.result.execution, reportCase }

@@ -78,6 +78,7 @@ export async function buildInspectionPlan(
       outputs: [
         { outputId: stableId('evidence-json-readable', revisionKey), kind: 'evidence', mediaType: 'application/json' },
         { outputId: stableId('evidence-contract-closed', revisionKey), kind: 'evidence', mediaType: 'application/json' },
+        { outputId: stableId('evidence-no-mutation', revisionKey), kind: 'evidence', mediaType: 'application/json' },
         ...request.acceptanceCriteria.filter(criterion => !deterministicCheck(criterion)).map(criterion => ({
           outputId: stableId('evidence-criterion-review', `${revisionKey}:${criterion.id}`), kind: 'evidence', mediaType: 'application/json'
         }))
@@ -146,7 +147,8 @@ export async function buildInspectionPlan(
       criterionId: criterion.id,
       verificationStepRefs: [stableId('step-inspect', revisionKey)],
       evidenceOutputRefs: [
-        deterministicCheck(criterion) === 'rootClosed'
+        deterministicCheck(criterion) === 'nonMutation' ? stableId('evidence-no-mutation', revisionKey)
+          : deterministicCheck(criterion) === 'rootClosed'
           ? stableId('evidence-contract-closed', revisionKey)
           : deterministicCheck(criterion) === 'readable' ? stableId('evidence-json-readable', revisionKey)
             : stableId('evidence-criterion-review', `${revisionKey}:${criterion.id}`)

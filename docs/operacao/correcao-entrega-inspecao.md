@@ -65,3 +65,34 @@ em `.overcore-runtime/evaluations/omni-flow/`, fora do Git.
 O gate da release do Omni não apontou bloqueadores de publicação, mas preservou pendências
 anteriores: 51 achados de turno, 15 melhorias sem materialização e avaliações comportamental/
 personalidade reais ausentes. Esta rodada corrige a integração; não certifica essas pendências.
+
+## Complemento: prova operacional de não mutação
+
+O teste humano `task-4c1f074eb6ad24f28faffe80` produziu o relatório, mas revelou um quarto
+critério ausente no ensaio anterior: ausência de mutação. Ele permanece historicamente
+`failed`; esta correção não reescreve o resultado anterior.
+
+Agora esse critério usa snapshots capturados pelo executor antes e depois da execução,
+incluindo nomes, tipos, hashes binários e mtime/ctime das entradas diretas da pasta, mais
+telemetria de início/fim e ferramentas permitidas/negadas. A comparação é determinística
+e gera `evidence-no-mutation`, separada dos pareceres textuais. Criar/remover/renomear arquivo,
+mudar conteúdo/metadados ou faltar telemetria reprova. Links e capturas instáveis não são
+considerados prova completa. O relatório produzido continua disponível em caso de reprovação.
+
+Limite explícito: a prova é não recursiva e mostra equivalência dos estados observados com
+execução restrita a leitura. Não é auditoria contínua do sistema de arquivos nem comprova
+ausência de uma escrita transitória externa seguida de restauração entre as duas capturas.
+Entradas de subpastas são identificadas, mas seus conteúdos não são lidos recursivamente.
+
+Validação: 105 testes locais (incluindo sete cenários de não mutação), 2 testes PostgreSQL
+e ensaio real `flow-1790270737666.json`, aprovado em 137 segundos, com os quatro critérios
+de inventário, mapa, inconsistências e não mutação. Uma execução, nenhum retrabalho; custo
+estimado de inspeção + avaliação USD 1,1412465 dentro do teto autorizado USD 1,50.
+No ensaio, a não mutação aponta `evidence-no-mutation`; os três critérios analíticos apontam
+`evidence-criterion-review`. Não houve remoção do critério para obter aprovação.
+
+Omni 0.24.3 acrescenta sinal `notification.ownerUpdate=silent` para consultas sem novidade,
+orientação de acompanhamento por mudança e identidade do hook em cada turno. O readback
+por sessão distingue a raiz executada de instalação/operador manual. A sessão aberta só
+confirma a nova carga quando seu próprio hook produzir a marca; esses testes não simulam
+nem fabricam a atualização da conversa do proprietário.

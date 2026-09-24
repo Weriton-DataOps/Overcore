@@ -11,7 +11,7 @@ import { ExecutorCapabilityCatalog, localExecutorCapabilities } from './executor
 import { ExecutionInterruptedError, type ExecutionControl, type CancellationProjection } from '../ports/execution-control.js'
 import { finishCancellation } from './task-cancellation.js'
 import { inspectionTarget } from './inspection-target.js'
-import { verifyInspectionCriteria } from './inspection-verification.js'
+import { verifyInspectionCriteria, deterministicCheck } from './inspection-verification.js'
 
 function record(previous: StoredTask, state: StoredTask['state'], result?: JsonObject): StoredTask {
   const next: StoredTask = {
@@ -72,6 +72,13 @@ function evidenceDocuments(task: StoredTask, inspection: InspectionEvidence) {
     })
   }
   const assessmentIds = new Map<string, string>()
+  const nonMutationId = stableId('evidence-no-mutation', `${task.taskId}:${task.executionEpoch}`)
+  if (inspection.nonMutation) values.push({
+    evidenceId: nonMutationId, kind: 'state-readback', capturedAt: inspection.nonMutation.after.capturedAt,
+    summary: 'Snapshots antes/depois do diretório não recursivo (nomes, conteúdo e metadados) e registro de ferramentas permitidas/negadas. A aprovação depende da comparação determinística.',
+    digest: sha256(JSON.stringify(inspection.nonMutation)), artifactRefs: [],
+    origin: { kind: 'runtime', id: 'overcore-directory-snapshot-v1' }
+  })
   for (const assessment of inspection.assessments ?? []) {
     const evidenceId = stableId('evidence-criterion-review', `${task.taskId}:${task.executionEpoch}:${assessment.criterionId}`)
     assessmentIds.set(assessment.criterionId, evidenceId)
@@ -85,6 +92,7 @@ function evidenceDocuments(task: StoredTask, inspection: InspectionEvidence) {
     closedId,
     agentRuntimeId,
     assessmentIds,
+    nonMutationId,
     values
   }
 }
@@ -274,6 +282,7 @@ export class TaskWorker {
       const evidenceRefs = [evidence.readableId, evidence.closedId]
       if (evidence.agentRuntimeId) evidenceRefs.push(evidence.agentRuntimeId)
       evidenceRefs.push(...evidence.assessmentIds.values())
+      if (inspection.nonMutation) evidenceRefs.push(evidence.nonMutationId)
 
       let verifyingTask = task
       if (task.status === 'running') {
@@ -324,7 +333,8 @@ export class TaskWorker {
       for (const criterion of verifyingTask.request.acceptanceCriteria) {
         criterionEvidence.set(
           criterion.id,
-          [verifiedCriteria.get(criterion.id) === 'rootClosed' ? evidence.closedId
+          [verifiedCriteria.get(criterion.id) === 'nonMutation' ? evidence.nonMutationId
+            : verifiedCriteria.get(criterion.id) === 'rootClosed' ? evidence.closedId
             : verifiedCriteria.get(criterion.id) === 'readable' ? evidence.readableId
               : evidence.assessmentIds.get(criterion.id)!]
         )
@@ -816,9 +826,9 @@ export class TaskWorker {
       if (!inspection || !inspectionEvidence) return { criterionId: criterion.id, status: index === 0 ? 'failed' : 'not-run', evidenceRefs: index === 0 ? [evidenceId] : [] }
       try {
         const check = verifyInspectionCriteria([criterion], inspection).get(criterion.id)
-        return { criterionId: criterion.id, status: 'passed', evidenceRefs: [check === 'readable' ? inspectionEvidence.readableId : check === 'rootClosed' ? inspectionEvidence.closedId : inspectionEvidence.assessmentIds.get(criterion.id)!] }
+        return { criterionId: criterion.id, status: 'passed', evidenceRefs: [check === 'nonMutation' ? inspectionEvidence.nonMutationId : check === 'readable' ? inspectionEvidence.readableId : check === 'rootClosed' ? inspectionEvidence.closedId : inspectionEvidence.assessmentIds.get(criterion.id)!] }
       } catch {
-        return { criterionId: criterion.id, status: 'failed', evidenceRefs: [inspectionEvidence.assessmentIds.get(criterion.id) ?? evidenceId] }
+        return { criterionId: criterion.id, status: 'failed', evidenceRefs: [deterministicCheck(criterion) === 'nonMutation' && inspection.nonMutation ? inspectionEvidence.nonMutationId : inspectionEvidence.assessmentIds.get(criterion.id) ?? evidenceId] }
       }
     })
     const result: JsonObject = {
