@@ -99,6 +99,8 @@ export interface InspectionExecutor {
   execute(input: {
     runId: string
     repositoryUri: string
+    directory?: string
+    acceptanceCriteria?: StoredTask['request']['acceptanceCriteria']
     objective: string
     strategyRevision: number
     timeoutMs: number

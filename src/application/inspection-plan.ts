@@ -1,9 +1,10 @@
 import { readFile, readdir } from 'node:fs/promises'
-import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 
 import { fingerprint, sha256, stableId } from '../domain/fingerprint.js'
 import type { Fingerprint, JsonObject, TaskRequest } from '../domain/types.js'
+import { inspectionTarget } from './inspection-target.js'
+import { deterministicCheck } from './inspection-verification.js'
 
 function repositoryReference(request: TaskRequest) {
   const reference = request.context.references.find((item) => item.kind === 'repository' || item.kind === 'workspace')
@@ -12,9 +13,7 @@ function repositoryReference(request: TaskRequest) {
   return reference
 }
 
-async function contextDigest(repositoryUri: string): Promise<Fingerprint> {
-  const root = fileURLToPath(repositoryUri)
-  const contracts = join(root, 'contratos')
+async function contextDigest(contracts: string): Promise<Fingerprint> {
   const names = (await readdir(contracts)).filter((name) => name.endsWith('.schema.json')).sort()
   const content: string[] = []
   for (const name of names) content.push(`${name}\n${await readFile(join(contracts, name), 'utf8')}`)
@@ -31,7 +30,7 @@ export async function buildInspectionPlan(
   supersedesPlanRef?: JsonObject
 ): Promise<JsonObject> {
   const reference = repositoryReference(request)
-  const digest = await contextDigest(reference.uri)
+  const digest = await contextDigest(inspectionTarget(request))
   const planId = stableId('plan-inspection', `${taskId}:1`)
   const revisionKey = `${planId}:r${planRevision}`
   const recoverySuffix = planRevision === 1
@@ -63,7 +62,7 @@ export async function buildInspectionPlan(
       stepId: stableId('step-inspect', revisionKey),
       sequence: 2,
       kind: 'verify',
-      objective: `Analisar cada contrato e comprovar leitura e fechamento do objeto raiz.${recoverySuffix}`,
+      objective: `Verificar cada critério com a evidência correspondente: leitura, fechamento ou avaliação independente do relatório.${recoverySuffix}`,
       dependsOnStepRefs: [stableId('step-enumerate', revisionKey)],
       inputs: [
         { kind: 'step-output', ref: stableId('output-contract-list', revisionKey) },
@@ -78,7 +77,10 @@ export async function buildInspectionPlan(
       }],
       outputs: [
         { outputId: stableId('evidence-json-readable', revisionKey), kind: 'evidence', mediaType: 'application/json' },
-        { outputId: stableId('evidence-contract-closed', revisionKey), kind: 'evidence', mediaType: 'application/json' }
+        { outputId: stableId('evidence-contract-closed', revisionKey), kind: 'evidence', mediaType: 'application/json' },
+        ...request.acceptanceCriteria.filter(criterion => !deterministicCheck(criterion)).map(criterion => ({
+          outputId: stableId('evidence-criterion-review', `${revisionKey}:${criterion.id}`), kind: 'evidence', mediaType: 'application/json'
+        }))
       ],
       constraintRefs: request.constraints.map((item) => String(item.id)),
       assumptionRefs: request.context.assumptions.map((item) => String(item.id)),
@@ -144,9 +146,10 @@ export async function buildInspectionPlan(
       criterionId: criterion.id,
       verificationStepRefs: [stableId('step-inspect', revisionKey)],
       evidenceOutputRefs: [
-        criterion.verification.method === 'schema'
+        deterministicCheck(criterion) === 'rootClosed'
           ? stableId('evidence-contract-closed', revisionKey)
-          : stableId('evidence-json-readable', revisionKey)
+          : deterministicCheck(criterion) === 'readable' ? stableId('evidence-json-readable', revisionKey)
+            : stableId('evidence-criterion-review', `${revisionKey}:${criterion.id}`)
       ]
     })),
     outputBinding: {

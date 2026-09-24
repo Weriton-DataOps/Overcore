@@ -86,6 +86,28 @@ test('draft inválido é rejeitado antes de chamar Discovery', async () => {
   assert.equal(discoveryCalled, false)
 })
 
+test('premissa confirmada permanece resolvida em revisões e reabre somente se o conteúdo mudar', async () => {
+  const validator = await ContractValidator.create(root)
+  const draft = await fixture<TaskDraft>('task-draft-incompleto.json')
+  const store = new InMemoryTaskStore()
+  const preflight = new TaskPreflight(validator, new BaselineDiscovery(), store, new FixedClock('2026-08-30T15:02:00Z'))
+  const first = await preflight.run(draft)
+  const next = resolvedRevision(draft, first)
+  next.context.assumptions = structuredClone(draft.context.assumptions)
+  const decision = first.requiredDecisions[0]!
+  const option = (decision.options as JsonObject[]).find(item => item.label === 'Confirmar a suposição')!
+  next.decisionAnswers[0]!.selectedOptionId = option.optionId
+  const second = await preflight.run(next)
+  assert.equal(second.status, 'ready')
+  const third = structuredClone(next); third.revision = 3
+  assert.equal((await preflight.run(third)).status, 'ready')
+  const changed = structuredClone(third); changed.revision = 4
+  changed.context.assumptions[0]!.statement = 'Outra premissa material que ainda não foi confirmada.'
+  const fourth = await preflight.run(changed)
+  assert.equal(fourth.status, 'decisions-required')
+  assert.notEqual(fourth.requiredDecisions[0]?.decisionId, decision.decisionId)
+})
+
 test('draft com suposição aberta devolve todas as decisões juntas e não executa', async () => {
   const validator: ContractValidator = await ContractValidator.create(root)
   const draft = await fixture<TaskDraft>('task-draft-incompleto.json')

@@ -10,7 +10,7 @@ export interface AgentRuntimeAuthorization {
 
 export interface AgentRuntimeRequest {
   /** Execução lê recursos; Discovery lê somente o documento já recebido. */
-  purpose?: 'execution' | 'discovery'
+  purpose?: 'execution' | 'discovery' | 'verification'
   runId: string
   cwd: string
   objective: string

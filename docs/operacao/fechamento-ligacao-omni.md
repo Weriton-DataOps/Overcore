@@ -31,7 +31,11 @@ Os ensaios de interface passaram a acompanhar a animação de rolagem e a preser
 de retornos históricos ainda não lidos. O teste de sessão indisponível agora simula falha no IPC
 que ele próprio substitui. Nenhuma dessas adaptações alterou o comportamento produtivo da interface.
 
-## Release do Omni ainda não encerrada
+## Release do Omni ainda não encerrada (registro daquela rodada)
+
+Atualização de 24/09/2026: a rodada posterior de correção e suas evidências estão em
+[Entrega verificável da inspeção](correcao-entrega-inspecao.md). O texto abaixo preserva
+o estado histórico observado naquele fechamento, não a versão mais recente.
 
 O plugin instalado foi identificado como `omni@omni-hub` 0.23.0. A candidata local 0.24.0 ainda
 não foi selada nem instalada: outra sessão alterou broker, execução de credenciais e dependências

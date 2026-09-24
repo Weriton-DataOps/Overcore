@@ -83,6 +83,13 @@ test('PostgreSQL real persiste, rejeita CAS obsoleto e distribui duas tarefas en
     draft.executionIdempotencyKey = `execute-postgres-${preflightSuffix}`
     draft.correlationId = `corr-postgres-${preflightSuffix}`
     draft.createdAt = now.toISOString()
+    // This integration exercises persisted deterministic inspection, not document editing.
+    draft.objective = 'Inspecionar os contratos quanto ao parse JSON e fechamento da raiz.'
+    draft.knownAcceptanceCriteria = [
+      { id: 'criterion-json-readable', description: 'Todos os arquivos são JSON legível.', verificationHint: 'test' },
+      { id: 'criterion-root-closed', description: 'Todos declaram additionalProperties=false na raiz.', verificationHint: 'schema' }
+    ]
+    draft.executionHints = { expectedOutputKind: 'no-artifact' }
     draft.availableExecutionAuthority.expiresAt = new Date(now.getTime() + 3_600_000).toISOString()
     draft.discoveryAuthority.expiresAt = new Date(now.getTime() + 3_600_000).toISOString()
     const workspace = draft.context.references.find((item) => item.refId === 'ref-contract-docs-directory')

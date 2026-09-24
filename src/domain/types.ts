@@ -256,7 +256,17 @@ export interface ExecutionReceipt {
   recordedAt: string
 }
 
+export interface InspectionAssessment {
+  criterionId: string
+  status: 'passed' | 'failed' | 'unverified'
+  reason: string
+  reportQuotes: string[]
+  sourceQuotes: Array<{ file: string; quote: string }>
+}
+
 export interface InspectionEvidence {
+  assessments?: InspectionAssessment[]
+  assessmentRuntime?: { sessionId: string; outputDigest: string }
   repositoryUri: string
   schemaCount: number
   files: Array<{

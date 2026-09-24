@@ -10,6 +10,8 @@ import type { PostgresTableProbeResult } from './postgres-table-probe-harness.js
 import { ExecutorCapabilityCatalog, localExecutorCapabilities } from './executor-capability.js'
 import { ExecutionInterruptedError, type ExecutionControl, type CancellationProjection } from '../ports/execution-control.js'
 import { finishCancellation } from './task-cancellation.js'
+import { inspectionTarget } from './inspection-target.js'
+import { verifyInspectionCriteria } from './inspection-verification.js'
 
 function record(previous: StoredTask, state: StoredTask['state'], result?: JsonObject): StoredTask {
   const next: StoredTask = {
@@ -69,10 +71,20 @@ function evidenceDocuments(task: StoredTask, inspection: InspectionEvidence) {
       origin: { kind: 'executor', id: 'anthropic-agent-sdk-runtime-v1' }
     })
   }
+  const assessmentIds = new Map<string, string>()
+  for (const assessment of inspection.assessments ?? []) {
+    const evidenceId = stableId('evidence-criterion-review', `${task.taskId}:${task.executionEpoch}:${assessment.criterionId}`)
+    assessmentIds.set(assessment.criterionId, evidenceId)
+    values.push({ evidenceId, kind: 'inspection', capturedAt,
+      summary: `${assessment.criterionId}: ${assessment.status}. ${assessment.reason}`.slice(0, 2000),
+      digest: sha256(JSON.stringify(assessment)), artifactRefs: [],
+      origin: { kind: 'executor', id: 'overcore-report-reviewer-v1' } })
+  }
   return {
     readableId,
     closedId,
     agentRuntimeId,
+    assessmentIds,
     values
   }
 }
@@ -220,6 +232,8 @@ export class TaskWorker {
           inspection = inspectionFrom(await this.executeWithLeaseHeartbeat(claimed, {
             runId: `${task.taskId}:epoch-${task.executionEpoch}`,
             repositoryUri,
+            directory: inspectionTarget(task.request),
+            acceptanceCriteria: task.request.acceptanceCriteria,
             objective: String(claimed.payload.objective),
             strategyRevision: Number(claimed.payload.strategyRevision ?? 1),
             timeoutMs: Number(budget.maxDurationMs),
@@ -249,17 +263,17 @@ export class TaskWorker {
           recordedAt: this.clock.now().toISOString()
         }, claimed.claimToken, this.clock.now())
       }
+      let verifiedCriteria: ReturnType<typeof verifyInspectionCriteria>
       try {
         if (inspection.files.length === 0) throw new Error('A inspecao nao encontrou contratos.')
-        if (inspection.files.some((file) => !file.readable || !file.rootClosed)) {
-          throw new Error('A inspecao encontrou contrato ilegivel ou aberto no objeto raiz.')
-        }
+        verifiedCriteria = verifyInspectionCriteria(task.request.acceptanceCriteria, inspection)
       } catch (error) {
-        return await this.handleExecutionFailure(task, claimed, classifyExecutionFailure(error))
+        return await this.handleExecutionFailure(task, claimed, new ExecutionFailure('inspection-verification-failed', 'verification', false, error instanceof Error ? error.message : 'Critério não verificado.'), inspection)
       }
       const evidence = evidenceDocuments(task, inspection)
       const evidenceRefs = [evidence.readableId, evidence.closedId]
       if (evidence.agentRuntimeId) evidenceRefs.push(evidence.agentRuntimeId)
+      evidenceRefs.push(...evidence.assessmentIds.values())
 
       let verifyingTask = task
       if (task.status === 'running') {
@@ -310,7 +324,9 @@ export class TaskWorker {
       for (const criterion of verifyingTask.request.acceptanceCriteria) {
         criterionEvidence.set(
           criterion.id,
-          [criterion.verification.method === 'schema' ? evidence.closedId : evidence.readableId]
+          [verifiedCriteria.get(criterion.id) === 'rootClosed' ? evidence.closedId
+            : verifiedCriteria.get(criterion.id) === 'readable' ? evidence.readableId
+              : evidence.assessmentIds.get(criterion.id)!]
         )
       }
       const startedAt = String((verifyingTask.state.ledger.attempts as JsonObject[])[0]?.startedAt ?? verifyingTask.createdAt)
@@ -332,7 +348,12 @@ export class TaskWorker {
         },
         reportedAt: finishedAt,
         status: 'succeeded',
-        summary: `${inspection.schemaCount} contratos foram lidos e confirmados como fechados no objeto raiz.`,
+        summary: `${inspection.schemaCount} contratos inspecionados; ${verifiedCriteria.size} critérios verificados. Relatório incluído no resultado.`,
+        report: {
+          mediaType: inspection.agentRuntime ? 'text/markdown' : 'application/json',
+          content: inspection.agentRuntime?.report ?? JSON.stringify({ schemaCount: inspection.schemaCount, files: inspection.files, capturedAt: inspection.capturedAt }),
+          digest: inspection.agentRuntime?.outputDigest ?? sha256(JSON.stringify({ schemaCount: inspection.schemaCount, files: inspection.files, capturedAt: inspection.capturedAt }))
+        },
         criteria: verifyingTask.request.acceptanceCriteria.map((criterion) => ({
           criterionId: criterion.id,
           status: 'passed',
@@ -731,7 +752,8 @@ export class TaskWorker {
   private async handleExecutionFailure(
     task: StoredTask,
     claimed: ClaimedMessage,
-    failure: ExecutionFailure
+    failure: ExecutionFailure,
+    inspection?: InspectionEvidence
   ): Promise<StoredTask> {
     const current = await this.store.findById(task.taskId)
     if (current?.status === 'cancelling') return this.cancelClaimed(current, claimed)
@@ -789,6 +811,16 @@ export class TaskWorker {
       : failure.retryable
         ? `A recuperacao esgotou ${task.request.budget.maxAttempts} tentativa(s): ${failure.message}`
         : `A execucao terminou com falha nao recuperavel: ${failure.message}`
+    const inspectionEvidence = inspection ? evidenceDocuments(task, inspection) : undefined
+    const failedCriteria = task.request.acceptanceCriteria.map((criterion, index) => {
+      if (!inspection || !inspectionEvidence) return { criterionId: criterion.id, status: index === 0 ? 'failed' : 'not-run', evidenceRefs: index === 0 ? [evidenceId] : [] }
+      try {
+        const check = verifyInspectionCriteria([criterion], inspection).get(criterion.id)
+        return { criterionId: criterion.id, status: 'passed', evidenceRefs: [check === 'readable' ? inspectionEvidence.readableId : check === 'rootClosed' ? inspectionEvidence.closedId : inspectionEvidence.assessmentIds.get(criterion.id)!] }
+      } catch {
+        return { criterionId: criterion.id, status: 'failed', evidenceRefs: [inspectionEvidence.assessmentIds.get(criterion.id) ?? evidenceId] }
+      }
+    })
     const result: JsonObject = {
       contractVersion: '1.0',
       resultId,
@@ -804,12 +836,9 @@ export class TaskWorker {
       reportedAt: failedAt,
       status: 'failed',
       summary: summary.slice(0, 4000),
-      criteria: task.request.acceptanceCriteria.map((criterion, index) => ({
-        criterionId: criterion.id,
-        status: index === 0 ? 'failed' : 'not-run',
-        evidenceRefs: index === 0 ? [evidenceId] : []
-      })),
-      evidence: [evidence],
+      ...(inspection?.agentRuntime ? { report: { mediaType: 'text/markdown', content: inspection.agentRuntime.report, digest: inspection.agentRuntime.outputDigest } } : {}),
+      criteria: failedCriteria,
+      evidence: [evidence, ...(inspectionEvidence?.values ?? [])],
       artifacts: [],
       effects: [],
       execution: {
@@ -819,8 +848,10 @@ export class TaskWorker {
         startedAt,
         finishedAt: failedAt,
         lastTransitionAt: failedAt,
-        ...(typeof task.state.usage.tokens === 'number' ? { tokens: task.state.usage.tokens } : {}),
-        ...(typeof task.state.usage.costUsd === 'number' ? { costUsd: task.state.usage.costUsd } : {})
+        ...(inspection?.agentRuntime ? { tokens: inspection.agentRuntime.inputTokens + inspection.agentRuntime.outputTokens, costUsd: inspection.agentRuntime.estimatedCostUsd } : {
+          ...(typeof task.state.usage.tokens === 'number' ? { tokens: task.state.usage.tokens } : {}),
+          ...(typeof task.state.usage.costUsd === 'number' ? { costUsd: task.state.usage.costUsd } : {})
+        })
       },
       failure: {
         code: failure.effectUncertain ? 'execution-effect-uncertain' : failure.code,

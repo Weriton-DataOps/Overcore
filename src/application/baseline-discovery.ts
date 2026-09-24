@@ -194,9 +194,11 @@ export class BaselineDiscovery implements DiscoveryPort {
     const assumptionDecisionIds: string[] = []
     for (const assumption of assumptions) {
       const assumptionId = String(assumption.id)
-      const decisionId = stableId('decision-assumption', `${draft.draftId}:${draft.revision}:${assumptionId}`)
+      // Bind to the premise, not to the revision. A changed premise needs a new answer.
+      const decisionId = stableId('decision-assumption', `${draft.draftId}:${assumptionId}:${String(assumption.statement)}:${String(assumption.impactIfFalse)}`)
       const confirmId = stableId('option-confirm', decisionId)
       const reviseId = stableId('option-revise', decisionId)
+      if (request.appliedDecisions.some(item => item.decision.decisionId === decisionId && item.selectedOption.optionId === confirmId)) continue
       assumptionDecisionIds.push(decisionId)
       requiredDecisions.push(decision(
         decisionId,
@@ -222,8 +224,8 @@ export class BaselineDiscovery implements DiscoveryPort {
     }
     checks.set('objective-clear', check(
       'objective-clear',
-      assumptions.length === 0 ? 'passed' : 'needs-decision',
-      assumptions.length === 0
+      assumptionDecisionIds.length === 0 ? 'passed' : 'needs-decision',
+      assumptionDecisionIds.length === 0
         ? 'O objetivo está suficientemente claro para a inspeção determinística atual.'
         : 'Existem suposições materiais que precisam ser resolvidas em conjunto.',
       [objectiveEvidence],

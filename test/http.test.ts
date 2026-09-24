@@ -216,6 +216,12 @@ test('porta local admite o request congelado pelo reportId sem dupla tarefa', as
     draft.correlationId = 'corr-http-ready-admission'
     draft.context.summary = 'O escopo foi resolvido antes do Preflight HTTP.'
     draft.context.assumptions = []
+    // This case exercises deterministic inspection, not the fixture's document-edit task.
+    draft.knownAcceptanceCriteria = [
+      { id: 'criterion-json-readable', description: 'Todos os arquivos são JSON legível.', verificationHint: 'test' },
+      { id: 'criterion-root-closed', description: 'Todos declaram additionalProperties=false na raiz.', verificationHint: 'schema' }
+    ]
+    draft.executionHints = { expectedOutputKind: 'no-artifact' }
     const workspace = draft.context.references.find((item) => item.refId === 'ref-contract-docs-directory')
     assert.ok(workspace)
     workspace.kind = 'repository'

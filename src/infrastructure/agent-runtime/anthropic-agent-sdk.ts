@@ -67,7 +67,11 @@ function validateRequest(request: AgentRuntimeRequest, now: Date): void {
   if (Date.parse(request.authorization.expiresAt) <= now.getTime()) {
     throw new Error('Autorização expirou antes de iniciar o Claude Agent SDK.')
   }
-  if (request.purpose === 'discovery') {
+  if (request.purpose === 'verification') {
+    if (!request.authorization.operations.includes('runtime.assemble-report') || request.tools.length !== 0) {
+      throw new Error('Verificação exige runtime.assemble-report e nenhuma ferramenta.')
+    }
+  } else if (request.purpose === 'discovery') {
     if (!request.authorization.operations.includes('discovery.analyze')) {
       throw new Error('A Discovery assistida não recebeu autorização para discovery.analyze.')
     }
