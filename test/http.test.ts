@@ -116,6 +116,16 @@ test('porta local autentica e recusa a antiga admissão direta de TaskRequest', 
     assert.equal(health.status, 200)
     const unauthorized = await fetch(`${baseUrl}/v1/tasks/task-inexistente`)
     assert.equal(unauthorized.status, 401)
+    assert.equal((await fetch(`${baseUrl}/v1/capabilities`)).status, 401)
+    const capabilities = await fetch(`${baseUrl}/v1/capabilities`, {
+      headers: { authorization: `Bearer ${token}` }
+    })
+    assert.equal(capabilities.status, 200)
+    const live = await capabilities.json() as { capabilities: string[]; scope: string; startedAt: string }
+    // A server built with a different executor must not advertise the production verifier.
+    assert.deepEqual(live.capabilities, [])
+    assert.equal(live.scope, 'runtime-capabilities-not-task-success')
+    assert.ok(Number.isFinite(Date.parse(live.startedAt)))
 
     const fixturePath = join(root, 'contratos', 'exemplos', 'task-request-inspecao-executavel.json')
     const request = JSON.parse(await readFile(fixturePath, 'utf8')) as TaskRequest

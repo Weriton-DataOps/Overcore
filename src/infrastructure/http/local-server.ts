@@ -31,7 +31,10 @@ async function jsonBody(request: IncomingMessage): Promise<unknown> {
   return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown
 }
 
-export function createLocalServer(manager: TaskManager, worker: TaskWorker, token: string) {
+export function createLocalServer(manager: TaskManager, worker: TaskWorker, token: string,
+  capabilities: readonly string[] = []) {
+  // This identity belongs to this process, not to a task completed by an older runtime.
+  const startedAt = new Date().toISOString()
   return createServer(async (request, response) => {
     try {
       const url = new URL(request.url ?? '/', 'http://127.0.0.1')
@@ -41,6 +44,14 @@ export function createLocalServer(manager: TaskManager, worker: TaskWorker, toke
       }
       if (!authorized(request, token)) {
         send(response, 401, { error: 'unauthorized' })
+        return
+      }
+      if (request.method === 'GET' && url.pathname === '/v1/capabilities') {
+        send(response, 200, {
+          service: 'overcore-task-manager', protocolVersion: 1, startedAt,
+          observedAt: new Date().toISOString(), capabilities: [...capabilities],
+          scope: 'runtime-capabilities-not-task-success'
+        })
         return
       }
       if (request.method === 'POST' && url.pathname === '/v1/tasks') {

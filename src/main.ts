@@ -74,7 +74,11 @@ async function serve(): Promise<void> {
     )),
     new HarnessPostgresTableProbeExecutor(new PostgresTableProbeHarness(pool, effectJournal, effectAuthority))
   )
-  const server = createLocalServer(manager, worker, config.localToken)
+  const server = createLocalServer(manager, worker, config.localToken, [
+    'inspection-report-sha256-v1',
+    'inspection-independent-semantic-review-v1',
+    'inspection-direct-entries-snapshot-and-tool-telemetry-v1'
+  ])
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject)
     server.listen(config.port, config.host, resolve)

@@ -96,3 +96,13 @@ orientação de acompanhamento por mudança e identidade do hook em cada turno. 
 por sessão distingue a raiz executada de instalação/operador manual. A sessão aberta só
 confirma a nova carga quando seu próprio hook produzir a marca; esses testes não simulam
 nem fabricam a atualização da conversa do proprietário.
+
+## Diagnóstico de runtime (Omni 0.24.4)
+
+GET autenticado `/v1/capabilities` informa início do processo e capacidades
+de inspeção registradas pela composição real do serviço. Não admite tarefa,
+não aciona worker e não altera resultados. Servidores de teste com outro
+executor não anunciam implicitamente as capacidades da composição de produção.
+O Omni consulta esta evidência antes de repetir um diagnóstico histórico.
+Endpoint antigo/ausente é estado desconhecido; capacidade anunciada não é
+prova de sucesso de tarefa. O teste histórico permanece `failed`.
