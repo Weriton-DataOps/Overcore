@@ -2,9 +2,8 @@
 
 ## Status
 
-Proposta em 2026-09-28. Aguarda aprovação do proprietário. Nenhuma linha de código foi escrita para
-esta decisão; o esboço de contrato abaixo é o que será discutido antes da implementação, como exige a
-regra de crescimento do README.
+Proposta e aceita pelo proprietário em 2026-09-28, com as decisões D1 a D4 conforme recomendado.
+A implementação segue em fatias, cada uma com testes próprios; ver o plano no fim deste documento.
 
 ## Problema
 
@@ -239,14 +238,30 @@ existe, a fase C pode prosseguir sem nova chamada ao modelo.
 8. Gate real opt-in com PostgreSQL, Omni e Claude por login sobre um repositório descartável criado
    pelo próprio teste, com um defeito conhecido e um teste que falha antes e passa depois.
 
-## Decisões pendentes do proprietário
+## Decisões do proprietário
 
-| # | Decisão | Recomendação |
+Aprovadas em 2026-09-28, todas conforme a recomendação:
+
+| # | Decisão | Aprovado |
 |---|---|---|
 | D1 | permitir comando de verificação declarado na v1, com a nova classe `local-code-execution` | sim, com revalidação do Omni sobre o diff medido, ambiente saneado, `argv` sem shell e timeout; sem verificação a v1 só prova que o diff existe, não que funciona |
 | D2 | onde ficam os worktrees | `%LOCALAPPDATA%/Overcore/worktrees/<taskId>`, fora de qualquer repositório, removidos ao final |
 | D3 | prefixo reservado de branch | `overcore/` |
 | D4 | primeiro uso real depois do gate | o próprio repositório do Overcore, numa tarefa pequena e revisável |
+
+## Plano de implementação
+
+Cada fatia termina com `npm run verify` aprovado e não habilita a capacidade antes da seguinte estar
+pronta. Até a fatia 6, nenhum `TaskDraft` consegue produzir um pedido `repository-change`.
+
+| Fatia | Entrega | Por que nesta ordem |
+|---|---|---|
+| 1 | contrato do `TaskRequest`, classe `local-code-execution`, planejador que falha fechado para tipo sem executor, guarda de caminho | a fechadura antes da porta: nada do resto pode escrever fora do lugar |
+| 2 | bancada: ciclo de vida do worktree e medição do diff | isolamento e limites antes de qualquer agente escrever |
+| 3 | runtime com `Edit` e `Write` sob a guarda, plano e autorização com classe explícita por ação, cliente Omni aceitando a nova classe | o agente só ganha caneta quando a bancada e a guarda existem |
+| 4 | verificação declarada com revalidação sobre o diff e ambiente saneado | a execução de código medido depende do diff da fatia 2 |
+| 5 | efeito journaled do branch, recuperação e cancelamento | o único efeito no repositório do proprietário vem por último |
+| 6 | dica no `TaskDraft`, derivação no Preflight e gate real | a capacidade só fica alcançável quando todas as proteções existem |
 
 ## Consequências
 
