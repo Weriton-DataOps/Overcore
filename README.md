@@ -68,7 +68,7 @@ depois que uma tarefa já foi admitida.
 
 ## Estado atual
 
-**Marco 1 — fundação executável em validação.** A base usa TypeScript estrito sobre Node.js 24 LTS,
+**Fundação executável concluída; Marcos 1 e 2 concluídos; Marco 3 proposto.** A base usa TypeScript estrito sobre Node.js 24 LTS,
 PostgreSQL 18, JSON Schema/Ajv nas fronteiras, HTTP local em loopback e o Claude Agent SDK TypeScript
 como primeiro motor agêntico. A cadeia pública continua:
 
@@ -219,6 +219,14 @@ transação, com autorização e revalidação reais do Omni, journal PostgreSQL
 ausência. O gate `npm run test:postgres-probe-live` comprova a cadeia inteira.
 
 Agentes, skills, Registry e Graph Engine continuam fora até serem definidos por contrato próprio.
+
+## Marco 3 proposto — mudança de repositório por worktree
+
+A [`ADR-022`](docs/decisoes/ADR-022-mudanca-de-repositorio-por-worktree-v1.md) propõe a primeira
+capacidade que faz trabalho de desenvolvimento de fato: o Claude Agent SDK edita um worktree isolado,
+o Overcore mede o diff e roda a verificação declarada, e o único efeito journaled é um branch local
+novo para revisão humana. Push, pull request e merge ficam fora. A proposta aguarda aprovação do
+proprietário; nenhum código foi escrito para ela.
 
 O assessor de Discovery está implementado como complemento opcional do Baseline, conforme a
 [`ADR-008`](docs/decisoes/ADR-008-discovery-adaptativa-no-preflight.md). Agentes, skills, Graph Engine,

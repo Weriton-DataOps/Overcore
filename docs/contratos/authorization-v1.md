@@ -197,14 +197,22 @@ Omni estiver indisponível nessa consulta, prevalece `fail-closed`.
     não basta.
 15. Ação não concedida, controle ausente, expiração ou revogação são rejeitados antes da ferramenta.
 
+## O que foi escolhido depois desta definição
+
+Atualizado em 2026-09-28:
+
+| Item | Escolha | Fonte |
+|---|---|---|
+| transporte entre Overcore e Omni | HTTP local em loopback, com token local | [ADR-006](../decisoes/ADR-006-fundacao-executavel-v1.md) |
+| linguagem, banco, fila e SDK | TypeScript em Node.js 24, PostgreSQL 18, outbox transacional, Claude Agent SDK | [ADR-006](../decisoes/ADR-006-fundacao-executavel-v1.md), [ADR-007](../decisoes/ADR-007-claude-agent-sdk-primeiro-motor.md) |
+| Authority Provider e enforcement executáveis | adaptador HTTP do Authority Provider, guardião de revalidação antes de efeitos e enforcement persistido no Task State, validados com o Omni real | [ADR-004](../decisoes/ADR-004-omni-decide-overcore-enforces.md), [ADR-014](../decisoes/ADR-014-harness-de-efeitos-v1.md) |
+
 ## O que ainda não foi escolhido
 
-- transporte entre Overcore e Omni;
-- algoritmo, chave ou cofre usado pela atestação;
-- formato interno do crachá pessoal do Omni;
-- linguagem, banco, fila ou SDK;
-- interface pela qual o usuário concede ou revoga o crachá;
-- implementação executável e transporte do Authority Provider e do enforcement.
+- algoritmo, chave ou cofre usado pela atestação; hoje `attestationRef` é um identificador local
+  estável, sem assinatura criptográfica;
+- formato interno do crachá pessoal do Omni, que por desenho permanece privado ao Omni;
+- interface pela qual o usuário concede ou revoga o crachá.
 
 Esses itens não impedem o contrato: qualquer escolha futura terá de preservar as invariantes acima.
 

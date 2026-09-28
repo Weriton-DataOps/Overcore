@@ -597,14 +597,25 @@ estão em
 | Linearização | Ponto persistido que decide qual evento venceu uma corrida. |
 | Idempotência | Repetir a mesma intenção lógica sem duplicar seu efeito. |
 
+## O que foi escolhido depois desta definição
+
+Esta seção listava como abertas escolhas que foram feitas depois. Atualizado em 2026-09-28:
+
+| Item | Escolha | Fonte |
+|---|---|---|
+| banco e formato físico do Ledger | PostgreSQL 18 dedicado, documentos `jsonb`, ledger append-only e CAS por `state_revision` | [ADR-006](../decisoes/ADR-006-fundacao-executavel-v1.md) |
+| linguagem e API | TypeScript estrito em Node.js 24 LTS; HTTP local em loopback com token | [ADR-006](../decisoes/ADR-006-fundacao-executavel-v1.md) |
+| SDK do motor agêntico | Claude Agent SDK TypeScript, autenticado por login OAuth | [ADR-007](../decisoes/ADR-007-claude-agent-sdk-primeiro-motor.md) |
+| executores | catálogo local e imutável com três capacidades | [ADR-016](../decisoes/ADR-016-catalogo-local-de-capacidades-v1.md) |
+| leases e filas | lease expirável no PostgreSQL e outbox transacional com `FOR UPDATE SKIP LOCKED` | [ADR-006](../decisoes/ADR-006-fundacao-executavel-v1.md), [ADR-011](../decisoes/ADR-011-retomada-automatica-por-task-state.md) |
+| transporte do `Authority Provider` | adaptador HTTP local, implementado e validado com o Omni real | [ADR-006](../decisoes/ADR-006-fundacao-executavel-v1.md), [Authorization v1](../contratos/authorization-v1.md) |
+
 ## O que ainda não foi escolhido
 
-- banco, formato físico do Ledger e estratégia de compactação;
-- linguagem, SDK e API;
-- executores, agentes, skills, modelos e ferramentas;
-- leases distribuídos, filas e DAG;
+- estratégia de compactação do Ledger;
+- agentes, skills, modelos e ferramentas além do catálogo local;
+- DAG, branching e paralelismo geral;
 - motor automático de compensação;
-- transporte e implementação executável da porta `Authority Provider` que consultará o Omni;
 - integração com Oracle.
 
 Também fica reservada para o futuro contrato de plano/tentativa a projeção canônica que forma
