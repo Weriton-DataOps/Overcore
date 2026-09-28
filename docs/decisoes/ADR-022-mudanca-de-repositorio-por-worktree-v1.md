@@ -263,6 +263,16 @@ pronta. Até a fatia 6, nenhum `TaskDraft` consegue produzir um pedido `reposito
 | 5 | efeito journaled do branch, recuperação e cancelamento | o único efeito no repositório do proprietário vem por último |
 | 6 | dica no `TaskDraft`, derivação no Preflight e gate real | a capacidade só fica alcançável quando todas as proteções existem |
 
+### Estado
+
+- **Fatia 1 — entregue em 2026-09-28.** O `TaskRequest` aceita `repository-change` com as fronteiras
+  desta ADR no próprio schema; a autorização conhece `local-code-execution`. O planejamento e o
+  dispatch escolhem a estratégia por correspondência exaustiva: antes, qualquer tipo que não fosse
+  substituição de arquivo nem sonda caía na inspeção como ramo residual; agora um tipo sem executor
+  bloqueia com `block-execution-capability-unavailable`, sem plano, autorização ou outbox. A guarda de
+  caminho decide pelo caminho físico e recusa saída do worktree, link ou junção, `.git` em qualquer
+  grafia, nomes reservados, fluxo alternativo e sufixos que o Windows reinterpreta.
+
 ## Consequências
 
 - O Overcore passa a produzir mudanças de código revisáveis sem publicar nada fora da máquina.

@@ -200,7 +200,8 @@
     "execution": {
       "oneOf": [
         { "$ref": "#/$defs/fileReplacementExecution" },
-        { "$ref": "#/$defs/postgresTableProbeExecution" }
+        { "$ref": "#/$defs/postgresTableProbeExecution" },
+        { "$ref": "#/$defs/repositoryChangeExecution" }
       ]
     }
   },
@@ -273,6 +274,74 @@
           "maxLength": 96
         }
       }
+    },
+    "repositoryChangeExecution": {
+      "description": "ADR-022: mudança em worktree isolado a partir de um commit exato; o único efeito no repositório é um branch local novo com prefixo reservado.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "resourceRef", "baseCommit", "targetBranch", "instructions", "pathScope", "limits"],
+      "properties": {
+        "kind": { "const": "repository-change" },
+        "resourceRef": { "$ref": "#/$defs/identifier" },
+        "baseCommit": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+        "targetBranch": {
+          "type": "string",
+          "pattern": "^overcore/[a-z0-9][a-z0-9._-]{7,99}$",
+          "not": { "pattern": "(\\.\\.|\\.lock$|\\.$)" }
+        },
+        "instructions": { "type": "string", "minLength": 1, "maxLength": 8000 },
+        "pathScope": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["include", "exclude"],
+          "properties": {
+            "include": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 32,
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/repositoryPathGlob" }
+            },
+            "exclude": {
+              "type": "array",
+              "maxItems": 64,
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/repositoryPathGlob" }
+            }
+          }
+        },
+        "limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["maxFilesChanged", "maxDiffBytes"],
+          "properties": {
+            "maxFilesChanged": { "type": "integer", "minimum": 1, "maximum": 200 },
+            "maxDiffBytes": { "type": "integer", "minimum": 1, "maximum": 2000000 }
+          }
+        },
+        "verification": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["argv", "timeoutMs", "expectedExitCode"],
+          "properties": {
+            "argv": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 32,
+              "items": { "type": "string", "minLength": 1, "maxLength": 500, "pattern": "^[^\\u0000\\r\\n]+$" }
+            },
+            "timeoutMs": { "type": "integer", "minimum": 1000, "maximum": 1800000 },
+            "expectedExitCode": { "type": "integer", "minimum": 0, "maximum": 255 }
+          }
+        }
+      }
+    },
+    "repositoryPathGlob": {
+      "description": "Glob relativo à raiz do repositório, com barras normais; não pode ser absoluto nem subir de diretório.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "pattern": "^(?![/\\\\])(?![A-Za-z]:)(?!.*(^|/)\\.\\.(/|$))[^\\\\\\u0000]+$"
     },
     "contextReference": {
       "type": "object",

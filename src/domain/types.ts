@@ -49,6 +49,33 @@ export interface PostgresTableProbeExecution {
   tableName: string
 }
 
+/**
+ * ADR-022: mudança em worktree isolado a partir de um commit exato.
+ *
+ * O agente só escreve na bancada; o único efeito no repositório declarado é
+ * um branch local novo, criado depois que o diff foi medido e verificado.
+ */
+export interface RepositoryChangeExecution {
+  kind: 'repository-change'
+  resourceRef: string
+  baseCommit: string
+  targetBranch: string
+  instructions: string
+  pathScope: {
+    include: string[]
+    exclude: string[]
+  }
+  limits: {
+    maxFilesChanged: number
+    maxDiffBytes: number
+  }
+  verification?: {
+    argv: string[]
+    timeoutMs: number
+    expectedExitCode: number
+  }
+}
+
 export interface TaskRequest extends JsonObject {
   contractVersion: '1.0'
   requestId: string
@@ -83,7 +110,7 @@ export interface TaskRequest extends JsonObject {
     maxCostUsd?: number
   }
   expectedOutput: JsonObject & { kind: string }
-  execution?: FileReplacementExecution | PostgresTableProbeExecution
+  execution?: FileReplacementExecution | PostgresTableProbeExecution | RepositoryChangeExecution
 }
 
 export interface TaskDraft extends JsonObject {
