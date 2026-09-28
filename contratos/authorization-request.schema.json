@@ -173,7 +173,8 @@
             "external-publication",
             "financial",
             "privilege-change",
-            "secret-access"
+            "secret-access",
+            "local-code-execution"
           ]
         },
         "riskLevel": { "enum": ["low", "medium", "high", "critical"] },

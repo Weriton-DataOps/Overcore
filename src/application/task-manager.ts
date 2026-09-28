@@ -15,6 +15,7 @@ import { buildInspectionPlan, repositoryUri } from './inspection-plan.js'
 import { buildFileReplacementPlan } from './file-replacement-plan.js'
 import { fileReplacementFrom, replacementPayloadFromPlan } from './file-replacement.js'
 import { buildPostgresTableProbePlan } from './postgres-table-probe-plan.js'
+import { executionStrategyFor, UnsupportedExecutionKindError } from './execution-strategy.js'
 import { postgresTableProbeFrom, probePayloadFromPlan } from './postgres-table-probe.js'
 import {
   acceptedState,
@@ -460,6 +461,23 @@ export class TaskManager {
 
   private blockDescriptor(error: unknown, task: StoredTask): BlockDescriptor | null {
     const resumeTarget = task.status === 'ready' ? 'ready' : 'planning'
+    if (error instanceof UnsupportedExecutionKindError) {
+      return {
+        code: 'block-execution-capability-unavailable',
+        kind: 'resource',
+        summary: 'O pedido exige um tipo de execução que este Overcore ainda não sabe planejar.',
+        condition: `Um executor para ${error.executionKind} precisa estar disponível nesta instalação.`,
+        reason: error.message,
+        question: 'Esta instalação do Overcore já foi atualizada com o executor exigido pelo pedido?',
+        options: [{
+          id: 'option-retry-after-capability',
+          label: 'Planejar novamente',
+          consequence: 'A mesma tarefa volta ao planejamento; nenhum outro executor é escolhido por omissão.'
+        }],
+        impact: 'Nenhum plano, autorização ou executor é criado enquanto a capacidade faltar.',
+        resumeTarget
+      }
+    }
     if (error instanceof AuthorizationDeniedError) {
       return {
         code: 'block-authorization-denied',
@@ -642,9 +660,10 @@ export class TaskManager {
       ? task.state.ledger.planRefs as JsonObject[]
       : []
     const planRevision = priorPlanRefs.length + 1
-    const replacement = fileReplacementFrom(task.request)
-    const postgresProbe = postgresTableProbeFrom(task.request)
-    const plan = replacement
+    // Correspondência exaustiva: um tipo de execução sem executor bloqueia aqui,
+    // em vez de cair na inspeção como ramo residual.
+    const strategy = executionStrategyFor(task.request)
+    const plan = strategy === 'file-replacement'
       ? buildFileReplacementPlan(
           task.taskId,
           task.request,
@@ -654,7 +673,7 @@ export class TaskManager {
           planRevision,
           priorPlanRefs.at(-1)
         )
-      : postgresProbe
+      : strategy === 'postgres-table-probe'
         ? buildPostgresTableProbePlan(
             task.taskId,
             task.request,
@@ -805,6 +824,9 @@ export class TaskManager {
       runningAt
     )
     this.validator.taskState(runningState)
+    // Mesma correspondência exaustiva do planejamento: um estado persistido com
+    // tipo sem executor não vira mensagem de inspeção por omissão.
+    executionStrategyFor(task.request)
     const replacement = fileReplacementFrom(task.request)
     const postgresProbe = postgresTableProbeFrom(task.request)
     const outboxId = stableId(
