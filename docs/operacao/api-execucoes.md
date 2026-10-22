@@ -224,8 +224,17 @@ Resposta real, recapturada em 2026-10-22 e encurtada:
 
 ### `GET /v1/executions/{executionId}`
 
-Devolve `{viewVersion, observedAt, execution}`. O objeto `execution` traz a mesma linha da
-listagem e mais:
+A resposta vem embrulhada, como a listagem. A execução não vem solta na raiz:
+
+```json
+{
+  "viewVersion": 1,
+  "observedAt": "2026-10-22T11:51:59.714Z",
+  "execution": { "executionId": "task-2b44c77aac93607afc5c9b10", "state": "succeeded", "…": "…" }
+}
+```
+
+O objeto `execution` traz todos os campos da linha da listagem e mais:
 
 - `stateRevision`;
 - `request`: `requestId`, `objective`, `acceptanceCriteria[{id, description}]` e `execution`
