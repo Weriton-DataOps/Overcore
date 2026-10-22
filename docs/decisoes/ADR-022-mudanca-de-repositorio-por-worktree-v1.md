@@ -249,6 +249,26 @@ Aprovadas em 2026-09-28, todas conforme a recomendação:
 | D3 | prefixo reservado de branch | `overcore/` |
 | D4 | primeiro uso real depois do gate | o próprio repositório do Overcore, numa tarefa pequena e revisável |
 
+### Adendo de 2026-10-22 à D1
+
+Em 2026-10-22, o proprietário decidiu pelo Omni ("manda fazer o recomendado") liberar o mínimo
+usável sem a revalidação do Omni sobre o diff medido. A liberação vale só para repositórios dele e
+se sustenta em três fatos:
+
+- o único efeito é um branch local `overcore/`, criado só se o ref não existir;
+- push, PR e merge ficam fora da v1, então o diff passa pela revisão humana antes de chegar a
+  qualquer outro lugar;
+- o Omni autoriza o `argv` da verificação e a criação do branch no planejamento, antes de existir
+  worktree.
+
+A revalidação vira dívida explícita para uma fatia futura: antes de rodar a verificação e antes de
+criar o branch, o Omni deve revalidar `process.execute` e `repository.branch.create` sobre o digest
+do diff medido. Motivo: a autorização do planejamento vê o pedido, não o código que o editor
+escreveu, e a verificação executa esse código como o usuário, sem sandbox de sistema operacional. Só
+a revalidação sobre o diff amarra a permissão ao que de fato vai rodar. Fechar a dívida exige que
+`/v1/authority/revalidate-effect` aceite essas duas operações e que o executor o chame nos dois
+pontos.
+
 ## Plano de implementação
 
 Cada fatia termina com `npm run verify` aprovado e não habilita a capacidade antes da seguinte estar
@@ -287,8 +307,8 @@ pronta. Até a fatia 6, nenhum `TaskDraft` consegue produzir um pedido `reposito
   `include` também o cobria. A operação e as lacunas estão em
   [api-execucoes.md](../operacao/api-execucoes.md). Duas pendências antes de considerar o Marco 3
   fechado:
-  - a revalidação do Omni sobre o diff medido, que a D1 exige: o Omni autoriza o `argv` no
-    planejamento, mas não revê o diff antes de executar;
+  - a revalidação do Omni sobre o diff medido, que a D1 exige. O proprietário liberou o mínimo sem
+    ela em 2026-10-22, só para repositórios dele, e ela ficou como dívida explícita (adendo da D1);
   - o gate real do item 8 da prova.
 
 ## Consequências

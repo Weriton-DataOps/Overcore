@@ -369,8 +369,9 @@ PostgreSQL local de teste.
 - **Revalidação do Omni antes de executar.** A ADR-022 aprovou a verificação com revalidação do
   Omni sobre o diff medido (D1). Hoje o Omni autoriza o `argv` no planejamento, mas não revê o diff
   antes da execução nem antes de criar o branch. O endpoint `/v1/authority/revalidate-effect` só
-  conhece `filesystem.modify` e `database.schema.modify`. Fechar isso exige mudança nos dois lados;
-  a decisão está com o Weriton.
+  conhece `filesystem.modify` e `database.schema.modify`. Em 2026-10-22 o Weriton liberou o mínimo
+  assim, só para repositórios dele; a revalidação ficou como dívida de uma fatia futura (adendo da
+  D1 na ADR-022).
 - **Gate real, item 8 da ADR.** Não rodou: PostgreSQL, Omni e Claude ao vivo sobre uma repo
   descartável. O `ClaudeRepositoryEditor` só foi testado com SDK simulado. A primeira execução real
   deve ser acompanhada.
