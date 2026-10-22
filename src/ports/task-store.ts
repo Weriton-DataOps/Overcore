@@ -3,7 +3,9 @@ import type {
   ClaimedMessage,
   ExecutionReceipt,
   JsonObject,
-  StoredTask
+  RepositoryChangeExecution,
+  StoredTask,
+  TaskStatus
 } from '../domain/types.js'
 import type { AgentRuntimeAuthorization } from './agent-runtime.js'
 import type { PreflightStore } from './preflight-store.js'
@@ -75,6 +77,8 @@ export interface TaskStore extends PreflightStore {
   create(task: StoredTask, event: CasMutation['event']): Promise<StoredTask>
   findById(taskId: string): Promise<StoredTask | null>
   findByIdempotencyKey(idempotencyKey: string): Promise<StoredTask | null>
+  /** Mais recentes primeiro (última atividade); leitura pura para a interface do Omni. */
+  listTasks(query: { limit: number; statuses?: TaskStatus[] }): Promise<StoredTask[]>
   findPlan(taskId: string, planId: string, planRevision: number): Promise<JsonObject | null>
   findAuthorization(taskId: string, decisionId: string): Promise<StoredTaskAuthorization | null>
   listReconciliationCandidates(limit: number, now?: Date): Promise<StoredTask[]>
@@ -147,6 +151,35 @@ export interface PostgresTableProbeExecutor {
       requiredControls: string[]
       authorizationRequest: JsonObject
       actionId?: string
+    }
+  }, control?: ExecutionControl): Promise<JsonObject>
+}
+
+export interface RepositoryChangeExecutor {
+  reconcileCancellation?(input: {
+    taskId: string
+    effectKey: string
+    targetUri: string
+    targetBranch: string
+    baseCommit: string
+    resourceRef: string
+  }): Promise<CancellationProjection>
+  execute(input: {
+    taskId: string
+    effectKey: string
+    actionId: string
+    repositoryUri: string
+    execution: RepositoryChangeExecution
+    objective: string
+    timeoutMs: number
+    maxTokens?: number
+    maxCostUsd?: number
+    authorization: {
+      enforcementId: string
+      expiresAt: string
+      operations: string[]
+      requiredControls: string[]
+      authorizationRequest: JsonObject
     }
   }, control?: ExecutionControl): Promise<JsonObject>
 }

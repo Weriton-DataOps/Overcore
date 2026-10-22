@@ -238,7 +238,7 @@ export interface StoredTask {
 export interface OutboxMessage {
   outboxId: string
   taskId: string
-  kind: 'execute-inspection' | 'execute-file-replacement' | 'execute-postgres-table-probe'
+  kind: 'execute-inspection' | 'execute-file-replacement' | 'execute-postgres-table-probe' | 'execute-repository-change'
   payload: JsonObject
   availableAt: string
   attempts: number

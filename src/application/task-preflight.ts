@@ -159,7 +159,9 @@ function buildRequest(
   const expectedOutputKind = String(hints.expectedOutputKind)
   const replacementHint = object(hints.fileReplacement)
   const postgresProbeHint = object(hints.postgresTableProbe)
-  if (Object.keys(replacementHint).length > 0 && Object.keys(postgresProbeHint).length > 0) {
+  const repositoryChangeHint = object(hints.repositoryChange)
+  const materialHints = [replacementHint, postgresProbeHint, repositoryChangeHint].filter((hint) => Object.keys(hint).length > 0)
+  if (materialHints.length > 1) {
     throw new Error('O draft pode declarar somente uma operação material por vez.')
   }
   const criteria = draft.knownAcceptanceCriteria.map((criterion) => {
@@ -206,7 +208,9 @@ function buildRequest(
         ? { destinationRef: String(replacementHint.resourceRef) }
         : Object.keys(postgresProbeHint).length > 0
           ? { destinationRef: String(postgresProbeHint.resourceRef) }
-          : {})
+          : Object.keys(repositoryChangeHint).length > 0
+            ? { destinationRef: String(repositoryChangeHint.resourceRef) }
+            : {})
     }
   }
   if (Object.keys(replacementHint).length > 0) {
@@ -224,6 +228,10 @@ function buildRequest(
       databaseName: 'overcore_test',
       tableName: String(postgresProbeHint.tableName)
     }
+  }
+  if (Object.keys(repositoryChangeHint).length > 0) {
+    // O schema do draft já fixou a mesma forma de repositoryChangeExecution; nada é reinterpretado.
+    request.execution = structuredClone(repositoryChangeHint) as unknown as NonNullable<TaskRequest['execution']>
   }
   if (draft.correlationId !== undefined) request.correlationId = draft.correlationId
   return request

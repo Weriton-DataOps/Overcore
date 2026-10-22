@@ -76,21 +76,18 @@ test('autorização aceita a classe local-code-execution no enum de efeitos', as
   assert.match(JSON.stringify(schema), /"local-code-execution"/)
 })
 
-test('estratégia é exaustiva e não herda inspeção para tipo sem executor', async () => {
+test('estratégia é exaustiva: mudança de repositório tem executor próprio e tipo futuro não herda inspeção', async () => {
   const inspection = await requestWith(undefined)
   delete (inspection as JsonObject).execution
   assert.equal(executionStrategyFor(inspection), 'inspection')
-  assert.throws(
-    () => executionStrategyFor({ ...inspection, execution: repositoryChange() }),
-    (error: unknown) => error instanceof UnsupportedExecutionKindError && error.executionKind === 'repository-change'
-  )
+  assert.equal(executionStrategyFor({ ...inspection, execution: repositoryChange() }), 'repository-change')
   assert.throws(
     () => executionStrategyFor({ ...inspection, execution: { kind: 'algo-futuro' } } as unknown as TaskRequest),
     (error: unknown) => error instanceof UnsupportedExecutionKindError && error.executionKind === 'algo-futuro'
   )
 })
 
-test('pedido de mudança de repositório bloqueia antes de plano, autorização ou outbox', async () => {
+test('pedido de mudança sem autoridade de repositório bloqueia antes de plano, autorização ou outbox', async () => {
   const validator: ContractValidator = await ContractValidator.create(root)
   const store = new InMemoryTaskStore()
   const manager = new TaskManager(store, validator, new PermittingAuthorityProvider())
@@ -100,7 +97,8 @@ test('pedido de mudança de repositório bloqueia antes de plano, autorização 
   assert.equal(task.status, 'blocked')
   assert.equal(task.result?.status, 'blocked')
   const inputRequired = task.result?.inputRequired as JsonObject | undefined
-  assert.equal(inputRequired?.code, 'block-execution-capability-unavailable')
+  assert.equal(inputRequired?.code, 'block-repository-request-invalid')
+  assert.equal(inputRequired?.mode, 'replacement-request-required')
   assert.equal(store.plans.size, 0, 'nenhum plano de inspeção pode nascer por omissão')
   assert.equal(store.authorizations.size, 0, 'o Omni não é consultado para um plano inexistente')
   assert.equal(store.outbox.size, 0, 'nenhum executor recebe trabalho')

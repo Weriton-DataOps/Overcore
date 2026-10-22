@@ -51,7 +51,7 @@ interface TaskRow {
 interface OutboxRow {
   outbox_id: string
   task_id: string
-  kind: 'execute-inspection' | 'execute-file-replacement' | 'execute-postgres-table-probe'
+  kind: 'execute-inspection' | 'execute-file-replacement' | 'execute-postgres-table-probe' | 'execute-repository-change'
   payload: JsonObject
   available_at: Date
   attempts: number
@@ -342,6 +342,17 @@ export class PostgresTaskStore implements TaskStore {
   async findById(taskId: string): Promise<StoredTask | null> {
     const result = await this.pool.query<TaskRow>('SELECT * FROM overcore_tasks WHERE task_id = $1', [taskId])
     return result.rows[0] ? mapTask(result.rows[0]) : null
+  }
+
+  async listTasks(query: { limit: number; statuses?: TaskStatus[] }): Promise<StoredTask[]> {
+    const result = await this.pool.query<TaskRow>(
+      `SELECT * FROM overcore_tasks
+       WHERE $2::text[] IS NULL OR status = ANY($2::text[])
+       ORDER BY updated_at DESC, task_id
+       LIMIT $1`,
+      [query.limit, query.statuses?.length ? query.statuses : null]
+    )
+    return result.rows.map(mapTask)
   }
 
   async findByIdempotencyKey(idempotencyKey: string): Promise<StoredTask | null> {

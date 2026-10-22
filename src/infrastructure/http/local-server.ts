@@ -1,10 +1,27 @@
 import { timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 
+import { EXECUTION_VIEW_VERSION, executionDetail, executionSummary } from '../../application/execution-view.js'
 import type { TaskManager } from '../../application/task-manager.js'
 import type { TaskWorker } from '../../application/task-worker.js'
+import type { TaskStatus } from '../../domain/types.js'
 
 const MAX_BODY_BYTES = 1_048_576
+const TASK_STATUSES: readonly TaskStatus[] = [
+  'accepted', 'planning', 'ready', 'running', 'verifying', 'blocked', 'cancelling', 'succeeded', 'failed', 'cancelled'
+]
+
+function listQuery(url: URL): { limit: number; statuses?: TaskStatus[] } {
+  const rawLimit = url.searchParams.get('limit')
+  const limit = rawLimit === null ? 50 : Number(rawLimit)
+  if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw new Error('limit deve ser inteiro entre 1 e 200.')
+  const rawState = url.searchParams.get('state')
+  if (rawState === null || rawState === '') return { limit }
+  const statuses = rawState.split(',').map((item) => item.trim())
+  const unknown = statuses.filter((item) => !TASK_STATUSES.includes(item as TaskStatus))
+  if (unknown.length > 0) throw new Error(`Estado desconhecido: ${unknown.join(', ')}.`)
+  return { limit, statuses: statuses as TaskStatus[] }
+}
 
 function send(response: ServerResponse, status: number, body: unknown): void {
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' })
@@ -92,6 +109,25 @@ export function createLocalServer(manager: TaskManager, worker: TaskWorker, toke
         })
         return
       }
+      if (request.method === 'GET' && url.pathname === '/v1/executions') {
+        const query = listQuery(url)
+        const tasks = await manager.list(query)
+        send(response, 200, {
+          viewVersion: EXECUTION_VIEW_VERSION,
+          observedAt: new Date().toISOString(),
+          limit: query.limit,
+          executions: tasks.map(executionSummary)
+        })
+        return
+      }
+      const executionMatch = url.pathname.match(/^\/v1\/executions\/([A-Za-z0-9._:-]+)$/)
+      if (request.method === 'GET' && executionMatch?.[1]) {
+        const task = await manager.get(executionMatch[1])
+        send(response, task ? 200 : 404, task
+          ? { viewVersion: EXECUTION_VIEW_VERSION, observedAt: new Date().toISOString(), execution: executionDetail(task) }
+          : { error: 'not-found' })
+        return
+      }
       const taskMatch = url.pathname.match(/^\/v1\/tasks\/([A-Za-z0-9._:-]+)$/)
       if (request.method === 'GET' && taskMatch?.[1]) {
         const task = await manager.get(taskMatch[1])
@@ -121,8 +157,10 @@ export function createLocalServer(manager: TaskManager, worker: TaskWorker, toke
       }
       send(response, 404, { error: 'not-found' })
     } catch (error) {
+      // `Error` genérico não é código: quem lê a API precisa de algo estável para ramificar.
+      const name = error instanceof Error ? error.name : 'Error'
       send(response, 400, {
-        error: error instanceof Error ? error.name : 'Error',
+        error: name === 'Error' ? 'invalid-request' : name,
         message: error instanceof Error ? error.message : String(error)
       })
     }

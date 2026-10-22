@@ -17,6 +17,15 @@ import { fileReplacementFrom, replacementPayloadFromPlan } from './file-replacem
 import { buildPostgresTableProbePlan } from './postgres-table-probe-plan.js'
 import { executionStrategyFor, UnsupportedExecutionKindError } from './execution-strategy.js'
 import { postgresTableProbeFrom, probePayloadFromPlan } from './postgres-table-probe.js'
+import { buildRepositoryChangePlan } from './repository-change-plan.js'
+import {
+  assertRepositoryPreconditions,
+  effectKeyForRepositoryChange,
+  repositoryChangeFrom,
+  repositoryChangePayloadFromPlan,
+  RepositoryChangeRequestError,
+  RepositoryPreconditionError
+} from './repository-change.js'
 import {
   acceptedState,
   attachResultReference,
@@ -73,7 +82,8 @@ class AuthorizationExpiredError extends Error {
 
 interface BlockDescriptor {
   code: string
-  kind: 'authority' | 'resource' | 'external-condition'
+  kind: 'information' | 'authority' | 'resource' | 'decision' | 'external-condition'
+  mode?: 'resume-same-request' | 'replacement-request-required'
   summary: string
   condition: string
   reason: string
@@ -478,6 +488,55 @@ export class TaskManager {
         resumeTarget
       }
     }
+    if (error instanceof RepositoryChangeRequestError) {
+      return {
+        code: 'block-repository-request-invalid',
+        kind: 'information',
+        mode: 'replacement-request-required',
+        summary: 'O pedido de mudança de repositório não pode ser executado como foi congelado.',
+        condition: 'Um novo TaskRequest precisa corrigir a referência, a autoridade ou a saída declarada.',
+        reason: error.message,
+        question: `O Omni pode reenviar o pedido corrigido? Motivo: ${error.message}`,
+        options: [{
+          id: 'option-submit-corrected-request',
+          label: 'Reenviar pedido corrigido',
+          consequence: 'Um novo TaskRequest é admitido; esta tarefa fica parada como registro do pedido inválido.'
+        }],
+        impact: 'Nenhum worktree, plano, autorização ou branch é criado para este pedido.',
+        resumeTarget: 'planning'
+      }
+    }
+    if (error instanceof RepositoryPreconditionError) {
+      const branchTaken = error.code === 'repository-branch-exists'
+      return {
+        code: `block-${error.code}`,
+        kind: branchTaken ? 'decision' : 'resource',
+        summary: branchTaken
+          ? 'O branch de destino já existe no repositório e não foi criado por esta tarefa.'
+          : 'O repositório real não está no estado que o pedido pressupõe.',
+        condition: branchTaken
+          ? 'O branch de destino precisa estar livre para receber o commit desta tarefa.'
+          : 'O repositório, o commit base e a verificação declarados precisam estar disponíveis.',
+        reason: error.message,
+        question: branchTaken
+          ? `${error.message} Apagar ou renomear esse branch para a tarefa retomar, ou cancelar a tarefa?`
+          : `${error.message} O repositório foi corrigido para a tarefa retomar, ou ela deve ser cancelada?`,
+        options: [
+          {
+            id: branchTaken ? 'option-free-branch-and-resume' : 'option-fix-repository-and-resume',
+            label: branchTaken ? 'Liberar o branch e retomar' : 'Corrigir e retomar',
+            consequence: 'POST /v1/tasks/{taskId}/resume refaz as precondições e planeja de novo; nada é sobrescrito.'
+          },
+          {
+            id: 'option-cancel-task',
+            label: 'Cancelar',
+            consequence: 'POST /v1/tasks/{taskId}/cancel encerra a tarefa sem tocar no repositório.'
+          }
+        ],
+        impact: 'Nenhum worktree, autorização ou branch é criado enquanto a condição persistir.',
+        resumeTarget: 'planning'
+      }
+    }
     if (error instanceof AuthorizationDeniedError) {
       return {
         code: 'block-authorization-denied',
@@ -561,7 +620,7 @@ export class TaskManager {
       resultId,
       evidenceId,
       resumeTarget: descriptor.resumeTarget,
-      mode: 'resume-same-request',
+      mode: descriptor.mode ?? 'resume-same-request',
       condition: descriptor.condition
     }, blockedAt)
     const resultRefs = object(blockedState.ledger, 'ledger').resultRefs
@@ -612,7 +671,7 @@ export class TaskManager {
       },
       inputRequired: {
         blockId,
-        mode: 'resume-same-request',
+        mode: descriptor.mode ?? 'resume-same-request',
         code: descriptor.code,
         kind: descriptor.kind,
         reason: descriptor.reason,
@@ -663,6 +722,17 @@ export class TaskManager {
     // Correspondência exaustiva: um tipo de execução sem executor bloqueia aqui,
     // em vez de cair na inspeção como ramo residual.
     const strategy = executionStrategyFor(task.request)
+    if (strategy === 'repository-change') {
+      // O disco responde antes do Omni: branch alheio ou base ausente bloqueia
+      // sem gastar autorização nem criar worktree.
+      const change = repositoryChangeFrom(task.request)
+      if (!change) throw new Error('TaskRequest não declara mudança de repositório.')
+      await assertRepositoryPreconditions(
+        change.repositoryPath,
+        change.execution,
+        effectKeyForRepositoryChange(task.taskId, change.execution)
+      )
+    }
     const plan = strategy === 'file-replacement'
       ? buildFileReplacementPlan(
           task.taskId,
@@ -675,6 +745,16 @@ export class TaskManager {
         )
       : strategy === 'postgres-table-probe'
         ? buildPostgresTableProbePlan(
+            task.taskId,
+            task.request,
+            requestFingerprint,
+            task.stateRevision,
+            planAt,
+            planRevision,
+            priorPlanRefs.at(-1)
+          )
+      : strategy === 'repository-change'
+        ? buildRepositoryChangePlan(
             task.taskId,
             task.request,
             requestFingerprint,
@@ -829,8 +909,11 @@ export class TaskManager {
     executionStrategyFor(task.request)
     const replacement = fileReplacementFrom(task.request)
     const postgresProbe = postgresTableProbeFrom(task.request)
+    const repositoryChange = repositoryChangeFrom(task.request)
     const outboxId = stableId(
-      replacement ? 'outbox-file-replacement' : postgresProbe ? 'outbox-postgres-table-probe' : 'outbox-inspection',
+      replacement ? 'outbox-file-replacement'
+        : postgresProbe ? 'outbox-postgres-table-probe'
+          : repositoryChange ? 'outbox-repository-change' : 'outbox-inspection',
       `${task.taskId}:${runningState.executionEpoch}`
     )
     const authorizedActions = authorization.request.actions as JsonObject[]
@@ -881,6 +964,23 @@ export class TaskManager {
               }
             }
           })()
+      : repositoryChange
+        ? (() => {
+            const binding = repositoryChangePayloadFromPlan(plan)
+            return {
+              objective: task.request.objective,
+              budget: task.request.budget,
+              execution: repositoryChange.execution,
+              repositoryUri: repositoryChange.repositoryUri,
+              targetUri: repositoryChange.repositoryUri,
+              effectKey: binding.effectKey,
+              actionId: binding.actionId,
+              runtimeAuthorization: {
+                ...runtimeAuthorization,
+                authorizationRequest: authorization.request
+              }
+            }
+          })()
       : {
           repositoryUri: repositoryUri(task.request),
           objective: task.request.objective,
@@ -895,7 +995,9 @@ export class TaskManager {
       outbox: {
         outboxId,
         taskId: task.taskId,
-        kind: replacement ? 'execute-file-replacement' : postgresProbe ? 'execute-postgres-table-probe' : 'execute-inspection',
+        kind: replacement ? 'execute-file-replacement'
+          : postgresProbe ? 'execute-postgres-table-probe'
+            : repositoryChange ? 'execute-repository-change' : 'execute-inspection',
         payload,
         availableAt: runningAt,
         attempts: 0
@@ -951,5 +1053,9 @@ export class TaskManager {
 
   async get(taskId: string): Promise<StoredTask | null> {
     return this.store.findById(taskId)
+  }
+
+  async list(query: { limit: number; statuses?: StoredTask['status'][] }): Promise<StoredTask[]> {
+    return this.store.listTasks(query)
   }
 }

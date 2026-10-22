@@ -1,6 +1,6 @@
 import type { TaskRequest } from '../domain/types.js'
 
-export type ExecutionStrategy = 'inspection' | 'file-replacement' | 'postgres-table-probe'
+export type ExecutionStrategy = 'inspection' | 'file-replacement' | 'postgres-table-probe' | 'repository-change'
 
 /**
  * O contrato aceita um tipo de execução para o qual este processo ainda não
@@ -28,7 +28,7 @@ export function executionStrategyFor(request: TaskRequest): ExecutionStrategy {
     case 'postgres-create-drop-table':
       return 'postgres-table-probe'
     case 'repository-change':
-      throw new UnsupportedExecutionKindError(execution.kind)
+      return 'repository-change'
     default: {
       const unknownExecution: never = execution
       throw new UnsupportedExecutionKindError(String((unknownExecution as { kind?: unknown }).kind))

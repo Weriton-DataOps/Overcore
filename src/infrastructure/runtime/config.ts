@@ -10,6 +10,8 @@ export interface RuntimeConfig {
   runtimeDirectory: string
   /** baseline não chama modelo; advisor inclui todos os perfis estruturais. */
   discoveryMode: 'baseline' | 'advisor'
+  /** Workers no mesmo processo; cada um reivindica sua própria mensagem da outbox. */
+  workerSlots: number
 }
 
 function required(env: NodeJS.ProcessEnv, name: string): string {
@@ -32,6 +34,8 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
     throw new Error('OVERCORE_DISCOVERY_MODE precisa ser baseline ou advisor.')
   }
   if (localToken.length < 16 || authorityProviderToken.length < 16) throw new Error('Tokens locais precisam de ao menos 16 caracteres.')
+  const workerSlots = Number(env.OVERCORE_WORKER_SLOTS ?? '2')
+  if (!Number.isInteger(workerSlots) || workerSlots < 1 || workerSlots > 8) throw new Error('OVERCORE_WORKER_SLOTS precisa ser inteiro de 1 a 8.')
   return {
     databaseUrl: required(env, 'OVERCORE_DATABASE_URL'),
     host,
@@ -40,6 +44,7 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
     authorityProviderUrl: new URL(required(env, 'OVERCORE_AUTHORITY_PROVIDER_URL')),
     authorityProviderToken,
     runtimeDirectory: join(localAppData, 'Overcore'),
-    discoveryMode
+    discoveryMode,
+    workerSlots
   }
 }

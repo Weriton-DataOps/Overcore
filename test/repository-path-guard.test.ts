@@ -80,6 +80,9 @@ test('guarda aplica inclusão e exclusão do escopo declarado', async () => {
     assert.equal(!key.allowed && key.reason, 'excluded')
     const generated = await bench.guard.check('src/generated/client.ts')
     assert.equal(!generated.allowed && generated.reason, 'excluded')
+    // Fora do include e dentro do exclude: o motivo precisa ser a exclusão.
+    const outsideKey = await bench.guard.check('config/servidor.pem')
+    assert.equal(!outsideKey.allowed && outsideKey.reason, 'excluded')
   } finally {
     await bench.cleanup()
   }

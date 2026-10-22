@@ -272,6 +272,24 @@ pronta. Até a fatia 6, nenhum `TaskDraft` consegue produzir um pedido `reposito
   bloqueia com `block-execution-capability-unavailable`, sem plano, autorização ou outbox. A guarda de
   caminho decide pelo caminho físico e recusa saída do worktree, link ou junção, `.git` em qualquer
   grafia, nomes reservados, fluxo alternativo e sufixos que o Windows reinterpreta.
+- **Fatias 2 a 6 — entregues em 2026-10-22, num commit local, como mínimo usável pedido pelo
+  proprietário via Omni.** O que entrou:
+  - a bancada cria o worktree no commit exato e o remove ao final;
+  - a medição do diff;
+  - o editor Claude com `Edit` e `Write` sob a guarda;
+  - a verificação por `argv` sem shell;
+  - o branch criado só se o ref não existir, com releitura;
+  - o bloqueio `block-repository-branch-exists`, com retomada e cancelamento;
+  - a dica `executionHints.repositoryChange` no `TaskDraft`;
+  - a API de leitura `GET /v1/executions`.
+
+  A guarda passou a testar `exclude` antes de `include`; antes disso, `.env` era legível quando
+  `include` também o cobria. A operação e as lacunas estão em
+  [api-execucoes.md](../operacao/api-execucoes.md). Duas pendências antes de considerar o Marco 3
+  fechado:
+  - a revalidação do Omni sobre o diff medido, que a D1 exige: o Omni autoriza o `argv` no
+    planejamento, mas não revê o diff antes de executar;
+  - o gate real do item 8 da prova.
 
 ## Consequências
 

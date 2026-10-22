@@ -13,7 +13,8 @@ export interface ExecutorCapability {
 const REQUIRED: Record<ExecutionKind, { operation: string; effectMode: 'none' | 'journaled' }> = {
   'execute-inspection': { operation: 'filesystem.read', effectMode: 'none' },
   'execute-file-replacement': { operation: 'filesystem.modify', effectMode: 'journaled' },
-  'execute-postgres-table-probe': { operation: 'database.schema.modify', effectMode: 'journaled' }
+  'execute-postgres-table-probe': { operation: 'database.schema.modify', effectMode: 'journaled' },
+  'execute-repository-change': { operation: 'repository.branch.create', effectMode: 'journaled' }
 }
 
 export class ExecutorCapabilityUnavailableError extends Error {
@@ -58,6 +59,7 @@ export class ExecutorCapabilityCatalog {
 export function localExecutorCapabilities(input: {
   hasFileReplacement: boolean
   hasPostgresTableProbe: boolean
+  hasRepositoryChange?: boolean
 }): ExecutorCapability[] {
   return [
     {
@@ -80,6 +82,13 @@ export function localExecutorCapabilities(input: {
       operations: ['database.schema.read', 'database.schema.modify'],
       effectModes: ['none', 'journaled'] as Array<'none' | 'journaled'>,
       runtime: 'harness' as const
+    }] : []),
+    ...(input.hasRepositoryChange ? [{
+      executorId: 'overcore-repository-change-v1',
+      executionKinds: ['execute-repository-change'] as ExecutionKind[],
+      operations: ['repository.read', 'repository.worktree.modify', 'process.execute', 'repository.branch.create'],
+      effectModes: ['none', 'journaled'] as Array<'none' | 'journaled'>,
+      runtime: 'hybrid' as const
     }] : [])
   ]
 }

@@ -143,11 +143,13 @@ export class RepositoryPathGuard {
     }
 
     const relativePath = physicalSegments.join('/')
-    if (!this.include.some((pattern) => pattern.test(relativePath))) {
-      return deny('not-included', `${relativePath} está fora do escopo de inclusão.`)
-    }
+    // Exclusão antes da inclusão: quem libera leitura de contexto fora do
+    // `include` (o editor) confia em `not-included` nunca esconder um exclude.
     if (this.exclude.some((pattern) => pattern.test(relativePath))) {
       return deny('excluded', `${relativePath} corresponde a um glob de exclusão.`)
+    }
+    if (!this.include.some((pattern) => pattern.test(relativePath))) {
+      return deny('not-included', `${relativePath} está fora do escopo de inclusão.`)
     }
     return { allowed: true, relativePath }
   }

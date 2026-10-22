@@ -139,6 +139,14 @@ export class InMemoryTaskStore implements TaskStore {
     return task ? copy(task) : null
   }
 
+  async listTasks(query: { limit: number; statuses?: StoredTask['status'][] }): Promise<StoredTask[]> {
+    return [...this.tasks.values()]
+      .filter((task) => !query.statuses?.length || query.statuses.includes(task.status))
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || left.taskId.localeCompare(right.taskId))
+      .slice(0, query.limit)
+      .map(copy)
+  }
+
   async findByIdempotencyKey(idempotencyKey: string): Promise<StoredTask | null> {
     const task = [...this.tasks.values()].find((item) => item.idempotencyKey === idempotencyKey)
     return task ? copy(task) : null

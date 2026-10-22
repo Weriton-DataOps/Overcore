@@ -11,6 +11,7 @@ import { TaskWorker } from './application/task-worker.js'
 import { FileEffectHarness } from './application/file-effect-harness.js'
 import { HarnessFileReplacementExecutor } from './application/file-replacement-executor.js'
 import { HarnessPostgresTableProbeExecutor } from './application/postgres-table-probe-executor.js'
+import { RepositoryChangeWorkbench } from './application/repository-change-executor.js'
 import { PostgresTableProbeHarness } from './application/postgres-table-probe-harness.js'
 import {
   AgentAssistedContractInspectionExecutor,
@@ -20,6 +21,7 @@ import type { JsonObject } from './domain/types.js'
 import { HttpAuthorityProvider } from './infrastructure/authority/http-authority-provider.js'
 import { HttpEffectAuthorityGuard } from './infrastructure/authority/http-effect-authority-guard.js'
 import { AnthropicAgentSdkRuntime } from './infrastructure/agent-runtime/anthropic-agent-sdk.js'
+import { ClaudeRepositoryEditor } from './infrastructure/agent-runtime/claude-repository-editor.js'
 import { ClaudeDiscoveryAdvisor } from './infrastructure/discovery/claude-discovery-advisor.js'
 import { createPostgresPool, migrate } from './infrastructure/database/postgres.js'
 import { PostgresTaskStore } from './infrastructure/database/postgres-task-store.js'
@@ -62,23 +64,35 @@ async function serve(): Promise<void> {
     new URL('/v1/authority/revalidate-effect', config.authorityProviderUrl),
     config.authorityProviderToken
   )
-  const worker = new TaskWorker(
-    `worker-${process.pid}`,
+  const inspectionExecutor = new AgentAssistedContractInspectionExecutor(new AnthropicAgentSdkRuntime())
+  const fileReplacementExecutor = new HarnessFileReplacementExecutor(new FileEffectHarness(
+    effectJournal,
+    new FileCheckpointStore(join(config.runtimeDirectory, 'checkpoints')),
+    effectAuthority
+  ))
+  const postgresProbeExecutor = new HarnessPostgresTableProbeExecutor(new PostgresTableProbeHarness(pool, effectJournal, effectAuthority))
+  // Cada tarefa ganha sua própria worktree sob esta raiz; a bancada não guarda estado entre tarefas.
+  const repositoryChangeExecutor = new RepositoryChangeWorkbench(new ClaudeRepositoryEditor(), {
+    worktreeRoot: join(config.runtimeDirectory, 'worktrees')
+  })
+  const workers = Array.from({ length: config.workerSlots }, (_, slot) => new TaskWorker(
+    `worker-${process.pid}-${slot + 1}`,
     store,
     validator,
-    new AgentAssistedContractInspectionExecutor(new AnthropicAgentSdkRuntime()),
+    inspectionExecutor,
     undefined,
-    new HarnessFileReplacementExecutor(new FileEffectHarness(
-      effectJournal,
-      new FileCheckpointStore(join(config.runtimeDirectory, 'checkpoints')),
-      effectAuthority
-    )),
-    new HarnessPostgresTableProbeExecutor(new PostgresTableProbeHarness(pool, effectJournal, effectAuthority))
-  )
+    fileReplacementExecutor,
+    postgresProbeExecutor,
+    repositoryChangeExecutor
+  ))
+  const [worker] = workers
+  if (!worker) throw new Error('OVERCORE_WORKER_SLOTS não criou nenhum worker.')
   const server = createLocalServer(manager, worker, config.localToken, [
     'inspection-report-sha256-v1',
     'inspection-independent-semantic-review-v1',
-    'inspection-direct-entries-snapshot-and-tool-telemetry-v1'
+    'inspection-direct-entries-snapshot-and-tool-telemetry-v1',
+    'repository-change-worktree-v1',
+    'execution-read-view-v1'
   ], () => readValidationEvidence(projectRoot))
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject)
@@ -93,7 +107,7 @@ async function serve(): Promise<void> {
     port: address.port,
     startedAt: new Date().toISOString()
   })
-  process.stdout.write(`Overcore ativo em http://${config.host}:${address.port}\n`)
+  process.stdout.write(`Overcore ativo em http://${config.host}:${address.port} com ${workers.length} worker(s)\n`)
 
   let reconciling = false
   const reconcile = () => {
@@ -120,13 +134,17 @@ async function serve(): Promise<void> {
   const reconciliationInterval = setInterval(reconcile, 1_000)
   reconciliationInterval.unref()
 
-  let working = false
+  // Um slot ocupado não segura os outros: duas execuções correm lado a lado,
+  // cada uma com seu lease na outbox e sua worktree.
+  const busy = workers.map(() => false)
   const workerInterval = setInterval(() => {
-    if (working) return
-    working = true
-    void worker.runOnce()
-      .catch((error: unknown) => process.stderr.write(`worker: ${error instanceof Error ? error.message : String(error)}\n`))
-      .finally(() => { working = false })
+    workers.forEach((slotWorker, slot) => {
+      if (busy[slot]) return
+      busy[slot] = true
+      void slotWorker.runOnce()
+        .catch((error: unknown) => process.stderr.write(`worker ${slot + 1}: ${error instanceof Error ? error.message : String(error)}\n`))
+        .finally(() => { busy[slot] = false })
+    })
   }, 500)
   workerInterval.unref()
 

@@ -1,6 +1,6 @@
 import { fingerprint, sha256, stableId } from '../domain/fingerprint.js'
 import type { ClaimedMessage, ExecutionReceipt, InspectionEvidence, JsonObject, StoredTask } from '../domain/types.js'
-import { ExecutionFailure, type FileReplacementExecutor, type InspectionExecutor, type PostgresTableProbeExecutor, type TaskStore } from '../ports/task-store.js'
+import { ExecutionFailure, type FileReplacementExecutor, type InspectionExecutor, type PostgresTableProbeExecutor, type RepositoryChangeExecutor, type TaskStore } from '../ports/task-store.js'
 import { ContractValidator } from '../contracts/validator.js'
 import { beginVerification, failTask, scheduleRetry, succeed } from './state-builder.js'
 import type { Clock } from './task-manager.js'
@@ -146,6 +146,58 @@ function postgresProbeMutationFrom(value: unknown): PostgresTableProbeResult {
   return found as unknown as PostgresTableProbeResult
 }
 
+interface RepositoryChangeMutation {
+  effectKey: string
+  wrote: boolean
+  branch: string
+  commit: string
+  tree: string
+  baseCommit: string
+  changedFiles: Array<{ path: string; status: string; added: number; deleted: number }>
+  diffBytes: number
+  verification?: { argv: string[]; exitCode: number; durationMs: number; outputTail: string }
+  editorReport: string
+  taskResultProjection: {
+    evidence: JsonObject[]
+    artifacts: JsonObject[]
+    effects: JsonObject[]
+    checkpointArtifactRef: string
+  }
+}
+
+function repositoryMutationFrom(value: unknown): RepositoryChangeMutation {
+  const found = object(value, 'resultado da mudança de repositório')
+  const projection = object(found.taskResultProjection, 'projeção da mudança de repositório')
+  if (!Array.isArray(projection.evidence) || !Array.isArray(projection.artifacts) || !Array.isArray(projection.effects) ||
+    typeof projection.checkpointArtifactRef !== 'string' || typeof found.commit !== 'string' ||
+    typeof found.branch !== 'string' || !Array.isArray(found.changedFiles)) {
+    throw new ExecutionFailure('repository-change-invalid-result', 'internal', false, 'A bancada não devolveu a projeção verificável completa.')
+  }
+  return found as unknown as RepositoryChangeMutation
+}
+
+/** Relato em Markdown para o Omni; o diff medido e o readback são a prova, este texto é o resumo. */
+function repositoryChangeReport(mutation: RepositoryChangeMutation): string {
+  const lines = [
+    `## Branch \`${mutation.branch}\` criado`,
+    '',
+    `- commit: \`${mutation.commit}\` (pai \`${mutation.baseCommit}\`)`,
+    `- diff: ${mutation.changedFiles.length} arquivo(s), ${mutation.diffBytes} bytes`,
+    ...mutation.changedFiles.slice(0, 50).map((file) => `  - ${file.status} \`${file.path}\` (+${file.added} -${file.deleted})`),
+    ...(mutation.verification
+      ? [`- verificação: \`${mutation.verification.argv.join(' ')}\` → código ${mutation.verification.exitCode} em ${mutation.verification.durationMs} ms`]
+      : ['- verificação: não declarada']),
+    '',
+    '### Relato do editor',
+    '',
+    mutation.editorReport.trim() || '(sem relato)'
+  ]
+  if (mutation.verification?.outputTail.trim()) {
+    lines.push('', '### Final da saída da verificação', '', '```', mutation.verification.outputTail.trim().slice(-3000), '```')
+  }
+  return lines.join('\n').slice(0, 200_000)
+}
+
 function classifyExecutionFailure(error: unknown): ExecutionFailure {
   if (error instanceof ExecutionFailure) return error
   if (error instanceof EffectStateUncertainError) {
@@ -192,9 +244,11 @@ export class TaskWorker {
     private readonly clock: Clock = systemClock,
     private readonly fileReplacementExecutor?: FileReplacementExecutor,
     private readonly postgresTableProbeExecutor?: PostgresTableProbeExecutor,
+    private readonly repositoryChangeExecutor?: RepositoryChangeExecutor,
     private readonly executorCapabilities = new ExecutorCapabilityCatalog(localExecutorCapabilities({
       hasFileReplacement: fileReplacementExecutor !== undefined,
-      hasPostgresTableProbe: postgresTableProbeExecutor !== undefined
+      hasPostgresTableProbe: postgresTableProbeExecutor !== undefined,
+      hasRepositoryChange: repositoryChangeExecutor !== undefined
     }))
   ) {}
 
@@ -220,6 +274,9 @@ export class TaskWorker {
       }
       if (claimed.kind === 'execute-postgres-table-probe') {
         return await this.runPostgresTableProbe(task, claimed)
+      }
+      if (claimed.kind === 'execute-repository-change') {
+        return await this.runRepositoryChange(task, claimed)
       }
       if (claimed.kind !== 'execute-inspection') throw new Error(`Mensagem de execução desconhecida: ${claimed.kind}.`)
       const repositoryUri = String(claimed.payload.repositoryUri)
@@ -671,6 +728,101 @@ export class TaskWorker {
     })
   }
 
+  private async runRepositoryChange(task: StoredTask, claimed: ClaimedMessage): Promise<StoredTask> {
+    const authorization = object(claimed.payload.runtimeAuthorization, 'autorização de runtime')
+    const authorizationRequest = object(authorization.authorizationRequest, 'pedido original de autorização')
+    const budget = object(claimed.payload.budget, 'budget da outbox')
+    let mutation: RepositoryChangeMutation
+    const persistedReceipt = await this.store.findExecutionReceipt(claimed.outboxId)
+    if (persistedReceipt) {
+      this.assertReceipt(persistedReceipt, task, claimed.outboxId)
+      if (persistedReceipt.payload.kind !== 'repository-change-completed') throw new Error('Recibo não pertence à mudança de repositório.')
+      mutation = repositoryMutationFrom(persistedReceipt.payload.mutation)
+    } else {
+      const executor = this.repositoryChangeExecutor
+      if (!executor) {
+        return await this.handleExecutionFailure(task, claimed, new ExecutionFailure('repository-change-executor-unavailable', 'internal', false, 'O runtime não recebeu o executor de mudança de repositório.'))
+      }
+      try {
+        const input: Parameters<RepositoryChangeExecutor['execute']>[0] = {
+          taskId: task.taskId,
+          effectKey: String(claimed.payload.effectKey),
+          actionId: String(claimed.payload.actionId),
+          repositoryUri: String(claimed.payload.repositoryUri),
+          execution: task.request.execution as Parameters<RepositoryChangeExecutor['execute']>[0]['execution'],
+          objective: String(claimed.payload.objective),
+          timeoutMs: Number(budget.maxDurationMs),
+          ...(typeof budget.maxTokens === 'number' ? { maxTokens: budget.maxTokens } : {}),
+          ...(typeof budget.maxCostUsd === 'number' ? { maxCostUsd: budget.maxCostUsd } : {}),
+          authorization: {
+            enforcementId: String(authorization.enforcementId),
+            expiresAt: String(authorization.expiresAt),
+            operations: Array.isArray(authorization.operations) ? authorization.operations.map(String) : [],
+            requiredControls: Array.isArray(authorization.requiredControls) ? authorization.requiredControls.map(String) : [],
+            authorizationRequest
+          }
+        }
+        mutation = repositoryMutationFrom(await this.executeControlled(claimed, (control) => executor.execute(input, control)))
+      } catch (error) {
+        return await this.handleExecutionFailure(task, claimed, classifyExecutionFailure(error))
+      }
+      const receiptPayload: JsonObject = { kind: 'repository-change-completed', mutation: mutation as unknown as JsonObject }
+      await this.store.saveExecutionReceipt({
+        receiptId: stableId('execution-receipt', claimed.outboxId), outboxId: claimed.outboxId,
+        taskId: task.taskId, executionEpoch: task.executionEpoch, payload: receiptPayload,
+        payloadFingerprint: fingerprint(receiptPayload), recordedAt: this.clock.now().toISOString()
+      }, claimed.claimToken, this.clock.now())
+    }
+    return this.completeRepositoryChange(task, claimed, mutation)
+  }
+
+  private async completeRepositoryChange(task: StoredTask, claimed: ClaimedMessage, mutation: RepositoryChangeMutation): Promise<StoredTask> {
+    const projection = mutation.taskResultProjection
+    const evidence = projection.evidence
+    const evidenceRefs = evidence.map((item) => String(item.evidenceId)).filter(Boolean)
+    let verifyingTask = task
+    if (task.status === 'running') {
+      const verifyingAt = this.clock.now().toISOString()
+      const verifyingState = beginVerification(task.state, evidenceRefs, verifyingAt)
+      this.validator.taskState(verifyingState)
+      verifyingTask = await this.store.compareAndSwap({
+        expectedRevision: task.stateRevision, next: record(task, verifyingState),
+        event: { eventId: stableId('event-repository-change-verifying', `${task.taskId}:${verifyingState.stateRevision}`), kind: 'verification-started', occurredAt: verifyingAt, payload: { evidenceRefs, effectKey: mutation.effectKey } }
+      })
+    }
+    const finishedAt = this.clock.now().toISOString()
+    const resultId = stableId('result-repository-change', `${task.taskId}:${verifyingTask.stateRevision + 1}`)
+    const transitionId = stableId('transition-succeeded', `${task.taskId}:${verifyingTask.stateRevision + 1}:repository-change-passed`)
+    const criterionEvidence = new Map<string, string[]>()
+    for (const criterion of verifyingTask.request.acceptanceCriteria) criterionEvidence.set(criterion.id, evidenceRefs)
+    const startedAt = String((verifyingTask.state.ledger.attempts as JsonObject[])[0]?.startedAt ?? verifyingTask.createdAt)
+    const previousResultRefs = Array.isArray(verifyingTask.state.ledger.resultRefs) ? verifyingTask.state.ledger.resultRefs as JsonObject[] : []
+    const previousResultId = previousResultRefs.at(-1)?.resultId
+    const report = repositoryChangeReport(mutation)
+    const result: JsonObject = {
+      contractVersion: '1.0', resultId, requestId: verifyingTask.requestId,
+      requestFingerprint: verifyingTask.state.requestBinding.requestFingerprint as never, taskId: verifyingTask.taskId,
+      stateRef: { stateRevision: verifyingTask.stateRevision + 1, transitionId, emissionSequence: previousResultRefs.length + 1, ...(typeof previousResultId === 'string' ? { supersedesResultId: previousResultId } : {}) },
+      reportedAt: finishedAt, status: 'succeeded',
+      summary: mutation.wrote
+        ? `Branch ${mutation.branch} criado em ${mutation.commit.slice(0, 12)} com ${mutation.changedFiles.length} arquivo(s) alterado(s), aguardando revisão.`
+        : `Branch ${mutation.branch} já existia com o efeito desta tarefa; relido em ${mutation.commit.slice(0, 12)}.`,
+      report: { mediaType: 'text/markdown', content: report, digest: sha256(report) },
+      criteria: verifyingTask.request.acceptanceCriteria.map((criterion) => ({ criterionId: criterion.id, status: 'passed', evidenceRefs: criterionEvidence.get(criterion.id) ?? [] })),
+      evidence, artifacts: projection.artifacts, effects: projection.effects,
+      execution: { attemptCount: Number(verifyingTask.state.usage.attemptCount ?? 1), maxParallelismObserved: 1, durationMs: Math.max(0, Date.parse(finishedAt) - Date.parse(startedAt)), startedAt, finishedAt, lastTransitionAt: finishedAt, checkpointArtifactRef: projection.checkpointArtifactRef }
+    }
+    this.validator.assert('task-result', result)
+    const resultFingerprint = fingerprint(result)
+    const succeededState = succeed(verifyingTask.state, resultId, criterionEvidence, resultFingerprint, finishedAt)
+    this.validator.taskState(succeededState)
+    return this.store.compareAndSwap({
+      expectedRevision: verifyingTask.stateRevision, next: record(verifyingTask, succeededState, result),
+      event: { eventId: stableId('event-repository-change-succeeded', `${task.taskId}:${succeededState.stateRevision}`), kind: 'task-succeeded', occurredAt: finishedAt, payload: { resultId, resultFingerprint, effectKey: mutation.effectKey, branch: mutation.branch, commit: mutation.commit } },
+      completeOutbox: { outboxId: claimed.outboxId, claimToken: claimed.claimToken }
+    })
+  }
+
   private async executeFileReplacementWithLeaseHeartbeat(
     claimed: ClaimedMessage,
     input: Parameters<FileReplacementExecutor['execute']>[0]
@@ -752,6 +904,16 @@ export class TaskWorker {
         if (!this.postgresTableProbeExecutor?.reconcileCancellation) throw new Error('Executor sem reconciliação de cancelamento PostgreSQL.')
         const execution = object(claimed.payload.execution, 'execução da sonda')
         return this.postgresTableProbeExecutor.reconcileCancellation({ ...input, tableName: String(execution.tableName) })
+      }
+      if (claimed.kind === 'execute-repository-change') {
+        if (!this.repositoryChangeExecutor?.reconcileCancellation) throw new Error('Executor sem reconciliação de cancelamento de repositório.')
+        const execution = object(claimed.payload.execution, 'execução da mudança de repositório')
+        return this.repositoryChangeExecutor.reconcileCancellation({
+          ...input,
+          targetBranch: String(execution.targetBranch),
+          baseCommit: String(execution.baseCommit),
+          resourceRef: String(execution.resourceRef)
+        })
       }
       if (claimed.kind !== 'execute-inspection') throw new Error('Cancelamento de executor desconhecido.')
       return { evidence: [], artifacts: [], effects: [] }
