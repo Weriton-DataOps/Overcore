@@ -372,12 +372,16 @@ PostgreSQL local de teste.
   conhece `filesystem.modify` e `database.schema.modify`. Em 2026-10-22 o Weriton liberou o mínimo
   assim, só para repositórios dele; a revalidação ficou como dívida de uma fatia futura (adendo da
   D1 na ADR-022).
-- **Gate real, item 8 da ADR.** Não rodou: PostgreSQL, Omni e Claude ao vivo sobre uma repo
-  descartável. O `ClaudeRepositoryEditor` só foi testado com SDK simulado. A primeira execução real
-  deve ser acompanhada.
-- **Provedor de autoridade do Omni.** Precisa aprovar `repository.read`,
-  `repository.worktree.modify`, `repository.branch.create` e `process.execute`. Ainda não foi
-  testado contra o Omni real.
+- **Omni real nega o plano de repositório; o gate real, item 8 da ADR, está vermelho.** O gate
+  `npm run test:repository-change-live` existe. Ele exige `OVERCORE_RUN_REPOSITORY_CHANGE_E2E=I_UNDERSTAND_LOGIN_USAGE`,
+  `OVERCORE_TEST_DATABASE_URL` e `OVERCORE_OMNI_REPOSITORY_PATH`.
+  Em 2026-10-22 o adaptador do Omni respondeu HTTP 400 `invalid-authority-request`:
+  `actions[3].effectClass` não aceita `local-code-execution`. A tarefa bloqueia com
+  `block-authority-provider-invalid`, e nenhuma ferramenta roda. A política do Omni também nega as
+  outras três ações em envelope `medium`.
+  Consequência: pelo runtime local, que usa o Omni real como autoridade, toda mudança de
+  repositório bloqueia até o Omni ganhar esse corredor. O caminho ponta a ponta só fecha com o
+  provedor permissivo dos testes. O `ClaudeRepositoryEditor` continua testado só com SDK simulado.
 - **Sem sandbox de sistema operacional.** A verificação roda como o usuário. O guarda de caminho
   limita o editor, não o processo de verificação.
 - **Filtros `clean`/`smudge` e configuração git da repo alvo.** Não são neutralizados.

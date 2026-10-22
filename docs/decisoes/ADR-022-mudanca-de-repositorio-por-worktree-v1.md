@@ -309,7 +309,15 @@ pronta. Até a fatia 6, nenhum `TaskDraft` consegue produzir um pedido `reposito
   fechado:
   - a revalidação do Omni sobre o diff medido, que a D1 exige. O proprietário liberou o mínimo sem
     ela em 2026-10-22, só para repositórios dele, e ela ficou como dívida explícita (adendo da D1);
-  - o gate real do item 8 da prova.
+  - o gate real do item 8 da prova. Ele existe desde 2026-10-22
+    (`npm run test:repository-change-live`) e está vermelho por causa do Omni, não do Overcore. O
+    controle confirma que o teste falha no commit com defeito. Depois disso, o adaptador real do
+    Omni responde HTTP 400 ao plano: `actions[3].effectClass` não aceita `local-code-execution`. O
+    Overcore bloqueia com `block-authority-provider-invalid` antes de qualquer ferramenta. Aceitar a
+    classe não basta: a política atual do Omni também nega `repository.read` em envelope `medium`,
+    `repository.worktree.modify` como `runtime-internal` fora de envelope `low` e
+    `repository.branch.create` como `reversible-change`. A fatia 3 previa o cliente Omni aceitando a
+    classe; essa metade, que fica no repositório do Omni, ainda não existe.
 
 ## Consequências
 
