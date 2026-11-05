@@ -43,6 +43,16 @@ interface TaskRow {
   updated_at: string
 }
 
+interface ExecutionReceiptRow {
+  receipt_id: string
+  outbox_id: string
+  task_id: string
+  execution_epoch: number
+  payload: string
+  payload_fingerprint: string
+  recorded_at: string
+}
+
 interface OutboxRow {
   outbox_id: string
   task_id: string
@@ -113,10 +123,6 @@ function cercaDo(arquivo: string): Cerca {
     cercas.set(chave, cerca)
   }
   return cerca
-}
-
-function pendente(metodo: string, tarefa: string): never {
-  throw new Error(`SqliteTaskStore.${metodo} entra na tarefa ${tarefa} da F4.`)
 }
 
 /**
@@ -318,8 +324,47 @@ export class SqliteTaskStore extends SqlitePreflightStore implements TaskStore {
     }).changes))
     if (mudou !== 1) throw new Error('Lease da outbox não confere.')
   }
-  async findExecutionReceipt(_outboxId: string): Promise<ExecutionReceipt | null> { return pendente('findExecutionReceipt', 'B7') }
-  async saveExecutionReceipt(_receipt: ExecutionReceipt, _claimToken: string, _now?: Date): Promise<ExecutionReceipt> { return pendente('saveExecutionReceipt', 'B7') }
+
+  async findExecutionReceipt(outboxId: string): Promise<ExecutionReceipt | null> {
+    return this.ler((db) => this.recibo(db, outboxId))
+  }
+
+  /** Idempotente por outbox: o mesmo conteúdo devolve o recibo gravado; outro conteúdo é recusado. */
+  async saveExecutionReceipt(receipt: ExecutionReceipt, claimToken: string, now = new Date()): Promise<ExecutionReceipt> {
+    return this.escrever((db) => {
+      const lease = db.prepare(`SELECT 1 FROM overcore_task_outbox
+        WHERE outbox_id = ? AND claim_token = ? AND processed_at IS NULL AND locked_until > ?`)
+        .get(receipt.outboxId, claimToken, instante(now))
+      if (!lease) throw new Error('Lease da outbox nao permite persistir o recibo de execucao.')
+      db.prepare(`INSERT INTO overcore_task_execution_receipts
+          (receipt_id, outbox_id, task_id, execution_epoch, payload, payload_fingerprint, recorded_at, origem_maquina)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (outbox_id) DO NOTHING`).run(
+        receipt.receiptId, receipt.outboxId, receipt.taskId, receipt.executionEpoch, JSON.stringify(receipt.payload),
+        receipt.payloadFingerprint.value, instante(receipt.recordedAt), this.origemMaquina)
+      const stored = this.recibo(db, receipt.outboxId)
+      if (!stored) throw new Error(`Recibo da outbox ${receipt.outboxId} nao foi persistido.`)
+      if (stored.payloadFingerprint.value !== receipt.payloadFingerprint.value) {
+        throw new Error(`Recibo da outbox ${receipt.outboxId} possui outro conteudo.`)
+      }
+      return stored
+    })
+  }
+
+  private recibo(db: DatabaseSync, outboxId: string): ExecutionReceipt | null {
+    const row = db.prepare(`SELECT receipt_id, outbox_id, task_id, execution_epoch, payload, payload_fingerprint, recorded_at
+      FROM overcore_task_execution_receipts WHERE outbox_id = ?`).get(outboxId) as ExecutionReceiptRow | undefined
+    if (!row) return null
+    return {
+      receiptId: row.receipt_id,
+      outboxId: row.outbox_id,
+      taskId: row.task_id,
+      executionEpoch: row.execution_epoch,
+      payload: lerJson<JsonObject>(row.payload),
+      payloadFingerprint: { algorithm: 'sha256-jcs-v1', value: row.payload_fingerprint as `sha256:${string}` },
+      recordedAt: row.recorded_at
+    }
+  }
 
   protected tarefa(db: DatabaseSync, taskId: string): StoredTask {
     const row = db.prepare('SELECT * FROM overcore_tasks WHERE task_id = ?').get(taskId) as TaskRow | undefined
