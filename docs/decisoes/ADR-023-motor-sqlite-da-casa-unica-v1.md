@@ -141,7 +141,9 @@ A casa exporta e importa por `_diario`, então o Overcore segue o molde:
 - `_diario` tem gatilhos I/U/D em todas as tabelas, com a chave natural em `linha`. O gatilho de
   update só dispara quando `versao` muda;
 - **não há `apagado_em`**: o Overcore não apaga linhas de domínio. O gatilho D existe para que um
-  apagamento indevido apareça no diário.
+  apagamento indevido apareça no diário. A F5 (sincronização da casa) trata uma tabela sem essa
+  coluna como "sem lápide". Se um dia o Overcore precisar apagar uma linha de domínio, `apagado_em`
+  entra por migração **antes** do primeiro apagamento, nunca depois.
 
 ### D9. Capacidades por motor
 
