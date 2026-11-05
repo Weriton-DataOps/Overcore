@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
 
 import type {
@@ -40,7 +41,22 @@ interface TaskRow {
   updated_at: string
 }
 
+interface OutboxRow {
+  outbox_id: string
+  task_id: string
+  kind: ClaimedMessage['kind']
+  payload: string
+  available_at: string
+  attempts: number
+  claim_token: string
+  locked_until: string
+}
+
 const CHAVES_DA_TAREFA = new Set(['task_id', 'request_id', 'idempotency_key'])
+
+function depois(agora: Date, ms: number): string {
+  return new Date(agora.getTime() + ms).toISOString()
+}
 
 /** Atualização das colunas da casa (ADR-023 D8) em toda linha mutável que muda. */
 const CASA = "versao = versao + 1, atualizado_em = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"
@@ -145,14 +161,107 @@ export class SqliteTaskStore extends SqlitePreflightStore implements TaskStore {
     return this.escrever((db) => this.aplicarMutacao(db, mutation))
   }
 
-  async listReconciliationCandidates(_limit: number, _now?: Date): Promise<StoredTask[]> { return pendente('listReconciliationCandidates', 'B4') }
-  async claimReconciliation(_taskId: string, _ownerId: string, _leaseMs: number, _now?: Date): Promise<string | null> { return pendente('claimReconciliation', 'B4') }
-  async deferReconciliation(_taskId: string, _claimToken: string, _failure: ReconciliationFailure): Promise<void> { pendente('deferReconciliation', 'B4') }
-  async releaseReconciliation(_taskId: string, _claimToken: string): Promise<void> { pendente('releaseReconciliation', 'B4') }
-  async claimOutbox(_workerId: string, _leaseMs: number, _now?: Date): Promise<ClaimedMessage | null> { return pendente('claimOutbox', 'B4') }
-  async extendOutboxLease(_outboxId: string, _claimToken: string, _leaseMs: number, _now?: Date): Promise<void> { pendente('extendOutboxLease', 'B4') }
-  async completeOutbox(_outboxId: string, _claimToken: string): Promise<void> { pendente('completeOutbox', 'B4') }
-  async releaseOutbox(_outboxId: string, _claimToken: string, _errorFingerprint: string, _retryAt: Date): Promise<void> { pendente('releaseOutbox', 'B4') }
+  async listReconciliationCandidates(limit: number, now = new Date()): Promise<StoredTask[]> {
+    const rows = this.ler((db) => db.prepare(`SELECT * FROM overcore_tasks
+      WHERE status IN ('accepted', 'planning', 'ready', 'cancelling')
+        AND (reconciliation_until IS NULL OR reconciliation_until <= $now)
+        AND (reconciliation_retry_at IS NULL OR reconciliation_retry_at <= $now)
+      ORDER BY updated_at, task_id
+      LIMIT $limit`).all({ now: instante(now), limit: Math.max(0, limit) }) as unknown as TaskRow[])
+    return rows.map(mapTask)
+  }
+
+  async claimReconciliation(taskId: string, ownerId: string, leaseMs: number, now = new Date()): Promise<string | null> {
+    const claimToken = `${ownerId}:${randomUUID()}`
+    const row = this.escrever((db) => db.prepare(`UPDATE overcore_tasks
+      SET reconciliation_owner = $owner, reconciliation_token = $token, reconciliation_until = $until, ${CASA}
+      WHERE task_id = $taskId
+        AND status IN ('accepted', 'planning', 'ready')
+        AND (reconciliation_until IS NULL OR reconciliation_until <= $now)
+        AND (reconciliation_retry_at IS NULL OR reconciliation_retry_at <= $now)
+      RETURNING reconciliation_token`).get({
+      owner: ownerId, token: claimToken, until: depois(now, leaseMs), taskId, now: instante(now)
+    }) as { reconciliation_token: string } | undefined)
+    return row?.reconciliation_token ?? null
+  }
+
+  async deferReconciliation(taskId: string, claimToken: string, failure: ReconciliationFailure): Promise<void> {
+    const mudou = this.escrever((db) => Number(db.prepare(`UPDATE overcore_tasks
+      SET reconciliation_owner = NULL, reconciliation_token = NULL, reconciliation_until = NULL,
+          reconciliation_failure_count = reconciliation_failure_count + 1,
+          reconciliation_retry_at = $retryAt, reconciliation_error_code = $code,
+          reconciliation_error_fingerprint = $fingerprint, reconciliation_last_error_at = $occurredAt, ${CASA}
+      WHERE task_id = $taskId AND reconciliation_token = $token`).run({
+      retryAt: instante(failure.retryAt), code: failure.code, fingerprint: failure.errorFingerprint,
+      occurredAt: instante(failure.occurredAt), taskId, token: claimToken
+    }).changes))
+    if (mudou !== 1) throw new Error('Lease da reconciliação não confere ao adiar a tarefa.')
+  }
+
+  async releaseReconciliation(taskId: string, claimToken: string): Promise<void> {
+    this.escrever((db) => db.prepare(`UPDATE overcore_tasks
+      SET reconciliation_owner = NULL, reconciliation_token = NULL, reconciliation_until = NULL,
+          reconciliation_failure_count = 0, reconciliation_retry_at = NULL, reconciliation_error_code = NULL,
+          reconciliation_error_fingerprint = NULL, reconciliation_last_error_at = NULL, ${CASA}
+      WHERE task_id = ? AND reconciliation_token = ?`).run(taskId, claimToken))
+  }
+
+  async claimOutbox(workerId: string, leaseMs: number, now = new Date()): Promise<ClaimedMessage | null> {
+    const claimToken = `${workerId}:${randomUUID()}`
+    const row = this.escrever((db) => {
+      // rowid desempata o created_at de mesmo milissegundo na ordem de inserção.
+      const candidate = db.prepare(`SELECT outbox_id FROM overcore_task_outbox
+        WHERE processed_at IS NULL AND available_at <= $now AND (locked_until IS NULL OR locked_until <= $now)
+        ORDER BY available_at, created_at, rowid
+        LIMIT 1`).get({ now: instante(now) }) as { outbox_id: string } | undefined
+      if (!candidate) return undefined
+      return db.prepare(`UPDATE overcore_task_outbox
+        SET claim_token = $token, worker_id = $worker, locked_until = $until, attempts = attempts + 1,
+            updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), ${CASA}
+        WHERE outbox_id = $outboxId
+        RETURNING outbox_id, task_id, kind, payload, available_at, attempts, claim_token, locked_until`).get({
+        token: claimToken, worker: workerId, until: depois(now, leaseMs), outboxId: candidate.outbox_id
+      }) as unknown as OutboxRow
+    })
+    if (!row) return null
+    return {
+      outboxId: row.outbox_id,
+      taskId: row.task_id,
+      kind: row.kind,
+      payload: lerJson<JsonObject>(row.payload),
+      availableAt: row.available_at,
+      attempts: row.attempts,
+      claimToken: row.claim_token,
+      lockedUntil: row.locked_until
+    }
+  }
+
+  async extendOutboxLease(outboxId: string, claimToken: string, leaseMs: number, now = new Date()): Promise<void> {
+    const mudou = this.escrever((db) => Number(db.prepare(`UPDATE overcore_task_outbox
+      SET locked_until = $until, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), ${CASA}
+      WHERE outbox_id = $outboxId AND claim_token = $token AND processed_at IS NULL AND locked_until > $now`).run({
+      until: depois(now, leaseMs), outboxId, token: claimToken, now: instante(now)
+    }).changes))
+    if (mudou !== 1) throw new Error('Lease da outbox nao pode ser renovado.')
+  }
+
+  async completeOutbox(outboxId: string, claimToken: string): Promise<void> {
+    const mudou = this.escrever((db) => Number(db.prepare(`UPDATE overcore_task_outbox
+      SET processed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), claim_token = NULL, worker_id = NULL, locked_until = NULL,
+          updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), ${CASA}
+      WHERE outbox_id = ? AND claim_token = ? AND processed_at IS NULL`).run(outboxId, claimToken).changes))
+    if (mudou !== 1) throw new Error('Lease da outbox não confere.')
+  }
+
+  async releaseOutbox(outboxId: string, claimToken: string, errorFingerprint: string, retryAt: Date): Promise<void> {
+    const mudou = this.escrever((db) => Number(db.prepare(`UPDATE overcore_task_outbox
+      SET available_at = $retryAt, claim_token = NULL, worker_id = NULL, locked_until = NULL,
+          last_error_fingerprint = $fingerprint, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), ${CASA}
+      WHERE outbox_id = $outboxId AND claim_token = $token AND processed_at IS NULL`).run({
+      retryAt: instante(retryAt), fingerprint: errorFingerprint, outboxId, token: claimToken
+    }).changes))
+    if (mudou !== 1) throw new Error('Lease da outbox não confere.')
+  }
   async withExecutionFence<T>(_claim: ClaimedMessage, _epoch: number, _mode: 'execute' | 'reconcile', _operation: () => Promise<T>, _now?: Date): Promise<T> { return pendente('withExecutionFence', 'B5') }
   async findExecutionReceipt(_outboxId: string): Promise<ExecutionReceipt | null> { return pendente('findExecutionReceipt', 'B7') }
   async saveExecutionReceipt(_receipt: ExecutionReceipt, _claimToken: string, _now?: Date): Promise<ExecutionReceipt> { return pendente('saveExecutionReceipt', 'B7') }

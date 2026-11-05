@@ -1,59 +1,10 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { after, test } from 'node:test'
-import type { CasMutation, JsonObject, StoredTask, TaskRequest, TaskState, TaskStatus } from '../src/domain/types.js'
+import { test } from 'node:test'
+import type { JsonObject } from '../src/domain/types.js'
 import { comBanco } from '../src/infrastructure/database/sqlite/banco.js'
-import { aplicarMigracoes } from '../src/infrastructure/database/sqlite/migracoes.js'
 import { SqliteTaskStore } from '../src/infrastructure/database/sqlite/sqlite-task-store.js'
 import { ConcurrentTaskUpdateError, DuplicateTaskError } from '../src/ports/task-store.js'
-
-const pastas: string[] = []
-after(async () => { await Promise.all(pastas.map((pasta) => rm(pasta, { recursive: true, force: true }))) })
-
-async function bancoMigrado(): Promise<string> {
-  const pasta = await mkdtemp(join(tmpdir(), 'overcore-task-store-'))
-  pastas.push(pasta)
-  const arquivo = join(pasta, 'overcore.db')
-  aplicarMigracoes(arquivo, join(process.cwd(), 'migrations-sqlite'))
-  return arquivo
-}
-
-function minuto(n: number): string {
-  return new Date(Date.UTC(2026, 10, 5, 12, n)).toISOString()
-}
-
-function tarefa(taskId: string, opcoes: { chave?: string; requestId?: string; status?: TaskStatus; revisao?: number; epoca?: number } = {}): StoredTask {
-  const status = opcoes.status ?? 'accepted'
-  const stateRevision = opcoes.revisao ?? 1
-  return {
-    taskId,
-    requestId: opcoes.requestId ?? `req-${taskId}`,
-    idempotencyKey: opcoes.chave ?? `chave-${taskId}`,
-    scopeKey: 'escopo',
-    status,
-    stateRevision,
-    executionEpoch: opcoes.epoca ?? 1,
-    request: { requestId: opcoes.requestId ?? `req-${taskId}`, objective: 'teste' } as unknown as TaskRequest,
-    state: { taskId, stateRevision, lifecycle: { state: status } } as unknown as TaskState,
-    createdAt: minuto(0),
-    updatedAt: minuto(stateRevision - 1)
-  }
-}
-
-function evento(id: string, n = 0): CasMutation['event'] {
-  return { eventId: id, kind: 'teste', payload: { n }, occurredAt: minuto(n) }
-}
-
-function avancar(atual: StoredTask, status: TaskStatus, extra: Partial<CasMutation> = {}): CasMutation {
-  const next = tarefa(atual.taskId, { chave: atual.idempotencyKey, requestId: atual.requestId, status, revisao: atual.stateRevision + 1, epoca: atual.executionEpoch })
-  return { expectedRevision: atual.stateRevision, next, event: evento(`ev-${atual.taskId}-${next.stateRevision}`, next.stateRevision - 1), ...extra }
-}
-
-function contar(arquivo: string, tabela: string): number {
-  return Number(comBanco(arquivo, (db) => db.prepare(`SELECT count(*) AS n FROM ${tabela}`).get()?.n))
-}
+import { avancar, bancoMigrado, contar, evento, minuto, tarefa } from './support/sqlite-fixtures.js'
 
 test('cria a tarefa com o evento e relê pelas duas chaves', async () => {
   const arquivo = await bancoMigrado()
