@@ -4,144 +4,15 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { ContractValidator } from './contracts/validator.js'
 import { TaskManager } from './application/task-manager.js'
-import { TaskPreflight } from './application/task-preflight.js'
-import { BaselineDiscovery } from './application/baseline-discovery.js'
-import { AdaptiveDiscovery } from './application/adaptive-discovery.js'
 import { TaskWorker } from './application/task-worker.js'
-import { FileEffectHarness } from './application/file-effect-harness.js'
-import { HarnessFileReplacementExecutor } from './application/file-replacement-executor.js'
-import { HarnessPostgresTableProbeExecutor } from './application/postgres-table-probe-executor.js'
-import { PostgresTableProbeHarness } from './application/postgres-table-probe-harness.js'
-import {
-  AgentAssistedContractInspectionExecutor,
-  ReadOnlyContractInspectionExecutor
-} from './application/inspection-executor.js'
+import { ReadOnlyContractInspectionExecutor } from './application/inspection-executor.js'
 import type { JsonObject } from './domain/types.js'
-import { HttpAuthorityProvider } from './infrastructure/authority/http-authority-provider.js'
-import { HttpEffectAuthorityGuard } from './infrastructure/authority/http-effect-authority-guard.js'
-import { AnthropicAgentSdkRuntime } from './infrastructure/agent-runtime/anthropic-agent-sdk.js'
-import { ClaudeDiscoveryAdvisor } from './infrastructure/discovery/claude-discovery-advisor.js'
 import { createPostgresPool, migrate } from './infrastructure/database/postgres.js'
-import { PostgresTaskStore } from './infrastructure/database/postgres-task-store.js'
-import { PostgresEffectJournalStore } from './infrastructure/database/postgres-effect-journal-store.js'
-import { FileCheckpointStore } from './infrastructure/checkpoints/file-checkpoint-store.js'
-import { createLocalServer } from './infrastructure/http/local-server.js'
-import { readValidationEvidence } from './infrastructure/runtime/validation-evidence.js'
-import { loadRuntimeConfig } from './infrastructure/runtime/config.js'
-import { removeRuntimeDescriptor, writeRuntimeDescriptor } from './infrastructure/runtime/descriptor.js'
+import { serve } from './infrastructure/runtime/serve.js'
 import { InMemoryTaskStore } from './testing/in-memory-task-store.js'
 import { PermittingAuthorityProvider } from './testing/permitting-authority-provider.js'
 
 const projectRoot = dirname(dirname(fileURLToPath(import.meta.url)))
-
-async function serve(): Promise<void> {
-  const config = loadRuntimeConfig()
-  // O motor SQLite é ligado ao serve pela tarefa C3 do plano da F4; até lá, recusa explícita.
-  if (config.database.engine !== 'postgres') throw new Error('Motor sqlite ainda não está ligado ao serve (F4, tarefa C3).')
-  const pool = createPostgresPool(config.database.url)
-  await migrate(pool, projectRoot)
-  const validator = await ContractValidator.create(projectRoot)
-  const store = new PostgresTaskStore(pool)
-  const authority = new HttpAuthorityProvider(
-    config.authorityProviderUrl,
-    config.authorityProviderToken
-  )
-  const discovery = config.discoveryMode === 'advisor'
-    ? new AdaptiveDiscovery(
-        new BaselineDiscovery(),
-        new ClaudeDiscoveryAdvisor(new AnthropicAgentSdkRuntime(), projectRoot)
-      )
-    : new AdaptiveDiscovery(new BaselineDiscovery())
-  const manager = new TaskManager(
-    store,
-    validator,
-    authority,
-    undefined,
-    new TaskPreflight(validator, discovery, store)
-  )
-  const effectJournal = new PostgresEffectJournalStore(pool)
-  const effectAuthority = new HttpEffectAuthorityGuard(
-    new URL('/v1/authority/revalidate-effect', config.authorityProviderUrl),
-    config.authorityProviderToken
-  )
-  const worker = new TaskWorker(
-    `worker-${process.pid}`,
-    store,
-    validator,
-    new AgentAssistedContractInspectionExecutor(new AnthropicAgentSdkRuntime()),
-    undefined,
-    new HarnessFileReplacementExecutor(new FileEffectHarness(
-      effectJournal,
-      new FileCheckpointStore(join(config.runtimeDirectory, 'checkpoints')),
-      effectAuthority
-    )),
-    new HarnessPostgresTableProbeExecutor(new PostgresTableProbeHarness(pool, effectJournal, effectAuthority))
-  )
-  const server = createLocalServer(manager, worker, config.localToken, [
-    'inspection-report-sha256-v1',
-    'inspection-independent-semantic-review-v1',
-    'inspection-direct-entries-snapshot-and-tool-telemetry-v1'
-  ], () => readValidationEvidence(projectRoot))
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject)
-    server.listen(config.port, config.host, resolve)
-  })
-  const address = server.address()
-  if (!address || typeof address === 'string') throw new Error('Servidor local não informou porta TCP.')
-  const descriptorPath = await writeRuntimeDescriptor(config.runtimeDirectory, {
-    schemaVersion: 1,
-    pid: process.pid,
-    host: config.host,
-    port: address.port,
-    startedAt: new Date().toISOString()
-  })
-  process.stdout.write(`Overcore ativo em http://${config.host}:${address.port}\n`)
-
-  let reconciling = false
-  const reconcile = () => {
-    if (reconciling) return
-    reconciling = true
-    void manager.reconcilePending()
-      .then((outcomes) => {
-        for (const outcome of outcomes) {
-          if (outcome.outcome === 'failed') {
-            process.stderr.write(`reconciler ${outcome.taskId}: ${outcome.error ?? 'falha sem mensagem'}\n`)
-          } else if (outcome.outcome === 'deferred') {
-            process.stderr.write(
-              `reconciler ${outcome.taskId}: ${outcome.error ?? 'nova tentativa adiada'}; retry ${outcome.retryAt ?? 'não informado'}\n`
-            )
-          }
-        }
-      })
-      .catch((error: unknown) => process.stderr.write(
-        `reconciler: ${error instanceof Error ? error.message : String(error)}\n`
-      ))
-      .finally(() => { reconciling = false })
-  }
-  reconcile()
-  const reconciliationInterval = setInterval(reconcile, 1_000)
-  reconciliationInterval.unref()
-
-  let working = false
-  const workerInterval = setInterval(() => {
-    if (working) return
-    working = true
-    void worker.runOnce()
-      .catch((error: unknown) => process.stderr.write(`worker: ${error instanceof Error ? error.message : String(error)}\n`))
-      .finally(() => { working = false })
-  }, 500)
-  workerInterval.unref()
-
-  const shutdown = async () => {
-    clearInterval(reconciliationInterval)
-    clearInterval(workerInterval)
-    await new Promise<void>((resolve) => server.close(() => resolve()))
-    await removeRuntimeDescriptor(descriptorPath)
-    await pool.end()
-  }
-  process.once('SIGINT', () => void shutdown().finally(() => process.exit(0)))
-  process.once('SIGTERM', () => void shutdown().finally(() => process.exit(0)))
-}
 
 async function runMigration(): Promise<void> {
   const pool = createPostgresPool(process.env.OVERCORE_DATABASE_URL ?? '')
@@ -246,7 +117,7 @@ async function cancel(taskId: string | undefined): Promise<void> {
 
 async function main(): Promise<void> {
   const command = process.argv[2]
-  if (command === 'serve') return serve()
+  if (command === 'serve') return serve(projectRoot)
   if (command === 'migrate') return runMigration()
   if (command === 'demo-inspection') return demoInspection()
   if (command === 'preflight') return preflight(process.argv[3])
