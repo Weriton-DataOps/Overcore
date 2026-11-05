@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { DatabaseSync } from 'node:sqlite'
 import { comBanco, transacao } from './banco.js'
 
 /**
@@ -43,6 +44,19 @@ export function renovarPosse(arquivo: string, token: string, relogio: Relogio = 
     Number(db.prepare('UPDATE _dono SET ate = ? WHERE id = 1 AND token = ?').run(ate, token).changes)))
   if (mudou !== 1) throw new Error('A posse do banco foi perdida para outro processo; este processo precisa parar de escrever.')
   return { token, ate }
+}
+
+/** Quem segura a posse agora, sem escrever nada; posse vencida ou ausente devolve undefined. */
+export function donoVivo(arquivo: string, agora: Date = new Date()): { processo: string; maquina: string; ate: string } | undefined {
+  const db = new DatabaseSync(arquivo, { readOnly: true })
+  try {
+    const temTabela = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = '_dono'").get()
+    if (!temTabela) return undefined
+    const atual = db.prepare('SELECT processo, maquina, ate FROM _dono WHERE id = 1').get() as Omit<LinhaDono, 'token'> | undefined
+    return atual && Date.parse(atual.ate) > agora.getTime() ? { processo: atual.processo, maquina: atual.maquina, ate: atual.ate } : undefined
+  } finally {
+    db.close()
+  }
 }
 
 /** Solta a posse se ainda for deste token. Soltar duas vezes, ou depois de perder, não faz nada. */

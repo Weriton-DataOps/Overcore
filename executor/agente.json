@@ -1,0 +1,30 @@
+{
+  "agente": "overcore",
+  "versao": "0.1.0",
+  "banco": "overcore.db",
+  "migracoes": "migrations-sqlite/",
+  "requer": {
+    "node": ">=24",
+    "agentes": [
+      "omni>=0.26"
+    ]
+  },
+  "executor": {
+    "comando": "node dist/executor/overcore-executor.js",
+    "modos": [
+      "instalar",
+      "importar",
+      "exportar",
+      "atualizar",
+      "verificar",
+      "servir"
+    ]
+  },
+  "interface": {
+    "modulo": "interface/index.html",
+    "painel": "Overcore",
+    "api": "http://127.0.0.1:{porta}/v1"
+  },
+  "tarefas": [],
+  "credenciais": []
+}

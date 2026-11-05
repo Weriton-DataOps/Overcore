@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
 import { comBanco, transacao } from './banco.js'
 
 /**
@@ -11,13 +12,44 @@ import { comBanco, transacao } from './banco.js'
 
 const PADRAO = /^(\d{4})_([a-z0-9_]+)\.sql$/
 
-interface Migracao { versao: number; nome: string; sql: string; sha256: string }
+export interface Migracao { versao: number; nome: string; sql: string; sha256: string }
 
 export function hashMigracao(sql: string): string {
   return createHash('sha256').update(sql.replace(/\r\n/g, '\n'), 'utf8').digest('hex')
 }
 
-function lerMigracoes(diretorio: string): Migracao[] {
+/** O nome que a casa mostra: `0001_overcore`. */
+export const nomeDaMigracao = (m: { versao: number; nome: string }): string => `${String(m.versao).padStart(4, '0')}_${m.nome}`
+
+export interface SituacaoDasMigracoes {
+  aplicadas: string[]
+  pendentes: string[]
+  alteradas: string[]
+  desconhecidas: string[]
+}
+
+/** Compara o banco com a pasta sem escrever nada. Banco sem `_migracoes` conta como tudo pendente. */
+export function situacaoDasMigracoes(arquivo: string, diretorio: string): SituacaoDasMigracoes {
+  const migracoes = lerMigracoes(diretorio)
+  const db = new DatabaseSync(arquivo, { readOnly: true })
+  try {
+    const temTabela = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = '_migracoes'").get()
+    const linhas = temTabela
+      ? db.prepare('SELECT versao, nome, sha256 FROM _migracoes ORDER BY versao').all() as unknown as { versao: number; nome: string; sha256: string }[]
+      : []
+    const noBanco = new Map(linhas.map((l) => [Number(l.versao), l]))
+    return {
+      aplicadas: linhas.map(nomeDaMigracao),
+      pendentes: migracoes.filter((m) => !noBanco.has(m.versao)).map(nomeDaMigracao),
+      alteradas: migracoes.filter((m) => noBanco.has(m.versao) && noBanco.get(m.versao)?.sha256 !== m.sha256).map(nomeDaMigracao),
+      desconhecidas: linhas.filter((l) => !migracoes.some((m) => m.versao === Number(l.versao))).map(nomeDaMigracao)
+    }
+  } finally {
+    db.close()
+  }
+}
+
+export function lerMigracoes(diretorio: string): Migracao[] {
   const migracoes: Migracao[] = []
   for (const arquivo of readdirSync(diretorio)) {
     if (!arquivo.endsWith('.sql')) continue
