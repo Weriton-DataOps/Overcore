@@ -356,9 +356,8 @@ test('CAS rejeita escritor que leu revisão antiga', async () => {
   const store = new InMemoryTaskStore()
   const manager = new TaskManager(store, validator, new PermittingAuthorityProvider())
   const task = await manager.submit(await requestFixture())
+  // O escritor atrasado leu a revisão anterior e propõe a seguinte a ela, que é a revisão já gravada.
   const stale = structuredClone(task)
-  stale.stateRevision += 1
-  stale.state.stateRevision += 1
   stale.updatedAt = new Date().toISOString()
   await assert.rejects(
     store.compareAndSwap({

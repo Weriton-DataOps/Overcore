@@ -26,6 +26,11 @@ function copy<T>(value: T): T {
   return structuredClone(value)
 }
 
+/** Ordem binária, a mesma do ORDER BY com collation "C" no PostgreSQL e BINARY no SQLite. */
+function porCodePoint(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0
+}
+
 export class InMemoryTaskStore implements TaskStore {
   private readonly executionLocks = new Map<string, Promise<void>>()
 
@@ -51,9 +56,13 @@ export class InMemoryTaskStore implements TaskStore {
           message?.claimToken !== claim.claimToken || !message.lockedUntil || Date.parse(message.lockedUntil) <= now.getTime()) {
         throw new ExecutionInterruptedError()
       }
-      return operation()
+      // Como nos motores com banco, a mensagem em cerca fica fora do claimOutbox até a operação terminar.
+      this.fencedOutbox.add(claim.outboxId)
+      try { return await operation() } finally { this.fencedOutbox.delete(claim.outboxId) }
     })
   }
+  private readonly fencedOutbox = new Set<string>()
+  private readonly completedOutbox = new Set<string>()
   readonly tasks = new Map<string, StoredTask>()
   readonly plans = new Map<string, JsonObject>()
   readonly authorizations = new Map<string, { taskId: string; request: JsonObject; decision: JsonObject; enforcement: JsonObject }>()
@@ -102,6 +111,9 @@ export class InMemoryTaskStore implements TaskStore {
       if (existing.draftFingerprint.value === record.draftFingerprint.value) return copy(existing)
       throw new ConcurrentPreflightUpdateError(record.draftId, expectedPreviousRevision)
     }
+    if (this.preflightReports.has(record.reportId)) {
+      throw new ConcurrentPreflightUpdateError(record.draftId, expectedPreviousRevision)
+    }
     const other = [...this.preflightStreams.entries()].find(([, item]) =>
       item.idempotencyKey === record.idempotencyKey
     )
@@ -129,6 +141,10 @@ export class InMemoryTaskStore implements TaskStore {
   async create(task: StoredTask, event: CasMutation['event']): Promise<StoredTask> {
     const existing = [...this.tasks.values()].find((item) => item.idempotencyKey === task.idempotencyKey)
     if (existing) throw new DuplicateTaskError(existing.taskId)
+    if (this.tasks.has(task.taskId)) throw new Error(`Tarefa ${task.taskId} já existe.`)
+    if ([...this.tasks.values()].some((item) => item.requestId === task.requestId)) {
+      throw new Error(`requestId ${task.requestId} já pertence a outra tarefa.`)
+    }
     this.tasks.set(task.taskId, copy(task))
     this.events.push(copy(event))
     return copy(task)
@@ -168,7 +184,7 @@ export class InMemoryTaskStore implements TaskStore {
         return !lease || Date.parse(lease.until) <= now.getTime()
       })
       .filter((task) => !task.reconciliation || Date.parse(task.reconciliation.retryAt) <= now.getTime())
-      .sort((left, right) => left.updatedAt.localeCompare(right.updatedAt))
+      .sort((left, right) => porCodePoint(left.updatedAt, right.updatedAt) || porCodePoint(left.taskId, right.taskId))
       .slice(0, Math.max(0, limit))
       .map(copy)
   }
@@ -231,12 +247,15 @@ export class InMemoryTaskStore implements TaskStore {
   }
 
   private async commitMutation(mutation: CasMutation): Promise<StoredTask> {
+    if (mutation.next.stateRevision !== mutation.expectedRevision + 1) {
+      throw new Error('CAS precisa avançar exatamente uma revisão.')
+    }
     const current = this.tasks.get(mutation.next.taskId)
     if (!current || current.stateRevision !== mutation.expectedRevision) {
       throw new ConcurrentTaskUpdateError(mutation.next.taskId, mutation.expectedRevision)
     }
-    if (mutation.next.stateRevision !== mutation.expectedRevision + 1) {
-      throw new Error('CAS precisa avançar exatamente uma revisão.')
+    if (mutation.outbox && (this.outbox.has(mutation.outbox.outboxId) || this.completedOutbox.has(mutation.outbox.outboxId))) {
+      throw new Error(`Mensagem ${mutation.outbox.outboxId} já existe na outbox.`)
     }
     if (mutation.completeOutbox) {
       const message = this.outbox.get(mutation.completeOutbox.outboxId)
@@ -265,6 +284,7 @@ export class InMemoryTaskStore implements TaskStore {
     }
     if (mutation.completeOutbox) {
       this.outbox.delete(mutation.completeOutbox.outboxId)
+      this.completedOutbox.add(mutation.completeOutbox.outboxId)
     }
     return copy(mutation.next)
   }
@@ -291,8 +311,9 @@ export class InMemoryTaskStore implements TaskStore {
       }
       return copy(existing)
     }
-    this.executionReceipts.set(receipt.outboxId, copy(receipt))
-    return copy(receipt)
+    const recorded = { ...copy(receipt), recordedAt: new Date(receipt.recordedAt).toISOString() }
+    this.executionReceipts.set(receipt.outboxId, recorded)
+    return copy(recorded)
   }
 
   async extendOutboxLease(
@@ -318,6 +339,7 @@ export class InMemoryTaskStore implements TaskStore {
     const candidate = [...this.outbox.values()]
       .filter((item) => Date.parse(item.availableAt) <= now.getTime())
       .filter((item) => !item.lockedUntil || Date.parse(item.lockedUntil) <= now.getTime())
+      .filter((item) => !this.fencedOutbox.has(item.outboxId))
       .sort((a, b) => a.availableAt.localeCompare(b.availableAt))[0]
     if (!candidate) return null
     const result = await this.locked(candidate.taskId, async () => {
@@ -339,6 +361,7 @@ export class InMemoryTaskStore implements TaskStore {
     const message = this.outbox.get(outboxId)
     if (!message || message.claimToken !== claimToken) throw new Error('Lease da outbox não confere.')
     this.outbox.delete(outboxId)
+    this.completedOutbox.add(outboxId)
   }
 
   async releaseOutbox(outboxId: string, claimToken: string, errorFingerprint: string, retryAt: Date): Promise<void> {

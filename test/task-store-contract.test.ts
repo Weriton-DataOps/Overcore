@@ -1,9 +1,29 @@
 import { SqliteEffectJournalStore } from '../src/infrastructure/database/sqlite/sqlite-effect-journal-store.js'
 import { SqliteTaskStore } from '../src/infrastructure/database/sqlite/sqlite-task-store.js'
+import { InMemoryEffectJournalStore } from '../src/testing/in-memory-effect-journal-store.js'
+import { InMemoryTaskStore } from '../src/testing/in-memory-task-store.js'
 import { bancoMigrado, contar } from './support/sqlite-fixtures.js'
 import { contratoDoTaskStore } from './support/task-store-contract.js'
 
 // O terceiro motor, PostgreSQL, roda a mesma suíte em integration/task-store-contract-postgres.test.ts (npm run test:postgres).
+
+contratoDoTaskStore({
+  nome: 'in-memory',
+  async abrir() {
+    const store = new InMemoryTaskStore()
+    const journal = new InMemoryEffectJournalStore()
+    return {
+      store,
+      journal,
+      reabrir: () => ({ store, journal }),
+      async contar(o_que) {
+        if (o_que === 'eventos') return store.events.length
+        if (o_que === 'outbox') return store.outbox.size
+        return store.preflightStreams.size
+      }
+    }
+  }
+})
 
 const TABELAS = { eventos: 'overcore_task_events', outbox: 'overcore_task_outbox', streams: 'overcore_preflight_streams' } as const
 
