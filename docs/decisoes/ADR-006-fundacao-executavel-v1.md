@@ -5,6 +5,11 @@
 Aceita em 2026-08-31 pelo proprietário, com a correção de que o Overcore trabalhará com muitos
 projetos simultaneamente e, portanto, não nascerá apoiado em SQLite.
 
+> **Superada em parte pela [ADR-023](ADR-023-motor-sqlite-da-casa-unica-v1.md).** O PostgreSQL
+> continua sendo o motor padrão e o único que aceita vários processos trabalhadores. O SQLite entra
+> como segundo motor, escolhido por `OVERCORE_DATABASE_ENGINE=sqlite`, só para o Overcore da casa
+> única: uma máquina, um processo, um arquivo. O resto desta ADR segue valendo.
+
 ## Decisão
 
 ### Linguagem e runtime

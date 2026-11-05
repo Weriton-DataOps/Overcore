@@ -51,7 +51,8 @@ SQLite exige que um único processo seja dono do arquivo:
 - a tabela `_dono` tem uma linha só, com `processo`, `maquina`, `token` e `ate`;
 - ao abrir, o processo toma a linha em `BEGIN IMMEDIATE`, se ela estiver vazia ou vencida;
 - se a posse de outro processo ainda estiver valendo, a abertura falha com erro explícito;
-- o processo renova a posse no mesmo ritmo do worker e a solta ao encerrar;
+- o processo renova a posse a cada um terço do TTL e a solta ao encerrar; se a renovação falhar
+  porque outro processo assumiu, ele encerra em vez de continuar escrevendo;
 - se o processo cair, a posse vence sozinha (TTL de 30 s).
 
 A cerca da D3 confia nessa posse única. Vários trabalhadores continuam sendo caso do PostgreSQL, como
@@ -127,6 +128,8 @@ por chave de idempotência que o PostgreSQL faz depois do rollback.
   `autocrlf=true` e não tem `.gitattributes`; sem essa normalização, o mesmo commit geraria hashes
   diferentes em checkouts diferentes. As migrações do PostgreSQL continuam como estão.
 - A `0001` cria o esquema no estado equivalente ao das migrações PostgreSQL 001 a 008.
+- `migrations-sqlite/EQUIVALENCIA.md` declara, para cada migração de `migrations/`, qual migração
+  SQLite a cobre. `test/sqlite-equivalencia.test.ts` falha se alguma ficar sem linha.
 
 ### D8. Colunas vivas e `_diario`
 
@@ -155,12 +158,13 @@ então não existe no motor SQLite. Nesse motor, `localExecutorCapabilities` rec
 
 ### D10. Prova pela suíte de contrato
 
-Uma única suíte, parametrizada por `createStore` e `dispose`, roda contra:
+Uma única suíte (`test/support/task-store-contract.ts`), parametrizada por um motor que sabe abrir,
+reabrir e contar o próprio banco, roda contra:
 
 - `InMemoryTaskStore`, sempre;
 - `SqliteTaskStore` e `SqliteEffectJournalStore`, **sempre**, porque o `node:sqlite` vem com o Node
   e os testes usam um arquivo em `mkdtemp`;
-- os stores PostgreSQL, no `test:postgres`, quando há banco disponível.
+- os stores PostgreSQL, no `test:postgres`, cada caso num schema descartável.
 
 O comportamento esperado é o do PostgreSQL. Se a suíte revelar divergências do `InMemoryTaskStore`
 (ordenação, `completeOutbox`, `releaseOutbox`), o dublê é corrigido: um dublê que mente esconde

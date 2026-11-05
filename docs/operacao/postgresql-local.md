@@ -88,11 +88,17 @@ A migration `008_postgres_table_probe_effect.sql` amplia o journal para a sonda 
 aceita a operação `database.schema.modify` e o recibo `postgres-table-probe-completed`; não abre uma
 porta para SQL livre.
 
-## Por que não existe SQLite nem broker agora
+## PostgreSQL, SQLite e broker
 
 PostgreSQL já entrega transação, JSONB, CAS e reivindicação concorrente da outbox com
-`FOR UPDATE SKIP LOCKED`. SQLite criaria um segundo comportamento de persistência, e um broker
-adicionaria outra fonte operacional antes de existir necessidade comprovada.
+`FOR UPDATE SKIP LOCKED`. Ele continua sendo o motor padrão e o único que aceita vários processos
+trabalhadores.
+
+Desde a [ADR-023](../decisoes/ADR-023-motor-sqlite-da-casa-unica-v1.md), existe um segundo motor,
+SQLite, para o Overcore da casa única: um processo dono de um arquivo. O comportamento dos dois
+motores é o mesmo nas portas, e uma única suíte de contrato prova isso. A operação desse motor está em
+[sqlite-local.md](sqlite-local.md). Broker continua fora: adicionaria outra fonte operacional antes
+de existir necessidade comprovada.
 
 ## Limite desta etapa
 
