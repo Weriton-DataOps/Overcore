@@ -23,6 +23,16 @@ export function createPostgresPool(connectionString: string): PostgresPool {
   })
 }
 
+/** Digest gravado para migrações novas: o texto normalizado para LF, para o checkout CRLF do Windows não mudar o hash. */
+export function migrationDigest(sql: string): string {
+  return sha256(sql.replace(/\r\n/g, '\n'))
+}
+
+/** Bancos migrados antes da normalização guardam o digest cru; os dois valem, conteúdo diferente não. */
+export function appliedMigrationMatches(storedDigest: string, sql: string): boolean {
+  return storedDigest === migrationDigest(sql) || storedDigest === sha256(sql)
+}
+
 export async function assertPostgres18(pool: PostgresPool): Promise<void> {
   const result = await pool.query<{ server_version_num: string }>('SHOW server_version_num')
   const version = Number(result.rows[0]?.server_version_num)
@@ -49,13 +59,13 @@ export async function migrate(pool: PostgresPool, projectRoot: string): Promise<
     const names = (await readdir(migrationsRoot)).filter((name) => name.endsWith('.sql')).sort()
     for (const name of names) {
       const sql = await readFile(join(migrationsRoot, name), 'utf8')
-      const digest = sha256(sql)
+      const digest = migrationDigest(sql)
       const existing = await client.query<{ sha256: string }>(
         'SELECT sha256 FROM overcore_schema_migrations WHERE name = $1',
         [name]
       )
       if (existing.rows[0]) {
-        if (existing.rows[0].sha256 !== digest) throw new Error(`Migração aplicada ${name} foi alterada.`)
+        if (!appliedMigrationMatches(existing.rows[0].sha256, sql)) throw new Error(`Migração aplicada ${name} foi alterada.`)
         continue
       }
       await client.query('BEGIN')
