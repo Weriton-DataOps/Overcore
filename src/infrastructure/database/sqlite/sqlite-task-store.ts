@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { resolve } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 
 import type {
@@ -18,6 +19,7 @@ import {
   type StoredTaskAuthorization,
   type TaskStore
 } from '../../../ports/task-store.js'
+import { ExecutionInterruptedError } from '../../../ports/execution-control.js'
 import { instante, lerJson, unicidade } from './mapeamento.js'
 import { SqlitePreflightStore } from './sqlite-preflight-store.js'
 
@@ -94,6 +96,25 @@ function mapTask(row: TaskRow): StoredTask {
   return task
 }
 
+/**
+ * Estado da cerca de um arquivo (ADR-023 D3). No PostgreSQL o FOR UPDATE da cerca bloqueia o CAS
+ * e esconde a mensagem do SKIP LOCKED; aqui a trava por tarefa faz o primeiro e `emCerca` o segundo.
+ * Vale dentro do processo; a posse (D2) garante que só um processo escreve no arquivo.
+ */
+interface Cerca { travas: Map<string, Promise<void>>; emCerca: Set<string> }
+
+const cercas = new Map<string, Cerca>()
+
+function cercaDo(arquivo: string): Cerca {
+  const chave = resolve(arquivo)
+  let cerca = cercas.get(chave)
+  if (!cerca) {
+    cerca = { travas: new Map(), emCerca: new Set() }
+    cercas.set(chave, cerca)
+  }
+  return cerca
+}
+
 function pendente(metodo: string, tarefa: string): never {
   throw new Error(`SqliteTaskStore.${metodo} entra na tarefa ${tarefa} da F4.`)
 }
@@ -158,7 +179,40 @@ export class SqliteTaskStore extends SqlitePreflightStore implements TaskStore {
     if (mutation.next.stateRevision !== mutation.expectedRevision + 1) {
       throw new Error('CAS precisa avançar exatamente uma revisão.')
     }
-    return this.escrever((db) => this.aplicarMutacao(db, mutation))
+    return this.travado(mutation.next.taskId, async () => this.escrever((db) => this.aplicarMutacao(db, mutation)))
+  }
+
+  async withExecutionFence<T>(claim: ClaimedMessage, epoch: number, mode: 'execute' | 'reconcile', operation: () => Promise<T>, now = new Date()): Promise<T> {
+    return this.travado(claim.taskId, async () => {
+      // Checagem curta: a transação fecha antes da operação, que pode esperar rede, disco ou agente (D4).
+      const valida = this.escrever((db) => {
+        const lease = db.prepare(`SELECT 1 FROM overcore_task_outbox WHERE outbox_id = ? AND task_id = ? AND claim_token = ?
+          AND processed_at IS NULL AND locked_until > ?`).get(claim.outboxId, claim.taskId, claim.claimToken, instante(now))
+        const task = db.prepare('SELECT status, execution_epoch FROM overcore_tasks WHERE task_id = ?')
+          .get(claim.taskId) as { status: TaskStatus; execution_epoch: number } | undefined
+        const estados: TaskStatus[] = mode === 'execute' ? ['running', 'verifying'] : ['cancelling']
+        return Boolean(lease && task && task.execution_epoch === epoch && estados.includes(task.status))
+      })
+      if (!valida) throw new ExecutionInterruptedError()
+      const { emCerca } = cercaDo(this.arquivo)
+      emCerca.add(claim.outboxId)
+      try { return await operation() } finally { emCerca.delete(claim.outboxId) }
+    })
+  }
+
+  /** Serializa as operações da mesma tarefa neste processo, no molde do `locked` do InMemoryTaskStore. */
+  private async travado<T>(taskId: string, operation: () => Promise<T>): Promise<T> {
+    const { travas } = cercaDo(this.arquivo)
+    const previous = travas.get(taskId) ?? Promise.resolve()
+    let release!: () => void
+    const pending = new Promise<void>((resolveTrava) => { release = resolveTrava })
+    const tail = previous.then(() => pending)
+    travas.set(taskId, tail)
+    await previous
+    try { return await operation() } finally {
+      release()
+      if (travas.get(taskId) === tail) travas.delete(taskId)
+    }
   }
 
   async listReconciliationCandidates(limit: number, now = new Date()): Promise<StoredTask[]> {
@@ -209,11 +263,13 @@ export class SqliteTaskStore extends SqlitePreflightStore implements TaskStore {
   async claimOutbox(workerId: string, leaseMs: number, now = new Date()): Promise<ClaimedMessage | null> {
     const claimToken = `${workerId}:${randomUUID()}`
     const row = this.escrever((db) => {
+      // Mensagem em cerca fica fora mesmo com o lease vencido, como o SKIP LOCKED do PostgreSQL.
       // rowid desempata o created_at de mesmo milissegundo na ordem de inserção.
       const candidate = db.prepare(`SELECT outbox_id FROM overcore_task_outbox
         WHERE processed_at IS NULL AND available_at <= $now AND (locked_until IS NULL OR locked_until <= $now)
+          AND outbox_id NOT IN (SELECT value FROM json_each($cerca))
         ORDER BY available_at, created_at, rowid
-        LIMIT 1`).get({ now: instante(now) }) as { outbox_id: string } | undefined
+        LIMIT 1`).get({ now: instante(now), cerca: JSON.stringify([...cercaDo(this.arquivo).emCerca]) }) as { outbox_id: string } | undefined
       if (!candidate) return undefined
       return db.prepare(`UPDATE overcore_task_outbox
         SET claim_token = $token, worker_id = $worker, locked_until = $until, attempts = attempts + 1,
@@ -262,7 +318,6 @@ export class SqliteTaskStore extends SqlitePreflightStore implements TaskStore {
     }).changes))
     if (mudou !== 1) throw new Error('Lease da outbox não confere.')
   }
-  async withExecutionFence<T>(_claim: ClaimedMessage, _epoch: number, _mode: 'execute' | 'reconcile', _operation: () => Promise<T>, _now?: Date): Promise<T> { return pendente('withExecutionFence', 'B5') }
   async findExecutionReceipt(_outboxId: string): Promise<ExecutionReceipt | null> { return pendente('findExecutionReceipt', 'B7') }
   async saveExecutionReceipt(_receipt: ExecutionReceipt, _claimToken: string, _now?: Date): Promise<ExecutionReceipt> { return pendente('saveExecutionReceipt', 'B7') }
 
