@@ -1,7 +1,12 @@
-import { join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
+
+/** PostgreSQL é o padrão; SQLite é o motor da casa única (ADR-023), sem caminho implícito. */
+export type DatabaseConfig =
+  | { engine: 'postgres'; url: string }
+  | { engine: 'sqlite'; path: string }
 
 export interface RuntimeConfig {
-  databaseUrl: string
+  database: DatabaseConfig
   host: '127.0.0.1'
   port: number
   localToken: string
@@ -16,6 +21,15 @@ function required(env: NodeJS.ProcessEnv, name: string): string {
   const value = env[name]
   if (!value) throw new Error(`${name} não foi definido.`)
   return value
+}
+
+function loadDatabaseConfig(env: NodeJS.ProcessEnv): DatabaseConfig {
+  const engine = env.OVERCORE_DATABASE_ENGINE ?? 'postgres'
+  if (engine === 'postgres') return { engine, url: required(env, 'OVERCORE_DATABASE_URL') }
+  if (engine !== 'sqlite') throw new Error('OVERCORE_DATABASE_ENGINE precisa ser postgres ou sqlite.')
+  const path = required(env, 'OVERCORE_SQLITE_PATH')
+  if (!isAbsolute(path)) throw new Error('OVERCORE_SQLITE_PATH precisa ser absoluto.')
+  return { engine, path }
 }
 
 export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig {
@@ -33,7 +47,7 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
   }
   if (localToken.length < 16 || authorityProviderToken.length < 16) throw new Error('Tokens locais precisam de ao menos 16 caracteres.')
   return {
-    databaseUrl: required(env, 'OVERCORE_DATABASE_URL'),
+    database: loadDatabaseConfig(env),
     host,
     port,
     localToken,

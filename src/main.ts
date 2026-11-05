@@ -36,7 +36,9 @@ const projectRoot = dirname(dirname(fileURLToPath(import.meta.url)))
 
 async function serve(): Promise<void> {
   const config = loadRuntimeConfig()
-  const pool = createPostgresPool(config.databaseUrl)
+  // O motor SQLite é ligado ao serve pela tarefa C3 do plano da F4; até lá, recusa explícita.
+  if (config.database.engine !== 'postgres') throw new Error('Motor sqlite ainda não está ligado ao serve (F4, tarefa C3).')
+  const pool = createPostgresPool(config.database.url)
   await migrate(pool, projectRoot)
   const validator = await ContractValidator.create(projectRoot)
   const store = new PostgresTaskStore(pool)
