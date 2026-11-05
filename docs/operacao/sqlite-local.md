@@ -44,6 +44,42 @@ Se o processo morrer sem encerrar, a posse vence sozinha em 30 s, e o próximo `
 | `Migração N (nome) mudou depois de aplicada` | um arquivo de `migrations-sqlite/` mudou depois de aplicado | migração aplicada não muda: a correção entra numa migração nova |
 | `Nenhum executor declarado cobre execute-postgres-table-probe` | tarefa de sonda no motor SQLite | esperado: a sonda só existe no motor PostgreSQL |
 
+## Na casa única: o sub-executor
+
+Na casa, quem liga o motor SQLite é o executor do Omni, pelo comando declarado em
+`executor/agente.json` ([ADR-024](../decisoes/ADR-024-sub-executor-da-casa-unica-v1.md)). As variáveis
+`OVERCORE_DATABASE_ENGINE` e `OVERCORE_SQLITE_PATH` não são usadas: o banco é
+`OMNI_CASA_BANCO\overcore.db` ou, sem essa variável, `%LOCALAPPDATA%\omni\casa\overcore.db`.
+
+| Comando (`node dist/executor/overcore-executor.js …`) | Efeito |
+|---|---|
+| `instalar` | cria o banco e aplica as migrações; repetido, não muda nada |
+| `atualizar` | aplica migrações pendentes; recusa se o Overcore estiver servindo nesse banco |
+| `verificar [--pacote <pasta>] [--porta <n>]` | integridade, chaves, WAL e migrações; compara com um pacote; confere a API fechada sem token |
+| `exportar [--destino <pasta>]` | pacote `overcore-<carimbo>-<hex6>` com `overcore.db` e `manifesto.json`, sem a posse; funciona com o Overcore no ar |
+| `importar <pasta>` | repõe a casa a partir do pacote; só entra em casa vazia e parada; o mesmo pacote de novo devolve `nadaMudou` |
+| `servir --porta <n>` | sobe com toda rota fechada por token, escreve `{"ok":true,"porta":n}` e para quando o stdin fecha |
+
+Cada comando escreve uma linha de JSON no stdout e sai com 0 (ok), 1 (erro ou recusa, com `recusa: true`)
+ou 2 (uso errado, com `uso`).
+
+Diferenças em relação ao `serve`:
+
+- O `servir` **não migra**. Com migração pendente, recusa e pede `atualizar`.
+- O `/health` também exige token.
+- O desligamento é pelo fechamento do stdin.
+
+| Sintoma | Causa | O que fazer |
+|---|---|---|
+| `não está instalado nesta casa: rode instalar antes` | casa sem `overcore.db` | `instalar` |
+| `migração pendente (…): rode atualizar antes de servir` | código novo sobre banco velho | `atualizar` com o Overcore parado |
+| `o Overcore está servindo neste banco (processo X em M)` | `atualizar` ou `importar` com o processo no ar | parar o `servir` antes |
+| `o banco desta casa já tem N linhas vivas` | `importar` em casa com dado | exportar a casa antes, se o dado importa; o pacote só entra em casa vazia |
+| `o pacote vem de um Overcore mais novo` | pacote com migração que este código não conhece | atualizar o código antes de importar |
+
+O painel que a ilha monta (`interface/index.html`) é só de leitura: saúde, capacidades, evidência de
+validação e consulta de tarefa por id, pelo canal `agente:api`.
+
 ## Como os dois motores ficam iguais
 
 - `test/support/task-store-contract.ts` roda as mesmas 24 verificações no in-memory e no SQLite em

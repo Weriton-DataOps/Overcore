@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overcore</title>
+<style>
+/* Painel do Overcore na ilha do Omni (F4, bloco E). Mesma família visual da ilha: vidro escuro, fio de luz.
+   Só leitura: saúde do processo, capacidades, evidência de validação e consulta de tarefa por id. */
+:root {
+  --fundo: #121419;
+  --vidro: rgba(255, 255, 255, .035);
+  --fio-luz: rgba(255, 255, 255, .12);
+  --fio: rgba(255, 255, 255, .06);
+  --tinta: #e8ebf2;
+  --tinta-2: #9aa2b5;
+  --azul: #8fb8f6;
+  --verde: #9fe045;
+  --laranja: #f5a35f;
+  --vermelho: #f07b7b;
+  --cinza: #9aa2b5;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  font: 400 13px/1.5 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  color: var(--tinta); background: var(--fundo); padding: 16px;
+}
+button, input { font: inherit; color: inherit; }
+header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+h1 { font-size: 15px; font-weight: 600; margin: 0; letter-spacing: .02em; }
+h2 { font-size: 11px; font-weight: 600; margin: 0 0 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--tinta-2); }
+.grade-cards { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+section {
+  background: var(--vidro); border: 1px solid var(--fio); border-top-color: var(--fio-luz);
+  border-radius: 12px; padding: 14px 16px; min-width: 0;
+}
+section.largo { grid-column: 1 / -1; }
+dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; }
+dt { color: var(--tinta-2); }
+dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.mono { font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px; }
+.pilula {
+  display: inline-block; padding: 1px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  border: 1px solid currentColor; color: var(--cinza);
+}
+[data-tom="verde"] { color: var(--verde); }
+[data-tom="azul"] { color: var(--azul); }
+[data-tom="laranja"] { color: var(--laranja); }
+[data-tom="vermelho"] { color: var(--vermelho); }
+#capacidades { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { padding: 2px 10px; border-radius: 6px; background: rgba(143, 184, 246, .1); color: var(--azul); font-size: 12px; }
+.erro { color: var(--vermelho); }
+.vazio { color: var(--tinta-2); margin: 0; }
+form { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+input {
+  flex: 1 1 220px; min-width: 0; background: rgba(0, 0, 0, .25); border: 1px solid var(--fio-luz);
+  border-radius: 8px; padding: 6px 10px;
+}
+button {
+  background: rgba(143, 184, 246, .12); border: 1px solid rgba(143, 184, 246, .35); border-radius: 8px;
+  padding: 6px 14px; cursor: pointer;
+}
+button:hover:not(:disabled) { background: rgba(143, 184, 246, .2); }
+button:disabled { opacity: .5; cursor: default; }
+:focus-visible { outline: 2px solid var(--azul); outline-offset: 2px; }
+#atualizar { margin-left: auto; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Overcore</h1>
+  <span id="sinal" class="pilula" role="status" aria-live="polite">conferindo…</span>
+  <button id="atualizar" type="button">Atualizar</button>
+</header>
+<main class="grade-cards">
+  <section aria-labelledby="t-saude">
+    <h2 id="t-saude">Processo</h2>
+    <dl id="saude"></dl>
+  </section>
+  <section aria-labelledby="t-evidencias">
+    <h2 id="t-evidencias">Evidência de validação</h2>
+    <dl id="evidencias"></dl>
+  </section>
+  <section class="largo" aria-labelledby="t-capacidades">
+    <h2 id="t-capacidades">Capacidades</h2>
+    <ul id="capacidades"></ul>
+  </section>
+  <section class="largo" aria-labelledby="t-tarefa">
+    <h2 id="t-tarefa">Consultar tarefa</h2>
+    <form id="busca">
+      <input id="id" name="id" aria-label="id da tarefa" autocomplete="off" spellcheck="false" placeholder="id da tarefa" required maxlength="200" pattern="[A-Za-z0-9._:\-]+">
+      <button id="consultar" type="submit">Consultar</button>
+    </form>
+    <div id="tarefa" aria-live="polite"></div>
+  </section>
+</main>
+<script src="painel.js"></script>
+</body>
+</html>

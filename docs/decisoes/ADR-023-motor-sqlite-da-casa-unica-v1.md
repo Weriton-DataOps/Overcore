@@ -188,6 +188,8 @@ defeito.
 - Sincronização entre máquinas.
 - O sub-executor da casa (`executor/agente.json` e os cinco verbos) e o encaixe da interface. Esses
   itens ficam no bloco E do plano, sem código neste ciclo, porque dependem do contrato com o Omni.
+  Depois que a sessão do Omni aceitou o contrato, viraram a
+  [ADR-024](ADR-024-sub-executor-da-casa-unica-v1.md).
 
 ## Plano
 

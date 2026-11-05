@@ -125,6 +125,67 @@ test('contrato Overcore↔Omni: subir com --porta 0, saúde 401/200, nenhuma rot
   }
 })
 
+// O painel na ilha: o main recebe { agente, metodo, rota, corpo } pelo agente:api, confere a rota contra
+// interface.rotas do manifesto, põe o token e chama o servir. Aqui o `chamar` faz esse papel, e o card e o
+// preload rodam como a ilha os carrega (CommonJS).
+test('contrato Overcore↔Omni: o card e o preload pelo agente:api, contra o servir de verdade', async () => {
+  const c = casa()
+  instalar({ env: c.env })
+  const s = subir(['servir', '--porta', '0'], c.env)
+  try {
+    const porta = (await s.primeira).porta as number
+    const manifesto = JSON.parse(readFileSync(join(process.cwd(), 'executor', 'agente.json'), 'utf8')) as {
+      interface: { preload: string; rotas: Array<{ metodo: string; padrao: string }> }
+    }
+    type Pedido = { agente: string; metodo: string; rota: string }
+    const chamadas: string[] = []
+    const chamar = async ({ agente, metodo, rota }: Pedido) => {
+      if (agente !== 'overcore' || !manifesto.interface.rotas.some((r) => r.metodo === metodo && new RegExp(r.padrao).test(rota))) {
+        return { status: 0, corpo: { ok: false, erro: 'rota fora do manifesto' } }
+      }
+      try {
+        chamadas.push(rota)
+        return await pedir(porta, rota, c.segredos.local)
+      } catch {
+        return { status: 0, corpo: { ok: false, erro: 'API fora do ar' } }
+      }
+    }
+    const carregar = <T>(arquivo: string, requerer: (m: string) => unknown) => {
+      const modulo = { exports: {} as T }
+      new Function('module', 'exports', 'require', readFileSync(join(process.cwd(), arquivo), 'utf8'))(modulo, modulo.exports, requerer)
+      return modulo.exports
+    }
+    const semRequire = (m: string) => { throw new Error(`sem require: ${m}`) }
+
+    const card = carregar<{ resumo: (c: typeof chamar) => Promise<Record<string, unknown>> }>('interface/overcore.js', semRequire)
+    const r = await card.resumo(chamar)
+    assert.equal(r.ok, true, JSON.stringify(r))
+    assert.equal(r.agente, 'overcore')
+    assert.equal(r.versao, VERSAO)
+    assert.equal(r.motor, 'sqlite')
+    assert.ok(!Number.isNaN(Date.parse(String(r.iniciadoEm))))
+
+    let overcore: Record<string, (...args: unknown[]) => Promise<unknown>> = {}
+    carregar('interface/overcore-preload.js', () => ({
+      contextBridge: { exposeInMainWorld: (_nome: string, api: typeof overcore) => { overcore = api } },
+      ipcRenderer: { invoke: (_canal: string, pedido: Pedido) => chamar(pedido) }
+    }))
+    const capacidades = await overcore.capacidades?.() as { capabilities: unknown[] }
+    assert.ok(Array.isArray(capacidades.capabilities))
+    const evidencias = await overcore.evidencias?.() as { status: string }
+    assert.equal(typeof evidencias.status, 'string')
+    assert.equal(await overcore.tarefa?.('task-que-nao-existe'), null)
+    assert.deepEqual(chamadas, ['/v1/saude', '/v1/capabilities', '/v1/validation-evidence', '/v1/tasks/task-que-nao-existe'])
+
+    // o servir parado: o card cai em pé com o motivo do main
+    s.filho.stdin.end()
+    assert.equal(await s.fim, 0, `stderr: ${s.erro()}`)
+    assert.deepEqual(await card.resumo(chamar), { ok: false, erro: 'API fora do ar' })
+  } finally {
+    if (s.filho.exitCode === null) s.filho.kill()
+  }
+})
+
 test('servir recusa banco com migração pendente e não toca nele', () => {
   const c = casa()
   mkdirSync(join(c.pasta, 'casa'), { recursive: true })

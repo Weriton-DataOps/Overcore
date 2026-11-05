@@ -22,8 +22,15 @@
   },
   "interface": {
     "modulo": "interface/index.html",
+    "preload": "interface/overcore-preload.js",
     "painel": "Overcore",
-    "api": "http://127.0.0.1:{porta}/v1"
+    "api": "http://127.0.0.1:{porta}/v1",
+    "rotas": [
+      { "metodo": "GET", "padrao": "^/v1/saude$", "escopo": "qualquer" },
+      { "metodo": "GET", "padrao": "^/v1/capabilities$", "escopo": "qualquer" },
+      { "metodo": "GET", "padrao": "^/v1/validation-evidence$", "escopo": "qualquer" },
+      { "metodo": "GET", "padrao": "^/v1/tasks/[A-Za-z0-9._:-]+$", "escopo": "qualquer" }
+    ]
   },
   "tarefas": [],
   "credenciais": []
