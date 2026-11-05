@@ -139,4 +139,40 @@ export async function verificar({ env = process.env, pastaMigracoes = pastaDeMig
   return { ok: verificacoes.every((v) => v.ok), modo: 'verificar' as const, verificacoes }
 }
 
+// ── servir ──────────────────────────────────────────────────────────────────────────────────────────
+export interface Servindo {
+  ok: true
+  porta: number
+  /** Idempotente: fecha o servidor e solta a posse do banco. */
+  parar(): Promise<void>
+}
+
+/**
+ * Sobe o Overcore no banco da casa, só em 127.0.0.1, com toda rota exigindo o token de OVERCORE_LOCAL_TOKEN.
+ * Quem migra é o atualizar, com o Overcore parado; aqui, banco fora do esquema do pacote é recusado.
+ * O runtime entra por import dinâmico: instalar e verificar não carregam o SDK nem o servidor.
+ */
+export async function servir({ env = process.env, porta, aoPerderPosse, log }: {
+  env?: Ambiente
+  porta: number
+  aoPerderPosse: (error: Error) => void
+  log?: (texto: string) => void
+}): Promise<Servindo> {
+  const arquivo = bancoInstalado(env)
+  const { pendentes, alteradas, desconhecidas } = situacaoDasMigracoes(arquivo, pastaDeMigracoes())
+  if (pendentes.length) throw new ErroExecutor(`migração pendente (${pendentes.join(', ')}): rode atualizar antes de servir`)
+  if (alteradas.length || desconhecidas.length) {
+    throw new ErroExecutor(`o banco da casa diverge das migrações deste pacote (${[...alteradas, ...desconhecidas].join(', ')})`)
+  }
+  const { subir } = await import('../infrastructure/runtime/serve.js')
+  const rodando = await subir(raizDoPacote(), {
+    env: { ...env, OVERCORE_DATABASE_ENGINE: 'sqlite', OVERCORE_SQLITE_PATH: arquivo, OVERCORE_PORT: String(porta) },
+    migracoes: 'exigir',
+    healthAberto: false,
+    aoPerderPosse,
+    ...(log ? { log } : {})
+  })
+  return { ok: true, porta: rodando.porta, parar: () => rodando.encerrar() }
+}
+
 export { nomeDaMigracao }

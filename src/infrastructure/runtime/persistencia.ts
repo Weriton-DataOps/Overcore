@@ -8,7 +8,7 @@ import type { PostgresTableProbeExecutor, TaskStore } from '../../ports/task-sto
 import { createPostgresPool, migrate } from '../database/postgres.js'
 import { PostgresEffectJournalStore } from '../database/postgres-effect-journal-store.js'
 import { PostgresTaskStore } from '../database/postgres-task-store.js'
-import { aplicarMigracoes } from '../database/sqlite/migracoes.js'
+import { aplicarMigracoes, situacaoDasMigracoes } from '../database/sqlite/migracoes.js'
 import { renovarPosse, soltarPosse, tomarPosse, TTL_POSSE_MS } from '../database/sqlite/posse.js'
 import { SqliteEffectJournalStore } from '../database/sqlite/sqlite-effect-journal-store.js'
 import { SqliteTaskStore } from '../database/sqlite/sqlite-task-store.js'
@@ -30,6 +30,11 @@ export interface Persistencia {
 export interface OpcoesDePersistencia {
   /** Chamado se outro processo assumir o arquivo SQLite: este processo precisa parar de escrever. */
   aoPerderPosse: (error: Error) => void
+  /**
+   * `aplicar` (padrão do serve legado) migra na subida. `exigir` é o servir da casa do Omni: quem migra
+   * é o atualizar, com o Overcore parado, e banco fora do esquema do pacote não sobe.
+   */
+  migracoes?: 'aplicar' | 'exigir'
 }
 
 export async function abrirPersistencia(database: DatabaseConfig, projectRoot: string, opcoes: OpcoesDePersistencia): Promise<Persistencia> {
@@ -47,7 +52,16 @@ export async function abrirPersistencia(database: DatabaseConfig, projectRoot: s
 
   const arquivo = database.path
   const maquina = hostname()
-  aplicarMigracoes(arquivo, join(projectRoot, 'migrations-sqlite'))
+  const pastaMigracoes = join(projectRoot, 'migrations-sqlite')
+  if (opcoes.migracoes === 'exigir') {
+    const { pendentes, alteradas, desconhecidas } = situacaoDasMigracoes(arquivo, pastaMigracoes)
+    if (pendentes.length) throw new Error(`Migração pendente no banco SQLite (${pendentes.join(', ')}): rode atualizar antes de servir.`)
+    if (alteradas.length || desconhecidas.length) {
+      throw new Error(`O banco SQLite diverge das migrações do pacote (${[...alteradas, ...desconhecidas].join(', ')}).`)
+    }
+  } else {
+    aplicarMigracoes(arquivo, pastaMigracoes)
+  }
   // A cerca por tarefa só vale dentro de um processo (ADR-023 D3); a posse garante que só existe um.
   const posse = tomarPosse(arquivo, { processo: String(process.pid), maquina })
   const renovacao = setInterval(() => {

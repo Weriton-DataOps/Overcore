@@ -31,19 +31,31 @@ async function jsonBody(request: IncomingMessage): Promise<unknown> {
   return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown
 }
 
+export interface LocalServerOptions {
+  /** O serve legado deixa o /health aberto; na casa do Omni toda rota exige token (decisão A do E3). */
+  openHealth?: boolean
+  /** Corpo de GET /v1/saude, sem o iniciado_em; ausente, a rota não existe. */
+  health?: { agente: string; versao: string; motor: string }
+}
+
 export function createLocalServer(manager: TaskManager, worker: TaskWorker, token: string,
-  capabilities: readonly string[] = [], readValidationEvidence?: () => Promise<unknown>) {
+  capabilities: readonly string[] = [], readValidationEvidence?: () => Promise<unknown>,
+  options: LocalServerOptions = {}) {
   // This identity belongs to this process, not to a task completed by an older runtime.
   const startedAt = new Date().toISOString()
   return createServer(async (request, response) => {
     try {
       const url = new URL(request.url ?? '/', 'http://127.0.0.1')
-      if (request.method === 'GET' && url.pathname === '/health') {
+      if (options.openHealth !== false && request.method === 'GET' && url.pathname === '/health') {
         send(response, 200, { status: 'ok', service: 'overcore-task-manager', version: 1 })
         return
       }
       if (!authorized(request, token)) {
         send(response, 401, { error: 'unauthorized' })
+        return
+      }
+      if (options.health && request.method === 'GET' && url.pathname === '/v1/saude') {
+        send(response, 200, { ...options.health, iniciado_em: startedAt })
         return
       }
       if (request.method === 'GET' && url.pathname === '/v1/capabilities') {
