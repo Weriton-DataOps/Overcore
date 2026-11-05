@@ -4,8 +4,10 @@
 // falha, 2 uso errado.
 //
 //   instalar
+//   importar   <pasta-do-pacote>
+//   exportar   [--destino <pasta>]
 //   atualizar
-//   verificar  [--porta <n>]
+//   verificar  [--pacote <pasta>] [--porta <n>]
 //   servir     --porta <n>     (ambiente: OVERCORE_LOCAL_TOKEN, OVERCORE_AUTHORITY_PROVIDER_URL e _TOKEN)
 //
 // O servir é o único modo longo. A linha {"ok":true,"porta":n} sai só com a porta ouvindo e é a única do
@@ -14,9 +16,9 @@
 // Não se reinicia: isso é do supervisor. Nenhum token é escrito em lugar nenhum.
 import { parseArgs } from 'node:util'
 
-import { atualizar, ErroExecutor, instalar, servir, verificar } from './modos.js'
+import { atualizar, ErroExecutor, exportar, importar, instalar, servir, verificar } from './modos.js'
 
-const USO = 'uso: overcore-executor <instalar|atualizar|verificar|servir> [opções]'
+const USO = 'uso: overcore-executor <instalar|importar|exportar|atualizar|verificar|servir> [opções]'
 const log = (texto: string) => { process.stderr.write(`[overcore servir ${new Date().toISOString()}] ${texto}\n`) }
 
 class ErroDeUso extends Error {}
@@ -34,20 +36,28 @@ let perdeuPosse: ((error: Error) => void) | undefined
 async function rodar(argv: string[]): Promise<{ ok: boolean; parar?: Parar }> {
   let analise
   try {
-    analise = parseArgs({ args: argv, options: { porta: { type: 'string' } }, allowPositionals: true, strict: true })
+    analise = parseArgs({
+      args: argv,
+      options: { porta: { type: 'string' }, pacote: { type: 'string' }, destino: { type: 'string' } },
+      allowPositionals: true,
+      strict: true
+    })
   } catch (error) {
     throw new ErroDeUso(error instanceof Error ? error.message : String(error))
   }
   const { values, positionals: [modo, ...resto] } = analise
-  if (modo && resto.length) throw new ErroDeUso(`${modo}: argumento a mais`)
+  const posicionais = (n: number) => { if (resto.length !== n) throw new ErroDeUso(`${modo}: ${n ? 'diga a pasta do pacote' : 'argumento a mais'}`) }
   switch (modo) {
-    case 'instalar': return instalar()
-    case 'atualizar': return atualizar()
+    case 'instalar': posicionais(0); return instalar()
+    case 'atualizar': posicionais(0); return atualizar()
+    case 'exportar': posicionais(0); return exportar({ destino: values.destino })
+    case 'importar': posicionais(1); return importar({ pacote: resto[0] })
     case 'verificar': {
-      const p = porta(values.porta, modo)
-      return verificar(p === undefined ? {} : { porta: p })
+      posicionais(0)
+      return verificar({ porta: porta(values.porta, modo), pacote: values.pacote })
     }
     case 'servir': {
+      posicionais(0)
       const p = porta(values.porta, modo)
       if (p === undefined) throw new ErroDeUso('servir: diga a --porta')
       return servir({ porta: p, log, aoPerderPosse: (error) => perdeuPosse?.(error) })
