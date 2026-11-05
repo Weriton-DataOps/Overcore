@@ -4,7 +4,6 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, test } from 'node:test'
-import { setTimeout as esperar } from 'node:timers/promises'
 import { comBanco } from '../src/infrastructure/database/sqlite/banco.js'
 import { aplicarMigracoes } from '../src/infrastructure/database/sqlite/migracoes.js'
 import { renovarPosse, soltarPosse, tomarPosse } from '../src/infrastructure/database/sqlite/posse.js'
@@ -80,12 +79,13 @@ test('outro processo é recusado enquanto a posse vale e entra na hora em que el
 
 test('processo que morre sem soltar perde a posse quando o prazo vence', async () => {
   const arquivo = await bancoMigrado()
-  const filho = await filhoDono(arquivo, 700)
+  const filho = await filhoDono(arquivo, 60_000)
   filho.kill('SIGKILL')
   await morto(filho)
   assert.throws(() => tomarPosse(arquivo, { processo: 'pai', maquina: 'teste' }), /já tem dono/)
-  await esperar(900)
-  const posse = tomarPosse(arquivo, { processo: 'pai', maquina: 'teste' })
+  // O prazo vence no relógio injetado: sob carga, um TTL curto de parede venceria antes da primeira asserção.
+  const depoisDoPrazo = () => new Date(Date.now() + 61_000)
+  const posse = tomarPosse(arquivo, { processo: 'pai', maquina: 'teste', agora: depoisDoPrazo })
   assert.match(posse.token, /^[0-9a-f-]{36}$/)
 })
 
