@@ -12,7 +12,7 @@
     "check": "tsc --noEmit",
     "build": "tsc -p tsconfig.build.json",
     "test": "tsc -p tsconfig.test.json && node --test .test-dist/test/*.test.js",
-    "test:postgres": "tsc -p tsconfig.test.json && node --test .test-dist/integration/postgres.test.js .test-dist/integration/effect-journal-postgres.test.js",
+    "test:postgres": "tsc -p tsconfig.test.json && node --test .test-dist/integration/postgres.test.js .test-dist/integration/effect-journal-postgres.test.js .test-dist/integration/task-store-contract-postgres.test.js",
     "test:cancellation-postgres": "tsc -p tsconfig.test.json && node --test .test-dist/integration/cancellation-postgres.test.js",
     "test:sdk-live": "tsc -p tsconfig.test.json && node --test .test-dist/integration/anthropic-login.test.js",
     "eval:discovery": "tsc -p tsconfig.test.json && node .test-dist/integration/discovery-quality.js",
