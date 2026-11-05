@@ -18,7 +18,7 @@ Regras do ciclo:
 | A1 | `config.ts`: `OVERCORE_DATABASE_ENGINE` (`postgres` padrão, `sqlite`), `OVERCORE_SQLITE_PATH` absoluto e obrigatório no `sqlite` | sem variável = postgres com URL exigida; `sqlite` sem caminho = erro; caminho relativo = erro; valor desconhecido = erro |
 | A2 | `sqlite/banco.ts` reproduzido do molde: `busy_timeout`, WAL com `insistirSeOcupado`, `synchronous=NORMAL`, `foreign_keys=ON`, `comBanco`, `transacao` síncrona com `BEGIN IMMEDIATE` | pragmas lidos de volta; trabalho que devolve Promise faz rollback e lança erro; `comBanco` fecha no erro; aninhamento é recusado |
 | A3 | Carregador de `migrations-sqlite/NNNN_*.sql` com `_migracoes` e hash do texto normalizado para LF | aplica em ordem; a segunda abertura não reaplica; SQL alterado é recusado; CRLF e LF dão o mesmo hash; nome fora do padrão é erro |
-| A4 | `migrations-sqlite/0001_overcore.sql`: esquema final equivalente ao PG 001–008, colunas vivas, `_diario` com gatilhos, `_dono` | append-only barra UPDATE/DELETE; `CHECK` de `sha256:` barra um valor inválido; o diário grava I/U/D; UPDATE sem mudar `versao` não entra no diário; FK ligada |
+| A4 | `migrations-sqlite/0001_overcore.sql`: esquema final equivalente ao PG 001–008, colunas vivas, `_diario` com gatilhos, `_dono` | revisão de preflight barra UPDATE e cai em cascata com o stream, como no PG (o PG não barra DELETE); `CHECK` de `sha256:` barra um valor inválido; o diário grava I/U/D; UPDATE sem mudar `versao` não entra no diário; FK ligada |
 | A5 | Posse do arquivo (`_dono`): tomar, renovar, soltar, vencer | um segundo processo filho real é recusado enquanto a posse vale; depois do TTL, assume; soltar libera na hora |
 
 ## Bloco B: adaptadores
