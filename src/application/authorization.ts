@@ -39,6 +39,8 @@ export function buildAuthorizationRequest(
       const resourceRef = action.resourceRef
       const effectPolicy = object(action.effectPolicy, 'effectPolicy')
       const journaled = effectPolicy.mode === 'journaled'
+      // ADR-022: executar a verificação roda código que o agente pode ter alterado.
+      const executesCode = action.operation === 'process.execute' && action.scope === 'request-resource'
       const item: JsonObject = {
         actionId: string(action.actionId, 'actionId'),
         stepRef: string(step.stepId, 'stepRef'),
@@ -50,8 +52,10 @@ export function buildAuthorizationRequest(
           ? 'runtime-internal'
           : journaled
             ? 'reversible-change'
-            : 'read-only',
-        riskLevel: journaled ? 'medium' : 'low',
+            : executesCode
+              ? 'local-code-execution'
+              : 'read-only',
+        riskLevel: journaled || executesCode ? 'medium' : 'low',
         requestedControls: action.scope === 'runtime-internal'
           ? []
           : journaled
@@ -94,7 +98,7 @@ export function buildAuthorizationRequest(
     authorityCeiling: request.authority,
     actions,
     riskSummary: {
-      maximumRisk: journaledActions.length > 0 ? 'medium' : 'low',
+      maximumRisk: actions.some((item) => item.riskLevel === 'medium') ? 'medium' : 'low',
       triggeredBoundaries: [],
       requestResourceActionCount: actions.filter((item) => item.scope === 'request-resource').length,
       journaledEffectCount: journaledActions.length

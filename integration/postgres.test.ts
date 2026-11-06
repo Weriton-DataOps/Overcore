@@ -174,6 +174,16 @@ test('PostgreSQL real persiste, rejeita CAS obsoleto e distribui duas tarefas en
     assert.equal(concurrentAdmissions[0].taskId, concurrentAdmissions[1].taskId)
     assert.equal(concurrentAdmissions[0].taskId, preflightTaskId)
     assert.equal((await store.findById(preflightTaskId))?.status, 'running')
+    // A API de leitura (GET /v1/executions) lê daqui: filtro por estado, mais recente primeiro e teto respeitado.
+    const listedRunning = await store.listTasks({ limit: 200, statuses: ['running'] })
+    assert.ok(listedRunning.some((task) => task.taskId === preflightTaskId))
+    assert.ok(listedRunning.every((task) => task.status === 'running'))
+    assert.deepEqual(
+      listedRunning.map((task) => task.updatedAt),
+      listedRunning.map((task) => task.updatedAt).sort((a, b) => Date.parse(b) - Date.parse(a))
+    )
+    assert.equal((await store.listTasks({ limit: 200, statuses: ['cancelled'] })).some((task) => task.taskId === preflightTaskId), false)
+    assert.ok((await store.listTasks({ limit: 1 })).length <= 1)
     const admissionRows = await pool.query<{ count: string }>(
       'SELECT count(*) FROM overcore_tasks WHERE idempotency_key=$1',
       [draft.executionIdempotencyKey]
