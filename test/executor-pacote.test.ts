@@ -12,6 +12,10 @@ import { ErroExecutor, exportar, importar, instalar, raizDoPacote, verificar } f
 import { tomarPosse } from '../src/infrastructure/database/sqlite/posse.js'
 
 const CLI = join(process.cwd(), '.test-dist', 'src', 'executor', 'overcore-executor.js')
+// As migrações reais do pacote, em ordem; a nota de teste usa 9990 para ficar sempre depois delas.
+const MIGRACOES = readdirSync(join(raizDoPacote(), 'migrations-sqlite'))
+  .filter((nome) => /^\d{4}_.+\.sql$/.test(nome)).sort().map((nome) => nome.slice(0, -4))
+const ULTIMA = MIGRACOES.at(-1)
 const pastas: string[] = []
 after(() => { for (const pasta of pastas) rmSync(pasta, { recursive: true, force: true }) })
 
@@ -54,7 +58,7 @@ test('exportar leva o banco sem a posse; importar numa casa nova repõe, e o mes
   const exportado = exportar({ env: a.env, destino })
   assert.equal(exportado.ok, true)
   assert.equal(exportado.modo, 'exportar')
-  assert.equal(exportado.migracao, '0001_overcore')
+  assert.equal(exportado.migracao, ULTIMA)
   assert.match(exportado.pacote, /overcore-\d{8}T\d{6}Z-[0-9a-f]{6}$/)
   assert.deepEqual(readdirSync(destino), [exportado.pacote.split(/[\\/]/).at(-1)])
   assert.deepEqual(readdirSync(exportado.pacote).sort(), ['manifesto.json', 'overcore.db'])
@@ -63,7 +67,7 @@ test('exportar leva o banco sem a posse; importar numa casa nova repõe, e o mes
   assert.deepEqual(Object.keys(manifesto), ['agente', 'versao', 'migracao', 'migracoes', 'maquina', 'criadoEm', 'tabelas'])
   assert.equal(manifesto.agente, 'overcore')
   assert.equal(manifesto.versao, (JSON.parse(readFileSync(join(raizDoPacote(), 'package.json'), 'utf8')) as { version: string }).version)
-  assert.deepEqual(manifesto.migracoes, ['0001_overcore'])
+  assert.deepEqual(manifesto.migracoes, MIGRACOES)
   const tabelas = manifesto.tabelas as Record<string, { linhas: number; sha256: string }>
   assert.equal(tabelas._dono, undefined, 'a posse não entra na impressão')
   assert.equal(tabelas.overcore_preflight_streams?.linhas, 1)
@@ -136,14 +140,14 @@ test('importar recusa casa com dado vivo, casa servindo, pacote adulterado e pac
   writeFileSync(join(alheio, 'manifesto.json'), JSON.stringify({ ...m, agente: 'oraculo' }))
   assert.throws(() => importar({ env: vazia.env, pacote: alheio }), (e: unknown) => e instanceof ErroExecutor && /Overcore/.test(e.message))
 
-  // um Overcore mais novo: a origem tem a 0002, que este pacote de código não conhece
+  // um Overcore mais novo: a origem tem a 9990, que este pacote de código não conhece
   const nova = casa()
   const migracoes = join(nova.pasta, 'migracoes')
   cpSync(join(raizDoPacote(), 'migrations-sqlite'), migracoes, { recursive: true })
-  writeFileSync(join(migracoes, '0002_nota.sql'), 'CREATE TABLE nota (id INTEGER PRIMARY KEY);\n')
+  writeFileSync(join(migracoes, '9990_nota.sql'), 'CREATE TABLE nota (id INTEGER PRIMARY KEY);\n')
   instalar({ env: nova.env, pastaMigracoes: migracoes })
   const doFuturo = exportar({ env: nova.env, destino: join(nova.pasta, 'saida') }).pacote
-  assert.throws(() => importar({ env: vazia.env, pacote: doFuturo }), (e: unknown) => e instanceof ErroExecutor && /mais novo/.test(e.message) && /0002_nota/.test(e.message))
+  assert.throws(() => importar({ env: vazia.env, pacote: doFuturo }), (e: unknown) => e instanceof ErroExecutor && /mais novo/.test(e.message) && /9990_nota/.test(e.message))
   assert.equal(existsSync(vazia.arquivo), false)
 })
 
@@ -156,10 +160,10 @@ test('importar de um Overcore mais velho aplica a migração que falta e a casa 
 
   const atual = join(velha.pasta, 'atual')
   cpSync(so1, atual, { recursive: true })
-  writeFileSync(join(atual, '0002_nota.sql'), 'CREATE TABLE nota (id INTEGER PRIMARY KEY);\n')
+  writeFileSync(join(atual, '9990_nota.sql'), 'CREATE TABLE nota (id INTEGER PRIMARY KEY);\n')
   const b = casa()
   const r = importar({ env: b.env, pacote, pastaMigracoes: atual })
-  assert.deepEqual(r.migracoes, { aplicadas: ['0002_nota'] })
+  assert.deepEqual(r.migracoes, { aplicadas: ['9990_nota'] })
   assert.equal(contar(b.arquivo, 'nota'), 0)
 })
 

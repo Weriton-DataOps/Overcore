@@ -249,6 +249,26 @@ Aprovadas em 2026-09-28, todas conforme a recomendação:
 | D3 | prefixo reservado de branch | `overcore/` |
 | D4 | primeiro uso real depois do gate | o próprio repositório do Overcore, numa tarefa pequena e revisável |
 
+### Adendo de 2026-10-22 à D1
+
+Em 2026-10-22, o proprietário decidiu pelo Omni ("manda fazer o recomendado") liberar o mínimo
+usável sem a revalidação do Omni sobre o diff medido. A liberação vale só para repositórios dele e
+se sustenta em três fatos:
+
+- o único efeito é um branch local `overcore/`, criado só se o ref não existir;
+- push, PR e merge ficam fora da v1, então o diff passa pela revisão humana antes de chegar a
+  qualquer outro lugar;
+- o Omni autoriza o `argv` da verificação e a criação do branch no planejamento, antes de existir
+  worktree.
+
+A revalidação vira dívida explícita para uma fatia futura: antes de rodar a verificação e antes de
+criar o branch, o Omni deve revalidar `process.execute` e `repository.branch.create` sobre o digest
+do diff medido. Motivo: a autorização do planejamento vê o pedido, não o código que o editor
+escreveu, e a verificação executa esse código como o usuário, sem sandbox de sistema operacional. Só
+a revalidação sobre o diff amarra a permissão ao que de fato vai rodar. Fechar a dívida exige que
+`/v1/authority/revalidate-effect` aceite essas duas operações e que o executor o chame nos dois
+pontos.
+
 ## Plano de implementação
 
 Cada fatia termina com `npm run verify` aprovado e não habilita a capacidade antes da seguinte estar
@@ -262,6 +282,42 @@ pronta. Até a fatia 6, nenhum `TaskDraft` consegue produzir um pedido `reposito
 | 4 | verificação declarada com revalidação sobre o diff e ambiente saneado | a execução de código medido depende do diff da fatia 2 |
 | 5 | efeito journaled do branch, recuperação e cancelamento | o único efeito no repositório do proprietário vem por último |
 | 6 | dica no `TaskDraft`, derivação no Preflight e gate real | a capacidade só fica alcançável quando todas as proteções existem |
+
+### Estado
+
+- **Fatia 1 — entregue em 2026-09-28.** O `TaskRequest` aceita `repository-change` com as fronteiras
+  desta ADR no próprio schema; a autorização conhece `local-code-execution`. O planejamento e o
+  dispatch escolhem a estratégia por correspondência exaustiva: antes, qualquer tipo que não fosse
+  substituição de arquivo nem sonda caía na inspeção como ramo residual; agora um tipo sem executor
+  bloqueia com `block-execution-capability-unavailable`, sem plano, autorização ou outbox. A guarda de
+  caminho decide pelo caminho físico e recusa saída do worktree, link ou junção, `.git` em qualquer
+  grafia, nomes reservados, fluxo alternativo e sufixos que o Windows reinterpreta.
+- **Fatias 2 a 6 — entregues em 2026-10-22, num commit local, como mínimo usável pedido pelo
+  proprietário via Omni.** O que entrou:
+  - a bancada cria o worktree no commit exato e o remove ao final;
+  - a medição do diff;
+  - o editor Claude com `Edit` e `Write` sob a guarda;
+  - a verificação por `argv` sem shell;
+  - o branch criado só se o ref não existir, com releitura;
+  - o bloqueio `block-repository-branch-exists`, com retomada e cancelamento;
+  - a dica `executionHints.repositoryChange` no `TaskDraft`;
+  - a API de leitura `GET /v1/executions`.
+
+  A guarda passou a testar `exclude` antes de `include`; antes disso, `.env` era legível quando
+  `include` também o cobria. A operação e as lacunas estão em
+  [api-execucoes.md](../operacao/api-execucoes.md). Duas pendências antes de considerar o Marco 3
+  fechado:
+  - a revalidação do Omni sobre o diff medido, que a D1 exige. O proprietário liberou o mínimo sem
+    ela em 2026-10-22, só para repositórios dele, e ela ficou como dívida explícita (adendo da D1);
+  - o gate real do item 8 da prova. Ele existe desde 2026-10-22
+    (`npm run test:repository-change-live`) e está vermelho por causa do Omni, não do Overcore. O
+    controle confirma que o teste falha no commit com defeito. Depois disso, o adaptador real do
+    Omni responde HTTP 400 ao plano: `actions[3].effectClass` não aceita `local-code-execution`. O
+    Overcore bloqueia com `block-authority-provider-invalid` antes de qualquer ferramenta. Aceitar a
+    classe não basta: a política atual do Omni também nega `repository.read` em envelope `medium`,
+    `repository.worktree.modify` como `runtime-internal` fora de envelope `low` e
+    `repository.branch.create` como `reversible-change`. A fatia 3 previa o cliente Omni aceitando a
+    classe; essa metade, que fica no repositório do Omni, ainda não existe.
 
 ## Consequências
 

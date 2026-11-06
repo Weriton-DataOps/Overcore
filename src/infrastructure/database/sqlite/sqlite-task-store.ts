@@ -164,6 +164,15 @@ export class SqliteTaskStore extends SqlitePreflightStore implements TaskStore {
     return row ? mapTask(row) : null
   }
 
+  async listTasks(query: { limit: number; statuses?: StoredTask['status'][] }): Promise<StoredTask[]> {
+    const statuses = query.statuses ?? []
+    const filtro = statuses.length ? `WHERE status IN (${statuses.map(() => '?').join(', ')})` : ''
+    const rows = this.ler((db) => db.prepare(`SELECT * FROM overcore_tasks ${filtro}
+      ORDER BY updated_at DESC, task_id
+      LIMIT ?`).all(...statuses, Math.max(0, query.limit)) as unknown as TaskRow[])
+    return rows.map(mapTask)
+  }
+
   async findPlan(taskId: string, planId: string, planRevision: number): Promise<JsonObject | null> {
     const row = this.ler((db) => db.prepare(`SELECT document FROM overcore_task_plans
       WHERE task_id = ? AND plan_id = ? AND plan_revision = ?`).get(taskId, planId, planRevision) as { document: string } | undefined)

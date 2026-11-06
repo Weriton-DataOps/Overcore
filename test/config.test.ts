@@ -34,6 +34,16 @@ test('motor sqlite recusa caminho relativo', () => {
   )
 })
 
+test('workers por padrão: dois no PostgreSQL, um no SQLite da casa; o env manda nos dois', () => {
+  const path = join(tmpdir(), 'overcore-config-test', 'overcore.db')
+  const pg = { ...base, OVERCORE_DATABASE_URL: 'postgres://u@127.0.0.1:5432/overcore' }
+  const sqlite = { ...base, OVERCORE_DATABASE_ENGINE: 'sqlite', OVERCORE_SQLITE_PATH: path }
+  assert.equal(loadRuntimeConfig(pg).workerSlots, 2)
+  assert.equal(loadRuntimeConfig(sqlite).workerSlots, 1)
+  assert.equal(loadRuntimeConfig({ ...sqlite, OVERCORE_WORKER_SLOTS: '3' }).workerSlots, 3)
+  assert.throws(() => loadRuntimeConfig({ ...sqlite, OVERCORE_WORKER_SLOTS: '0' }), /OVERCORE_WORKER_SLOTS/)
+})
+
 test('motor desconhecido é recusado', () => {
   assert.throws(
     () => loadRuntimeConfig({ ...base, OVERCORE_DATABASE_ENGINE: 'mysql', OVERCORE_DATABASE_URL: 'x' }),

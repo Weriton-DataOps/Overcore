@@ -116,6 +116,20 @@ export function contratoDoTaskStore(motor: MotorDeContrato): void {
     assert.equal(await reaberto.findByIdempotencyKey('nao-existe'), null)
   })
 
+  caso('tarefa: a lista sai da mais recente para a mais velha, desempata pelo id e filtra por estado', async ({ store }) => {
+    await store.create(tarefa('t3'), evento('ev-t3-1'))
+    await store.create(tarefa('t1'), evento('ev-t1-1'))
+    const t2 = await store.create(tarefa('t2'), evento('ev-t2-1'))
+    await store.compareAndSwap(avancar(t2, 'running', { outbox: mensagem('o2', 't2', 0) }))
+    assert.deepEqual(ids(await store.listTasks({ limit: 10 })), ['t2', 't1', 't3'])
+    assert.deepEqual(ids(await store.listTasks({ limit: 2 })), ['t2', 't1'])
+    assert.deepEqual(ids(await store.listTasks({ limit: 10, statuses: ['accepted'] })), ['t1', 't3'])
+    assert.deepEqual(ids(await store.listTasks({ limit: 10, statuses: ['running', 'accepted'] })), ['t2', 't1', 't3'])
+    assert.deepEqual(ids(await store.listTasks({ limit: 10, statuses: [] })), ['t2', 't1', 't3'], 'lista vazia não filtra')
+    assert.deepEqual(await store.listTasks({ limit: 10, statuses: ['succeeded'] }), [])
+    assert.deepEqual(await store.listTasks({ limit: 0 }), [])
+  })
+
   caso('tarefa: admissão repetida aponta a existente e não grava evento de novo', async ({ store, contar }) => {
     await store.create(tarefa('t1'), evento('ev-t1-1'))
     const duplicada = (error: unknown) => error instanceof DuplicateTaskError && error.existingTaskId === 't1'

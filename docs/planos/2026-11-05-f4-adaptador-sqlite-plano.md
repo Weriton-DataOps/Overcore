@@ -59,14 +59,16 @@ aceitou o contrato, e o bloco E virou código:
 - **E1 e E2 feitos.** Estão no ar os cinco verbos e mais o `servir` do supervisor. A prova está em
   `test/executor-modos.test.ts`, `test/executor-pacote.test.ts` e `test/contrato-omni.test.ts`.
 - **E3 feito em parte.** Há um painel de leitura com preload pelo `agente:api` e `interface.rotas` no
-  manifesto. A cópia literal da janela do Overcore que está na ilha espera a junção com o ramo do
-  Marco 3, porque depende de `/v1/executions`.
+  manifesto. A junção com o ramo do Marco 3 já trouxe o `/v1/executions` (ADR-024 D7). A cópia
+  literal da janela do Overcore que está na ilha, com retomar e cancelar, espera agora a decisão do
+  proprietário sobre abrir escrita ao painel.
 - **E4 sem mudança.**
 
 ## Dívida registrada
 
-- `009_repository_change_receipts.sql` (Marco 3): quando os ramos se juntarem, vira
-  `migrations-sqlite/0002_*.sql`, e a C1 passa a cobrir os recibos de mudança de repositório.
+- ~~`009_repository_change_receipts.sql` (Marco 3)~~ **paga na junção dos ramos:** virou
+  `migrations-sqlite/0002_repository_change_receipts.sql`, e o recibo novo é gravado no SQLite
+  (ADR-024 D7).
 
 ## Riscos
 

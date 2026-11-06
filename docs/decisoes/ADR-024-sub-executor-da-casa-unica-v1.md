@@ -115,6 +115,33 @@ da janela da ilha fica para quando os ramos se juntarem (ver Consequências).
 - `test/interface.test.ts` confere o manifesto, as rotas aceitas e recusadas, o canal único, a CSP e as
   quedas do card.
 
+### D7. Junção com o Marco 3 (emenda de 2026-11-05)
+
+O ramo do Marco 3 ([ADR-022](ADR-022-mudanca-de-repositorio-por-worktree-v1.md)) entrou neste por merge.
+O `servir` passa a declarar duas capacidades novas no `/v1/capabilities`, nos dois motores:
+
+| capacidade | o que é |
+|---|---|
+| `repository-change-worktree-v1` | mudança de repositório por worktree descartável, com branch novo e verificação declarada (ADR-022) |
+| `execution-read-view-v1` | leitura das execuções por `GET /v1/executions` e `GET /v1/executions/{id}` |
+
+- **Mudança de repositório ligada também no SQLite.** A fechadura é a mesma do PostgreSQL: sem os grants
+  de repositório no pedido, a tarefa bloqueia com `block-repository-request-invalid` antes de plano,
+  autorização ou outbox; com o Omni negando, bloqueia com `block-authorization-denied`. Nos dois casos,
+  nenhum editor é chamado e nenhuma worktree nasce. A prova está em `test/sqlite-fechadura.test.ts`, que
+  traz um controle positivo: o mesmo pedido, com autoridade, chega à outbox no mesmo banco.
+- **Um worker por padrão no SQLite.** A casa roda um processo sobre um arquivo, e a escrita do SQLite é
+  serial. Por isso `OVERCORE_WORKER_SLOTS` vale 1 por padrão no motor SQLite e continua 2 no PostgreSQL.
+  O ambiente manda nos dois motores, de 1 a 8. A prova está em `test/config.test.ts`.
+- **Recibo da 009.** A `009_repository_change_receipts.sql` ganhou a equivalente
+  `migrations-sqlite/0002_repository_change_receipts.sql`. A `0001` não foi editada. A linha está em
+  `migrations-sqlite/EQUIVALENCIA.md`, e `test/sqlite-recibos.test.ts` grava o recibo novo.
+- **`listTasks` no SQLite.** A leitura das execuções lista tarefas. A suíte de contrato cobre a ordem
+  (mais recente primeiro, desempate pelo id), o limite e o filtro por estado nos motores.
+- **O painel continua só de leitura.** As rotas de `/v1/executions` existem, mas ainda não entram em
+  `interface.rotas`. A cópia da janela da ilha, com retomar e cancelar, espera a decisão do proprietário
+  sobre abrir escrita ao painel (ver Consequências).
+
 ## Consequências
 
 - O executor do Omni consegue instalar, supervisionar, exportar e importar o Overcore sem conhecer o

@@ -2,7 +2,7 @@
 // Tudo em pasta temporária. Com NODE_TEST_CONTEXT, a casa real é recusada antes de criar arquivo.
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -11,6 +11,10 @@ import { tomarPosse } from '../src/infrastructure/database/sqlite/posse.js'
 import { atualizar, ErroExecutor, instalar, raizDoPacote, verificar } from '../src/executor/modos.js'
 
 const CLI = join(process.cwd(), '.test-dist', 'src', 'executor', 'overcore-executor.js')
+// As migrações reais do pacote, em ordem; a nota de teste usa 9990 para ficar sempre depois delas.
+const MIGRACOES = readdirSync(join(raizDoPacote(), 'migrations-sqlite'))
+  .filter((nome) => /^\d{4}_.+\.sql$/.test(nome)).sort().map((nome) => nome.slice(0, -4))
+const ULTIMA = MIGRACOES.at(-1)
 
 function casa() {
   const pasta = mkdtempSync(join(tmpdir(), 'overcore-casa-'))
@@ -30,13 +34,13 @@ test('instalar cria o banco migrado e, rodado de novo, não muda nada', async ()
     const primeiro = instalar({ env: c.env })
     assert.deepEqual(primeiro, {
       ok: true, modo: 'instalar', banco: c.arquivo, novo: true,
-      migracoes: { aplicadas: ['0001_overcore'], atual: '0001_overcore' }
+      migracoes: { aplicadas: MIGRACOES, atual: ULTIMA }
     })
     const antes = readFileSync(c.arquivo)
     const segundo = instalar({ env: c.env })
     assert.deepEqual(segundo, {
       ok: true, modo: 'instalar', banco: c.arquivo, novo: false,
-      migracoes: { aplicadas: [], atual: '0001_overcore' }
+      migracoes: { aplicadas: [], atual: ULTIMA }
     })
     assert.deepEqual(readFileSync(c.arquivo), antes, 'o segundo instalar não tocou no arquivo')
     const v = await verificar({ env: c.env })
@@ -70,21 +74,21 @@ test('migração nova fica pendente no verificar até o atualizar; alterada é a
   try {
     const pastaMigracoes = migracoesCopiadas(c.pasta)
     instalar({ env: c.env, pastaMigracoes })
-    writeFileSync(join(pastaMigracoes, '0002_nota.sql'), 'CREATE TABLE nota (id INTEGER PRIMARY KEY);\n')
+    writeFileSync(join(pastaMigracoes, '9990_nota.sql'), 'CREATE TABLE nota (id INTEGER PRIMARY KEY);\n')
 
     const pendente = await verificar({ env: c.env, pastaMigracoes })
     assert.equal(pendente.ok, false)
     assert.deepEqual(pendente.verificacoes.find((x) => x.nome === 'migrações'),
-      { nome: 'migrações', ok: false, pendentes: ['0002_nota'], alteradas: [], desconhecidas: [] })
+      { nome: 'migrações', ok: false, pendentes: ['9990_nota'], alteradas: [], desconhecidas: [] })
 
-    assert.deepEqual(atualizar({ env: c.env, pastaMigracoes }), { ok: true, modo: 'atualizar', aplicadas: ['0002_nota'], atual: '0002_nota' })
-    assert.deepEqual(atualizar({ env: c.env, pastaMigracoes }), { ok: true, modo: 'atualizar', aplicadas: [], atual: '0002_nota' })
+    assert.deepEqual(atualizar({ env: c.env, pastaMigracoes }), { ok: true, modo: 'atualizar', aplicadas: ['9990_nota'], atual: '9990_nota' })
+    assert.deepEqual(atualizar({ env: c.env, pastaMigracoes }), { ok: true, modo: 'atualizar', aplicadas: [], atual: '9990_nota' })
     assert.equal((await verificar({ env: c.env, pastaMigracoes })).ok, true)
 
-    writeFileSync(join(pastaMigracoes, '0002_nota.sql'), 'CREATE TABLE nota (id INTEGER PRIMARY KEY, texto TEXT);\n')
+    writeFileSync(join(pastaMigracoes, '9990_nota.sql'), 'CREATE TABLE nota (id INTEGER PRIMARY KEY, texto TEXT);\n')
     const alterada = await verificar({ env: c.env, pastaMigracoes })
     assert.deepEqual(alterada.verificacoes.find((x) => x.nome === 'migrações'),
-      { nome: 'migrações', ok: false, pendentes: [], alteradas: ['0002_nota'], desconhecidas: [] })
+      { nome: 'migrações', ok: false, pendentes: [], alteradas: ['9990_nota'], desconhecidas: [] })
   } finally { c.limpar() }
 })
 
@@ -95,7 +99,7 @@ test('com o Overcore servindo, migração pendente é recusada em vez de mudar o
     instalar({ env: c.env, pastaMigracoes })
     tomarPosse(c.arquivo, { processo: '4242', maquina: 'OUTRA' })
     assert.deepEqual(instalar({ env: c.env, pastaMigracoes }).migracoes.aplicadas, [], 'sem pendência, instalar segue idempotente')
-    writeFileSync(join(pastaMigracoes, '0002_nota.sql'), 'CREATE TABLE nota (id INTEGER PRIMARY KEY);\n')
+    writeFileSync(join(pastaMigracoes, '9990_nota.sql'), 'CREATE TABLE nota (id INTEGER PRIMARY KEY);\n')
     for (const modo of [() => atualizar({ env: c.env, pastaMigracoes }), () => instalar({ env: c.env, pastaMigracoes })]) {
       assert.throws(modo, (e: unknown) => e instanceof ErroExecutor && /servindo/.test(e.message) && /4242/.test(e.message))
     }

@@ -6,11 +6,13 @@ import { BaselineDiscovery } from '../../application/baseline-discovery.js'
 import { FileEffectHarness } from '../../application/file-effect-harness.js'
 import { HarnessFileReplacementExecutor } from '../../application/file-replacement-executor.js'
 import { AgentAssistedContractInspectionExecutor } from '../../application/inspection-executor.js'
+import { RepositoryChangeWorkbench } from '../../application/repository-change-executor.js'
 import { TaskManager } from '../../application/task-manager.js'
 import { TaskPreflight } from '../../application/task-preflight.js'
 import { TaskWorker } from '../../application/task-worker.js'
 import { ContractValidator } from '../../contracts/validator.js'
 import { AnthropicAgentSdkRuntime } from '../agent-runtime/anthropic-agent-sdk.js'
+import { ClaudeRepositoryEditor } from '../agent-runtime/claude-repository-editor.js'
 import { HttpAuthorityProvider } from '../authority/http-authority-provider.js'
 import { HttpEffectAuthorityGuard } from '../authority/http-effect-authority-guard.js'
 import { FileCheckpointStore } from '../checkpoints/file-checkpoint-store.js'
@@ -71,23 +73,35 @@ export async function subir(projectRoot: string, opcoes: OpcoesDeSubida): Promis
       new URL('/v1/authority/revalidate-effect', config.authorityProviderUrl),
       config.authorityProviderToken
     )
-    const worker = new TaskWorker(
-      `worker-${process.pid}`,
+    const inspectionExecutor = new AgentAssistedContractInspectionExecutor(new AnthropicAgentSdkRuntime())
+    const fileReplacementExecutor = new HarnessFileReplacementExecutor(new FileEffectHarness(
+      effectJournal,
+      new FileCheckpointStore(join(config.runtimeDirectory, 'checkpoints')),
+      effectAuthority
+    ))
+    const postgresProbeExecutor = persistencia.sondaPostgres?.(effectJournal, effectAuthority)
+    // Cada tarefa ganha sua própria worktree sob esta raiz; a bancada não guarda estado entre tarefas.
+    const repositoryChangeExecutor = new RepositoryChangeWorkbench(new ClaudeRepositoryEditor(), {
+      worktreeRoot: join(config.runtimeDirectory, 'worktrees')
+    })
+    const workers = Array.from({ length: config.workerSlots }, (_, slot) => new TaskWorker(
+      `worker-${process.pid}-${slot + 1}`,
       store,
       validator,
-      new AgentAssistedContractInspectionExecutor(new AnthropicAgentSdkRuntime()),
+      inspectionExecutor,
       undefined,
-      new HarnessFileReplacementExecutor(new FileEffectHarness(
-        effectJournal,
-        new FileCheckpointStore(join(config.runtimeDirectory, 'checkpoints')),
-        effectAuthority
-      )),
-      persistencia.sondaPostgres?.(effectJournal, effectAuthority)
-    )
+      fileReplacementExecutor,
+      postgresProbeExecutor,
+      repositoryChangeExecutor
+    ))
+    const [worker] = workers
+    if (!worker) throw new Error('OVERCORE_WORKER_SLOTS não criou nenhum worker.')
     const server = createLocalServer(manager, worker, config.localToken, [
       'inspection-report-sha256-v1',
       'inspection-independent-semantic-review-v1',
-      'inspection-direct-entries-snapshot-and-tool-telemetry-v1'
+      'inspection-direct-entries-snapshot-and-tool-telemetry-v1',
+      'repository-change-worktree-v1',
+      'execution-read-view-v1'
     ], () => readValidationEvidence(projectRoot), {
       openHealth: opcoes.healthAberto ?? true,
       health: { agente: 'overcore', versao: versaoDe(projectRoot), motor: persistencia.motor }
@@ -135,13 +149,17 @@ export async function subir(projectRoot: string, opcoes: OpcoesDeSubida): Promis
     const reconciliationInterval = setInterval(reconcile, 1_000)
     reconciliationInterval.unref()
 
-    let working = false
+    // Um slot ocupado não segura os outros: execuções correm lado a lado, cada uma com seu lease na
+    // outbox e sua worktree. No SQLite, a cerca é o mutex da tarefa dentro deste processo (ADR-023 D3).
+    const busy = workers.map(() => false)
     const workerInterval = setInterval(() => {
-      if (working) return
-      working = true
-      void worker.runOnce()
-        .catch((error: unknown) => log(`worker: ${error instanceof Error ? error.message : String(error)}`))
-        .finally(() => { working = false })
+      workers.forEach((slotWorker, slot) => {
+        if (busy[slot]) return
+        busy[slot] = true
+        void slotWorker.runOnce()
+          .catch((error: unknown) => log(`worker ${slot + 1}: ${error instanceof Error ? error.message : String(error)}`))
+          .finally(() => { busy[slot] = false })
+      })
     }, 500)
     workerInterval.unref()
 

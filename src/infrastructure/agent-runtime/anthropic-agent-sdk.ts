@@ -21,7 +21,7 @@ import type {
   AgentRuntimeUsage
 } from '../../ports/agent-runtime.js'
 
-const SDK_VERSION = '0.3.224'
+export const SDK_VERSION = '0.3.224'
 const READ_ONLY_TOOLS = new Set(['Read', 'Glob', 'Grep'])
 const NEVER_AVAILABLE = [
   'Agent', 'Bash', 'Edit', 'Write', 'NotebookEdit', 'Task', 'Skill',
@@ -45,7 +45,7 @@ export class AnthropicLoginRequiredError extends Error {
   }
 }
 
-function loginOnlyEnvironment(source: NodeJS.ProcessEnv): Record<string, string | undefined> {
+export function loginOnlyEnvironment(source: NodeJS.ProcessEnv): Record<string, string | undefined> {
   const env: Record<string, string | undefined> = {}
   for (const [name, value] of Object.entries(source)) {
     if (!API_CREDENTIAL_ENV.has(name)) env[name] = value
@@ -54,7 +54,7 @@ function loginOnlyEnvironment(source: NodeJS.ProcessEnv): Record<string, string 
   return env
 }
 
-function isSubscriptionLogin(account: AccountInfo): boolean {
+export function isSubscriptionLogin(account: AccountInfo): boolean {
   const accountSource = account.apiKeySource?.toLowerCase()
   return account.apiProvider === 'firstParty'
     && typeof account.subscriptionType === 'string'

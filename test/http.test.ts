@@ -95,6 +95,58 @@ test('adaptador classifica indisponibilidade temporária e respeita Retry-After'
   }
 })
 
+test('adaptador leva ao erro o motivo da recusa HTTP, curto e sem caractere de controle', async () => {
+  const bodies = [
+    {
+      error: 'invalid-authority-request',
+      message: 'authorizationRequest.actions[3].effectClass: valor esperado: runtime-internal, read-only'
+    },
+    { error: 'invalid\u001b[31m-request', message: `linha\nquebrada ${'x'.repeat(5_000)}` },
+    'isto não é JSON'
+  ]
+  const server = createServer((_request, response) => {
+    const body = bodies.shift()
+    response.writeHead(400, { 'content-type': typeof body === 'string' ? 'text/plain' : 'application/json' })
+    response.end(typeof body === 'string' ? body : JSON.stringify(body))
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  try {
+    const address = server.address()
+    assert.ok(address && typeof address !== 'string')
+    const provider = new HttpAuthorityProvider(
+      new URL(`http://127.0.0.1:${address.port}/v1/authority/evaluate`),
+      'token-http-rejection-reason'
+    )
+    const rejection = async (): Promise<AuthorityProviderError> => {
+      try {
+        await provider.evaluate({ authorizationRequestId: 'authreq-rejection-0001' })
+      } catch (error) {
+        assert.ok(error instanceof AuthorityProviderError)
+        return error
+      }
+      assert.fail('o provedor deveria recusar')
+    }
+
+    const explained = await rejection()
+    assert.equal(explained.code, 'authority-provider-rejected-http')
+    assert.equal(explained.retryable, false)
+    assert.equal(
+      explained.message,
+      'Authority Provider respondeu HTTP 400 (invalid-authority-request): ' +
+        'authorizationRequest.actions[3].effectClass: valor esperado: runtime-internal, read-only'
+    )
+
+    const hostile = await rejection()
+    assert.doesNotMatch(hostile.message, /[\u0000-\u001f\u007f]/)
+    assert.ok(hostile.message.length <= 600, `motivo sem limite: ${hostile.message.length} caracteres`)
+    assert.match(hostile.message, /^Authority Provider respondeu HTTP 400 \(invalid\?\[31m-request\): linha\?quebrada x+…$/)
+
+    assert.equal((await rejection()).message, 'Authority Provider respondeu HTTP 400.')
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()))
+  }
+})
+
 test('porta local autentica e recusa a antiga admissão direta de TaskRequest', async () => {
   const token = 'token-api-local-de-teste'
   const validator = await ContractValidator.create(root)

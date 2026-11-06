@@ -222,12 +222,20 @@ Agentes, skills, Registry e Graph Engine continuam fora até serem definidos por
 
 ## Marco 3 em construção — mudança de repositório por worktree
 
-A [`ADR-022`](docs/decisoes/ADR-022-mudanca-de-repositorio-por-worktree-v1.md) propõe a primeira
-capacidade que faz trabalho de desenvolvimento de fato: o Claude Agent SDK edita um worktree isolado,
-o Overcore mede o diff e roda a verificação declarada, e o único efeito journaled é um branch local
-novo para revisão humana. Push, pull request e merge ficam fora. A decisão foi aceita pelo proprietário
-em 2026-09-28; a implementação segue em seis fatias, e a capacidade só fica alcançável pelo Preflight
-na última.
+A [`ADR-022`](docs/decisoes/ADR-022-mudanca-de-repositorio-por-worktree-v1.md) define a primeira
+capacidade que faz trabalho de desenvolvimento de fato. O Claude Agent SDK edita um worktree isolado.
+O Overcore mede o diff e roda a verificação declarada. O único efeito journaled é um branch local
+novo para revisão humana. Push, pull request e merge ficam fora. O proprietário aceitou a decisão em
+2026-09-28. As seis fatias estão entregues localmente desde 2026-10-22, e a capacidade é alcançável
+pelo Preflight.
+
+O Marco 3 continua aberto por três motivos:
+- o Omni real ainda recusa o plano de repositório, e o gate real está vermelho nesse ponto;
+- falta a revalidação do diff medido, registrada como dívida;
+- falta o primeiro uso real no próprio Overcore.
+
+O estado detalhado está na seção Estado da ADR e em
+[api-execucoes.md](docs/operacao/api-execucoes.md).
 
 O assessor de Discovery está implementado como complemento opcional do Baseline, conforme a
 [`ADR-008`](docs/decisoes/ADR-008-discovery-adaptativa-no-preflight.md). Agentes, skills, Graph Engine,

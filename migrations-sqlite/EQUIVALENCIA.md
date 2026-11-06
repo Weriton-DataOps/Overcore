@@ -18,6 +18,7 @@ linha aqui quebra `npm test`. Se a mudança ainda não tiver equivalente, a migr
 | `006_effect_journal.sql` | `0001_overcore.sql` | journal de efeitos com os mesmos estados e índices |
 | `007_file_replacement_receipts.sql` | `0001_overcore.sql` | o `CHECK` do tipo de recibo já aceita `file-replacement-completed` |
 | `008_postgres_table_probe_effect.sql` | `0001_overcore.sql` | o `CHECK` aceita `database.schema.modify` e `postgres-table-probe-completed`; o motor SQLite não oferece a sonda (ADR-023 D9), mas o esquema aceita o dado importado do PostgreSQL |
+| `009_repository_change_receipts.sql` | `0002_repository_change_receipts.sql` | o `CHECK` do tipo de recibo passa a aceitar `repository-change-completed`; como o SQLite não altera `CHECK`, a tabela é reconstruída com as mesmas colunas, chaves, índice e gatilhos do `_diario` |
 
 ## Só no SQLite
 

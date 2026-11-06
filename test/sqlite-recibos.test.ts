@@ -36,6 +36,15 @@ test('o recibo grava sob lease válido e o replay devolve o mesmo', async () => 
   assert.deepEqual(await new SqliteTaskStore(arquivo, 'maquina-teste').findExecutionReceipt('o1'), recibo())
 })
 
+test('recibo de mudança de repositório grava depois da 0002, e tipo desconhecido segue recusado pelo CHECK', async () => {
+  const store = new SqliteTaskStore(await bancoMigrado(), 'maquina-teste')
+  const token = await reivindicada(store)
+  await assert.rejects(store.saveExecutionReceipt({ ...recibo(), payload: { kind: 'algo-futuro' } }, token, DENTRO_DO_LEASE), /CHECK/)
+  const mudanca = { ...recibo(), payload: { kind: 'repository-change-completed', branch: 'overcore/exemplo' } }
+  assert.deepEqual(await store.saveExecutionReceipt(mudanca, token, DENTRO_DO_LEASE), mudanca)
+  assert.deepEqual(await store.findExecutionReceipt('o1'), mudanca)
+})
+
 test('conteúdo diferente para a mesma outbox é recusado', async () => {
   const store = new SqliteTaskStore(await bancoMigrado(), 'maquina-teste')
   const token = await reivindicada(store)

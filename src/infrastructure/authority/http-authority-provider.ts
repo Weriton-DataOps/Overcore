@@ -1,6 +1,31 @@
 import type { JsonObject } from '../../domain/types.js'
 import { AuthorityProviderError, type AuthorityProvider } from '../../ports/task-store.js'
 
+/**
+ * Motivo da recusa como o provedor o escreveu, para o bloqueio dizer por que parou.
+ *
+ * O texto vai para o motivo do bloqueio e para a leitura da API, então entra curto e sem
+ * caractere de controle; corpo que não seja JSON com `error`/`message` em texto é ignorado.
+ */
+async function rejectionReason(response: Response): Promise<string> {
+  let body: unknown
+  try {
+    body = await response.json()
+  } catch {
+    return '.'
+  }
+  if (typeof body !== 'object' || body === null) return '.'
+  const { error, message } = body as { error?: unknown, message?: unknown }
+  const code = typeof error === 'string' ? bounded(error, 64) : ''
+  const detail = typeof message === 'string' ? bounded(message, 400) : ''
+  return `${code ? ` (${code})` : ''}${detail ? `: ${detail}` : '.'}`
+}
+
+function bounded(text: string, limit: number): string {
+  const clean = text.replace(/[\u0000-\u001f\u007f]/g, '?').trim()
+  return clean.length > limit ? `${clean.slice(0, limit)}…` : clean
+}
+
 export class HttpAuthorityProvider implements AuthorityProvider {
   constructor(
     private readonly endpoint: URL,
@@ -40,7 +65,7 @@ export class HttpAuthorityProvider implements AuthorityProvider {
       throw new AuthorityProviderError(
         retryable ? 'authority-provider-temporary-http' : 'authority-provider-rejected-http',
         retryable,
-        `Authority Provider respondeu HTTP ${response.status}.`,
+        `Authority Provider respondeu HTTP ${response.status}${await rejectionReason(response)}`,
         retryable && Number.isFinite(retryAfter) && retryAfter >= 0 ? retryAfter * 1_000 : undefined
       )
     }

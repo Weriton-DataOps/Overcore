@@ -178,9 +178,10 @@ defeito.
   eles passam a apontar para esta ADR.
 - Cada mudança de esquema passa a ter duas migrações. A suíte de contrato é o que impede os motores de
   se afastarem.
-- A migração `009_repository_change_receipts.sql`, do ramo do Marco 3, fica registrada como dívida:
-  quando os ramos se juntarem, ela ganha uma equivalente em `migrations-sqlite/` e a suíte de contrato
-  passa a cobrir os recibos de mudança de repositório.
+- A migração `009_repository_change_receipts.sql`, do ramo do Marco 3, ficou registrada como dívida.
+  Ela foi paga na junção dos ramos (ADR-024 D7): a equivalente é
+  `migrations-sqlite/0002_repository_change_receipts.sql`, e o recibo de mudança de repositório é gravado
+  em `test/sqlite-recibos.test.ts`.
 
 ## Fora desta ADR
 

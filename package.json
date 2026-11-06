@@ -21,6 +21,7 @@
     "test:omni-flow-live": "tsc -p tsconfig.test.json && node --test integration/omni-conversation-flow.test.mjs",
     "test:omni-effect-live": "tsc -p tsconfig.test.json && node --test .test-dist/integration/omni-effect-revalidation.test.js .test-dist/integration/task-file-replacement-omni-postgres.test.js",
     "test:postgres-probe-live": "tsc -p tsconfig.test.json && node --test .test-dist/integration/task-postgres-table-probe-omni-postgres.test.js",
+    "test:repository-change-live": "tsc -p tsconfig.test.json && node --test .test-dist/integration/repository-change-omni-postgres-claude.test.js",
     "verify": "npm run check && npm test && npm run build",
     "start": "node dist/main.js serve",
     "migrate": "node dist/main.js migrate",
